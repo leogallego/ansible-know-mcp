@@ -1,6 +1,7 @@
 """Tests for ansible_know.parser."""
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+import os
 
 import pytest
 
@@ -121,3 +122,40 @@ class TestExtractModuleMetadata:
     def test_api_module_metadata(self, sample_api_module_doc):
         meta = extract_module_metadata(sample_api_module_doc)
         assert meta["is_api_module"] is True
+
+
+class TestRunAnsibleDocEnvInjection:
+    def test_injects_collections_path(self):
+        with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):
+            with patch("ansible_know.collections.get_collections_path", return_value="/tmp/ansible_know_abc123"):
+                with patch("subprocess.run", return_value=MagicMock(
+                    returncode=0, stdout='{}', stderr='',
+                )) as mock_run:
+                    from ansible_know.parser import _run_ansible_doc
+                    _run_ansible_doc("--list", "--json")
+                    env = mock_run.call_args[1]["env"]
+                    assert "/tmp/ansible_know_abc123" in env["ANSIBLE_COLLECTIONS_PATH"]
+
+    def test_preserves_existing_collections_path(self):
+        with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):
+            with patch("ansible_know.collections.get_collections_path", return_value="/tmp/ansible_know_abc123"):
+                with patch.dict("os.environ", {"ANSIBLE_COLLECTIONS_PATH": "/existing/path"}):
+                    with patch("subprocess.run", return_value=MagicMock(
+                        returncode=0, stdout='{}', stderr='',
+                    )) as mock_run:
+                        from ansible_know.parser import _run_ansible_doc
+                        _run_ansible_doc("--list", "--json")
+                        env = mock_run.call_args[1]["env"]
+                        assert env["ANSIBLE_COLLECTIONS_PATH"].startswith("/tmp/ansible_know_abc123")
+                        assert "/existing/path" in env["ANSIBLE_COLLECTIONS_PATH"]
+
+    def test_no_injection_when_no_collections(self):
+        with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):
+            with patch("ansible_know.collections.get_collections_path", return_value=None):
+                with patch("subprocess.run", return_value=MagicMock(
+                    returncode=0, stdout='{}', stderr='',
+                )) as mock_run:
+                    from ansible_know.parser import _run_ansible_doc
+                    _run_ansible_doc("--list", "--json")
+                    call_kwargs = mock_run.call_args[1]
+                    assert call_kwargs.get("env") is None
