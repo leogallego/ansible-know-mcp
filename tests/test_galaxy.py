@@ -84,3 +84,227 @@ class TestLatestVersion:
             client = GalaxyClient()
             with pytest.raises(GalaxyError, match="Galaxy API error"):
                 await client.latest_version("bad", "collection")
+
+
+SAMPLE_SEARCH_RESPONSE = {
+    "meta": {"count": 2},
+    "links": {"first": None, "previous": None, "next": None, "last": None},
+    "data": [
+        {
+            "collection_version": {
+                "pulp_href": "/api/v3/...",
+                "namespace": "netbox",
+                "name": "netbox",
+                "version": "3.23.0",
+                "requires_ansible": ">=2.15.0",
+                "pulp_created": "2026-05-07T13:31:02Z",
+                "contents": [
+                    {"name": "netbox_device", "description": "Manage devices", "content_type": "module"},
+                    {"name": "netbox_site", "description": "Manage sites", "content_type": "module"},
+                    {"name": "nb_inventory", "description": "Inventory plugin", "content_type": "inventory"},
+                ],
+                "dependencies": {},
+                "description": "Ansible modules for NetBox",
+                "tags": [{"name": "dcim"}, {"name": "ipam"}],
+            },
+            "is_highest": True,
+            "is_deprecated": False,
+            "is_signed": False,
+            "repository": {},
+            "repository_version": "",
+            "namespace_metadata": {"pulp_href": "", "name": "netbox", "company": "", "description": "", "avatar_url": None},
+        },
+        {
+            "collection_version": {
+                "pulp_href": "/api/v3/...",
+                "namespace": "deprecated_ns",
+                "name": "old_netbox",
+                "version": "1.0.0",
+                "requires_ansible": ">=2.9",
+                "pulp_created": "2020-01-01T00:00:00Z",
+                "contents": [],
+                "dependencies": {},
+                "description": "Deprecated netbox modules",
+                "tags": [],
+            },
+            "is_highest": True,
+            "is_deprecated": True,
+            "is_signed": False,
+            "repository": {},
+            "repository_version": "",
+            "namespace_metadata": {"pulp_href": "", "name": "deprecated_ns", "company": "", "description": "", "avatar_url": None},
+        },
+    ],
+}
+
+SAMPLE_DETAIL_RESPONSE = {
+    "href": "/api/v3/.../netbox/netbox/",
+    "namespace": "netbox",
+    "name": "netbox",
+    "deprecated": False,
+    "versions_url": "/api/v3/.../versions/",
+    "highest_version": {"href": "/api/v3/.../3.23.0/", "version": "3.23.0"},
+    "created_at": "2023-05-08T23:15:50Z",
+    "updated_at": "2026-05-07T13:31:02Z",
+    "download_count": 11999959,
+}
+
+
+def _mock_search_context(mock_api_get_fn):
+    """Patch both _api_get and httpx.AsyncClient for search_collections tests.
+
+    search_collections creates a shared httpx.AsyncClient that may fail in
+    environments with SOCKS proxies.  Since _api_get is fully mocked, the
+    real client is never used — we just need its async-context-manager
+    protocol to work.
+    """
+    dummy_client = _mock_client_get({})
+    return (
+        patch.object(GalaxyClient, "_api_get", mock_api_get_fn),
+        patch("ansible_know.galaxy.httpx.AsyncClient", return_value=dummy_client),
+    )
+
+
+class TestSearchCollections:
+    @pytest.mark.asyncio
+    async def test_returns_enriched_results(self):
+        call_count = 0
+
+        async def mock_api_get(self_client, path, params=None, client=None):
+            nonlocal call_count
+            call_count += 1
+            if "search/collection-versions" in path:
+                return SAMPLE_SEARCH_RESPONSE
+            if "index/netbox/netbox/" in path:
+                return SAMPLE_DETAIL_RESPONSE
+            return {"download_count": 0, "highest_version": {"version": "1.0.0"}, "deprecated": True}
+
+        p1, p2 = _mock_search_context(mock_api_get)
+        with p1, p2:
+            client = GalaxyClient()
+            result = await client.search_collections("netbox")
+
+        assert result["query"] == "netbox"
+        assert result["count"] >= 1
+        collections = result["collections"]
+        first = collections[0]
+        assert first["namespace"] == "netbox.netbox"
+        assert first["download_count"] == 11999959
+        assert first["latest_version"] == "3.23.0"
+        assert first["module_count"] == 2  # only content_type=module counted
+        assert "dcim" in first["tags"]
+
+    @pytest.mark.asyncio
+    async def test_filters_deprecated(self):
+        async def mock_api_get(self_client, path, params=None, client=None):
+            if "search/collection-versions" in path:
+                return SAMPLE_SEARCH_RESPONSE
+            if "index/netbox/netbox/" in path:
+                return SAMPLE_DETAIL_RESPONSE
+            return {"download_count": 50, "highest_version": {"version": "1.0.0"}, "deprecated": True}
+
+        p1, p2 = _mock_search_context(mock_api_get)
+        with p1, p2:
+            client = GalaxyClient()
+            result = await client.search_collections("netbox")
+
+        namespaces = [c["namespace"] for c in result["collections"]]
+        assert "deprecated_ns.old_netbox" not in namespaces
+
+    @pytest.mark.asyncio
+    async def test_sorts_by_download_count(self):
+        search_data = {
+            "meta": {"count": 2},
+            "links": {},
+            "data": [
+                {
+                    "collection_version": {
+                        "namespace": "low_downloads", "name": "col",
+                        "version": "1.0.0", "contents": [], "dependencies": {},
+                        "description": "Low", "tags": [],
+                        "pulp_href": "", "requires_ansible": "", "pulp_created": "",
+                    },
+                    "is_highest": True, "is_deprecated": False, "is_signed": False,
+                    "repository": {}, "repository_version": "",
+                    "namespace_metadata": {"pulp_href": "", "name": "", "company": "", "description": "", "avatar_url": None},
+                },
+                {
+                    "collection_version": {
+                        "namespace": "high_downloads", "name": "col",
+                        "version": "2.0.0", "contents": [], "dependencies": {},
+                        "description": "High", "tags": [],
+                        "pulp_href": "", "requires_ansible": "", "pulp_created": "",
+                    },
+                    "is_highest": True, "is_deprecated": False, "is_signed": False,
+                    "repository": {}, "repository_version": "",
+                    "namespace_metadata": {"pulp_href": "", "name": "", "company": "", "description": "", "avatar_url": None},
+                },
+            ],
+        }
+
+        async def mock_api_get(self_client, path, params=None, client=None):
+            if "search/collection-versions" in path:
+                return search_data
+            if "high_downloads/col" in path:
+                return {"download_count": 5000000, "highest_version": {"version": "2.0.0"}, "deprecated": False}
+            return {"download_count": 100, "highest_version": {"version": "1.0.0"}, "deprecated": False}
+
+        p1, p2 = _mock_search_context(mock_api_get)
+        with p1, p2:
+            client = GalaxyClient()
+            result = await client.search_collections("col")
+
+        assert result["collections"][0]["namespace"] == "high_downloads.col"
+        assert result["collections"][1]["namespace"] == "low_downloads.col"
+
+    @pytest.mark.asyncio
+    async def test_with_tags_filter(self):
+        call_args = []
+
+        async def mock_api_get(self_client, path, params=None, client=None):
+            call_args.append({"path": path, "params": params})
+            if "search/collection-versions" in path:
+                return {"meta": {"count": 0}, "links": {}, "data": []}
+            return {}
+
+        p1, p2 = _mock_search_context(mock_api_get)
+        with p1, p2:
+            client = GalaxyClient()
+            result = await client.search_collections("network", tags="networking")
+
+        search_call = [c for c in call_args if "search/collection-versions" in c["path"]][0]
+        assert search_call["params"]["tags"] == "networking"
+        assert search_call["params"]["keywords"] == "network"
+        assert result["count"] == 0
+        assert result["collections"] == []
+
+
+class TestDetailEnrichmentFailure:
+    @pytest.mark.asyncio
+    async def test_enrichment_failure_sets_zero_downloads(self):
+        search_data = {
+            "meta": {"count": 1}, "links": {},
+            "data": [{
+                "collection_version": {
+                    "namespace": "test_ns", "name": "test_col",
+                    "version": "1.0.0", "contents": [], "dependencies": {},
+                    "description": "Test", "tags": [],
+                    "pulp_href": "", "requires_ansible": "", "pulp_created": "",
+                },
+                "is_highest": True, "is_deprecated": False, "is_signed": False,
+                "repository": {}, "repository_version": "",
+                "namespace_metadata": {"pulp_href": "", "name": "", "company": "", "description": "", "avatar_url": None},
+            }],
+        }
+
+        async def mock_api_get(self_client, path, params=None, client=None):
+            if "search/collection-versions" in path:
+                return search_data
+            raise GalaxyError("detail request failed")
+
+        p1, p2 = _mock_search_context(mock_api_get)
+        with p1, p2:
+            client = GalaxyClient()
+            result = await client.search_collections("test")
+
+        assert result["collections"][0]["download_count"] == 0

@@ -6,6 +6,7 @@ from Ansible Galaxy without requiring local collection installation.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from typing import Any
@@ -118,3 +119,84 @@ class GalaxyClient:
         version = versions[0]["version"]
         _version_cache[cache_key] = version
         return version
+
+    async def _get_collection_detail(
+        self, namespace: str, name: str,
+        client: httpx.AsyncClient | None = None,
+    ) -> dict[str, Any]:
+        _validate_component(namespace, "namespace")
+        _validate_component(name, "name")
+        path = (
+            f"/api/v3/plugin/ansible/content/published/collections/index/"
+            f"{namespace}/{name}/"
+        )
+        return await self._safe_api_get(path, client=client)
+
+    async def search_collections(
+        self, query: str, tags: str | None = None,
+    ) -> dict[str, Any]:
+        search_path = "/api/v3/plugin/ansible/search/collection-versions/"
+        search_params: dict[str, str] = {
+            "keywords": query,
+            "is_highest": "true",
+            "limit": "10",
+        }
+        if tags:
+            search_params["tags"] = tags
+
+        async with httpx.AsyncClient(timeout=30, verify=True) as shared_client:
+            data = await self._safe_api_get(
+                search_path, params=search_params, client=shared_client,
+            )
+
+            candidates = []
+            for item in data.get("data", []):
+                if item.get("is_deprecated", False):
+                    continue
+                cv = item.get("collection_version", {})
+                ns = cv.get("namespace", "")
+                name = cv.get("name", "")
+                contents = cv.get("contents", [])
+                module_count = sum(
+                    1 for c in contents if c.get("content_type") == "module"
+                )
+                tags_list = [t["name"] for t in cv.get("tags", []) if isinstance(t, dict)]
+                candidates.append({
+                    "namespace": f"{ns}.{name}",
+                    "description": cv.get("description", ""),
+                    "tags": tags_list,
+                    "latest_version": cv.get("version", ""),
+                    "module_count": module_count,
+                    "deprecated": False,
+                    "signed": item.get("is_signed", False),
+                    "_ns": ns,
+                    "_name": name,
+                })
+
+            async def _enrich(cand: dict) -> None:
+                try:
+                    detail = await self._get_collection_detail(
+                        cand["_ns"], cand["_name"], client=shared_client,
+                    )
+                    cand["download_count"] = detail.get("download_count", 0)
+                    highest = detail.get("highest_version", {})
+                    if isinstance(highest, dict):
+                        cand["latest_version"] = highest.get(
+                            "version", cand["latest_version"],
+                        )
+                except GalaxyError:
+                    cand["download_count"] = 0
+
+            await asyncio.gather(*[_enrich(c) for c in candidates])
+
+        for cand in candidates:
+            cand.pop("_ns", None)
+            cand.pop("_name", None)
+
+        candidates.sort(key=lambda c: c.get("download_count", 0), reverse=True)
+
+        return {
+            "query": query,
+            "count": len(candidates),
+            "collections": candidates,
+        }
