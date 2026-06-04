@@ -369,3 +369,70 @@ class TestMissingCollectionHints:
         from ansible_know.server import get_module_doc
         result = await get_module_doc("ansible.builtin.copy")
         assert "ensure_collection" not in result.get("error", "")
+
+
+class TestSearchCollectionsTool:
+    @pytest.mark.asyncio
+    async def test_returns_results(self):
+        mock_result = {
+            "query": "netbox",
+            "count": 1,
+            "collections": [
+                {
+                    "namespace": "netbox.netbox",
+                    "description": "Ansible modules for NetBox",
+                    "tags": ["dcim", "ipam"],
+                    "download_count": 11999959,
+                    "latest_version": "3.23.0",
+                    "module_count": 88,
+                    "deprecated": False,
+                    "signed": False,
+                }
+            ],
+        }
+        with patch("ansible_know.galaxy.GalaxyClient.search_collections", return_value=mock_result):
+            from ansible_know.server import search_collections
+            result = await search_collections("netbox")
+        assert result["count"] == 1
+        assert result["collections"][0]["namespace"] == "netbox.netbox"
+
+    @pytest.mark.asyncio
+    async def test_with_tags(self):
+        mock_result = {"query": "network", "count": 0, "collections": []}
+        with patch("ansible_know.galaxy.GalaxyClient.search_collections", return_value=mock_result) as mock_search:
+            from ansible_know.server import search_collections
+            result = await search_collections("network", tags="networking,cloud")
+        mock_search.assert_called_once_with("network", tags="networking,cloud")
+        assert result["count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_rejects_empty_query(self):
+        from ansible_know.server import search_collections
+        result = await search_collections("")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_rejects_long_query(self):
+        from ansible_know.server import search_collections
+        result = await search_collections("a" * 501)
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_rejects_invalid_tags(self):
+        from ansible_know.server import search_collections
+        result = await search_collections("netbox", tags="valid,tags&inject=bad")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_rejects_long_tags(self):
+        from ansible_know.server import search_collections
+        result = await search_collections("netbox", tags="a" * 501)
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_handles_galaxy_error(self):
+        from ansible_know.galaxy import GalaxyError
+        with patch("ansible_know.galaxy.GalaxyClient.search_collections", side_effect=GalaxyError("timeout")):
+            from ansible_know.server import search_collections
+            result = await search_collections("netbox")
+        assert "error" in result

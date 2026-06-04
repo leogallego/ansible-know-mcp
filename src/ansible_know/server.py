@@ -77,9 +77,26 @@ def _validate_version(version: str) -> None:
 
 
 def _validate_query(query: str) -> None:
+    if not query or not query.strip():
+        raise ValidationError("Query must not be empty.")
     if len(query) > MAX_QUERY_LENGTH:
         raise ValidationError(
             f"Query too long: {len(query)} chars (max {MAX_QUERY_LENGTH})."
+        )
+
+
+_TAGS_RE = re.compile(r"^[a-zA-Z0-9_,-]+$")
+MAX_TAGS_LENGTH = 500
+
+
+def _validate_tags(tags: str) -> None:
+    if len(tags) > MAX_TAGS_LENGTH:
+        raise ValidationError(
+            f"Tags too long: {len(tags)} chars (max {MAX_TAGS_LENGTH})."
+        )
+    if not _TAGS_RE.match(tags):
+        raise ValidationError(
+            "Invalid tags: use alphanumeric characters, hyphens, underscores, and commas only."
         )
 
 
@@ -217,6 +234,35 @@ async def search_docs(
     except Exception as exc:
         logger.warning("search_docs failed: %s", exc)
         return [{"error": _sanitize_error(str(exc))}]
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+async def search_collections(
+    query: Annotated[str, "Search keyword (e.g., 'netbox', 'cisco ios', 'vmware')"],
+    tags: Annotated[str | None, "Optional comma-separated Galaxy tags to filter (e.g., 'networking,cloud')"] = None,
+) -> dict[str, Any]:
+    """Search Ansible Galaxy for collections by keyword.
+
+    Returns collections ranked by download count, with module counts
+    and descriptions. Use this to discover which collection provides
+    modules for a specific platform or use case.
+    """
+    logger.info("search_collections query=%r tags=%r", query, tags)
+    try:
+        _validate_query(query)
+        if tags:
+            _validate_tags(tags)
+    except ValidationError as exc:
+        return {"error": str(exc)}
+
+    try:
+        from ansible_know.galaxy import GalaxyClient
+
+        client = GalaxyClient()
+        return await client.search_collections(query, tags=tags)
+    except Exception as exc:
+        logger.warning("search_collections failed: %s", exc)
+        return {"error": _sanitize_error(str(exc))}
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
