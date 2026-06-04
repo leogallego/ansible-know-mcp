@@ -280,3 +280,92 @@ class TestOutputTruncation:
         from ansible_know.server import _truncate_response
         small = "hello world"
         assert _truncate_response(small) == small
+
+
+class TestEnsureCollectionTool:
+    @pytest.mark.asyncio
+    async def test_installs_collection(self):
+        galaxy_stdout = "Installing 'netbox.netbox:4.1.0' to '<path>'\nnetbox.netbox:4.1.0 was installed successfully"
+        mock_result = MagicMock()
+        mock_result.stdout = galaxy_stdout
+        mock_result.stderr = ""
+        mock_result.returncode = 0
+        with patch("ansible_know.collections._find_ansible_galaxy", return_value="/usr/bin/ansible-galaxy"):
+            with patch("subprocess.run", return_value=mock_result):
+                import ansible_know.collections as col
+                col._installed = {}
+                col._tmp_dir = None
+                from ansible_know.server import ensure_collection
+                result = await ensure_collection("netbox.netbox")
+        assert result["status"] == "installed"
+        assert result["namespace"] == "netbox.netbox"
+
+    @pytest.mark.asyncio
+    async def test_invalid_namespace(self):
+        from ansible_know.server import ensure_collection
+        result = await ensure_collection("../etc")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_invalid_version(self):
+        from ansible_know.server import ensure_collection
+        result = await ensure_collection("netbox.netbox", version="; rm -rf /")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_valid_version_format(self):
+        galaxy_stdout = "Installing 'netbox.netbox:3.9.0' to '<path>'\nnetbox.netbox:3.9.0 was installed successfully"
+        mock_result = MagicMock()
+        mock_result.stdout = galaxy_stdout
+        mock_result.stderr = ""
+        mock_result.returncode = 0
+        with patch("ansible_know.collections._find_ansible_galaxy", return_value="/usr/bin/ansible-galaxy"):
+            with patch("subprocess.run", return_value=mock_result):
+                import ansible_know.collections as col
+                col._installed = {}
+                col._tmp_dir = None
+                from ansible_know.server import ensure_collection
+                result = await ensure_collection("netbox.netbox", version="3.9.0")
+        assert result["status"] == "installed"
+        assert result["version"] == "3.9.0"
+
+
+class TestMissingCollectionHints:
+    @pytest.mark.asyncio
+    async def test_get_module_doc_hint(self, mock_ansible_doc):
+        from ansible_know.parser import AnsibleDocError
+        mock_ansible_doc.side_effect = AnsibleDocError(
+            "ansible-doc failed (exit 1): netbox.netbox.netbox_device has no attribute"
+        )
+        from ansible_know.server import get_module_doc
+        result = await get_module_doc("netbox.netbox.netbox_device")
+        assert "ensure_collection" in result["error"]
+        assert "netbox.netbox" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_search_modules_hint(self, mock_ansible_doc):
+        from ansible_know.parser import AnsibleDocError
+        mock_ansible_doc.side_effect = AnsibleDocError(
+            "ansible-doc failed (exit 1): netbox.netbox was not found"
+        )
+        from ansible_know.server import search_modules
+        result = await search_modules("device", namespace="netbox.netbox")
+        assert "ensure_collection" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_generate_skill_hint(self, mock_ansible_doc):
+        from ansible_know.parser import AnsibleDocError
+        mock_ansible_doc.side_effect = AnsibleDocError(
+            "ansible-doc failed (exit 1): netbox.netbox.netbox_device could not be found"
+        )
+        from ansible_know.server import generate_skill
+        result = await generate_skill("netbox.netbox.netbox_device")
+        assert "ensure_collection" in result
+
+    @pytest.mark.asyncio
+    async def test_no_hint_for_unrelated_errors(self, mock_ansible_doc):
+        from ansible_know.parser import AnsibleDocError
+        mock_ansible_doc.side_effect = AnsibleDocError("Some unrelated error")
+        from ansible_know.server import get_module_doc
+        result = await get_module_doc("ansible.builtin.copy")
+        assert "ensure_collection" not in result.get("error", "")
