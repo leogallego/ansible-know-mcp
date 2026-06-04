@@ -49,9 +49,10 @@ def _find_ansible_galaxy() -> str:
 
 def _get_or_create_tmpdir() -> str:
     global _tmp_dir
-    if _tmp_dir is None:
-        _tmp_dir = tempfile.TemporaryDirectory(prefix="ansible_know_")
-    return _tmp_dir.name
+    with _locks_lock:
+        if _tmp_dir is None:
+            _tmp_dir = tempfile.TemporaryDirectory(prefix="ansible_know_")
+        return _tmp_dir.name
 
 
 def _parse_version(stdout: str, namespace: str, tmpdir: str) -> str:
