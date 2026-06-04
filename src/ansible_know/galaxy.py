@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from collections import OrderedDict
 from typing import Any
 
 import httpx
@@ -20,9 +21,23 @@ logger = logging.getLogger("ansible_know")
 _COMPONENT_RE_PATTERN = r"^[a-zA-Z0-9_]+$"
 
 MAX_GALAXY_RESPONSE_SIZE = 5_000_000  # 5MB
+MAX_VERSION_CACHE_SIZE = 500
+MAX_BLOB_CACHE_SIZE = 100
 
-_version_cache: dict[tuple[str, str], str] = {}
-_blob_cache: dict[tuple[str, str, str], dict[str, Any]] = {}
+_version_cache: OrderedDict[tuple[str, str], str] = OrderedDict()
+_blob_cache: OrderedDict[tuple[str, str, str], dict[str, Any]] = OrderedDict()
+
+
+def _put_version_cache(key: tuple[str, str], value: str) -> None:
+    _version_cache[key] = value
+    if len(_version_cache) > MAX_VERSION_CACHE_SIZE:
+        _version_cache.popitem(last=False)
+
+
+def _put_blob_cache(key: tuple[str, str, str], value: dict[str, Any]) -> None:
+    _blob_cache[key] = value
+    if len(_blob_cache) > MAX_BLOB_CACHE_SIZE:
+        _blob_cache.popitem(last=False)
 
 
 def clear_cache() -> None:
@@ -128,7 +143,7 @@ class GalaxyClient:
                 f"No versions found for {namespace}.{name} on Galaxy."
             )
         version = versions[0]["version"]
-        _version_cache[cache_key] = version
+        _put_version_cache(cache_key, version)
         return version
 
     async def _get_collection_detail(
@@ -225,7 +240,7 @@ class GalaxyClient:
         params = {"format": "json"}
         data = await self._safe_api_get(path, params=params)
         blob = data.get("docs_blob", data)
-        _blob_cache[cache_key] = blob
+        _put_blob_cache(cache_key, blob)
         return blob
 
     @staticmethod
@@ -252,6 +267,8 @@ class GalaxyClient:
         if isinstance(raw_options, list):
             options_dict: dict[str, Any] = {}
             for opt in raw_options:
+                if not isinstance(opt, dict):
+                    continue
                 opt_copy = dict(opt)
                 opt_name = opt_copy.pop("name", None)
                 if opt_name:

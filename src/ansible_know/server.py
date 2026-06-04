@@ -1,6 +1,6 @@
 """Ansible Know MCP Server.
 
-Provides 9 tools for module discovery, documentation search,
+Provides 10 tools for module discovery, documentation search,
 Galaxy collection discovery, and skill generation via the Model Context Protocol.
 """
 
@@ -222,7 +222,9 @@ async def get_module_doc(
     """Get full structured documentation for one module.
 
     Returns: module_name, short_description, params (list with name/type/required/default/choices/description/aliases),
-    examples (raw YAML), is_api_module.
+    examples (raw YAML), is_api_module, doc_source ('local' or 'galaxy').
+    When doc_source is 'galaxy', also includes doc_version and optionally doc_warning.
+    Falls back to Galaxy if collection is not installed locally.
     """
     logger.info("get_module_doc module=%r", module_name)
     try:
@@ -472,8 +474,10 @@ async def generate_skill(
         if ctx:
             await ctx.report_progress(progress=0, total=100)
 
-        raw_doc, _ = await _resolve_module_doc(module_name)
+        raw_doc, galaxy_meta = await _resolve_module_doc(module_name)
         metadata = parser.extract_module_metadata(raw_doc)
+        if galaxy_meta:
+            metadata.update(galaxy_meta)
 
         if ctx:
             await ctx.report_progress(progress=50, total=100)

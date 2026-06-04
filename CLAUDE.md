@@ -18,7 +18,7 @@ Runtime requirement: `ansible-core` must be installed in the same environment (f
 
 ```
 src/ansible_know/
-├── server.py              # FastMCP server: 9 tools, 3 resources, 3 prompts (entrypoint)
+├── server.py              # FastMCP server: 10 tools, 3 resources, 3 prompts (entrypoint)
 ├── parser.py              # ansible-doc wrapper — module discovery and metadata extraction
 ├── skills.py              # skill rendering + package writing (Jinja2)
 ├── config.py              # paths, constants, doc source registry
@@ -37,6 +37,7 @@ src/ansible_know/
 | `search_docs` | read-only | Search conceptual doc manifests |
 | `search_collections` | read-only | Search Galaxy for collections by keyword |
 | `get_collection_manifest` | read-only | Get collection-level module summary |
+| `ensure_collection` | idempotent write | Install a collection for this session |
 | `list_skills` | read-only | List generated skills |
 | `get_skill` | read-only | Read a skill's content |
 | `generate_skill` | write | Generate a skill package for one module |
