@@ -23,12 +23,14 @@ def reset_collections_state():
     old_tmp = col._tmp_dir
     col._tmp_dir = None
     yield
+    test_tmp = col._tmp_dir
     col._tmp_dir = None
-    if old_tmp is not None:
-        try:
-            old_tmp.cleanup()
-        except Exception:
-            pass
+    for tmp in [old_tmp, test_tmp]:
+        if tmp is not None:
+            try:
+                tmp.cleanup()
+            except Exception:
+                pass
 
 
 def _make_subprocess_result(stdout="", stderr="", returncode=0):
