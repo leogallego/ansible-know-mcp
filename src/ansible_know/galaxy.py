@@ -41,6 +41,17 @@ def _validate_component(value: str, label: str) -> None:
         raise GalaxyError(f"Invalid {label}: '{value}'")
 
 
+def _parse_fqcn(module_name: str) -> tuple[str, str, str]:
+    """Split 'namespace.collection.module' into its three parts."""
+    parts = module_name.split(".")
+    if len(parts) != 3:
+        raise GalaxyError(
+            f"'{module_name}' is not a fully-qualified collection name "
+            f"(expected namespace.collection.module)."
+        )
+    return parts[0], parts[1], parts[2]
+
+
 class GalaxyClient:
     """Async client for the Galaxy v3 API."""
 
@@ -200,3 +211,132 @@ class GalaxyClient:
             "count": len(candidates),
             "collections": candidates,
         }
+
+    async def _fetch_docs_blob(
+        self, namespace: str, name: str, version: str,
+    ) -> dict[str, Any]:
+        cache_key = (namespace, name, version)
+        if cache_key in _blob_cache:
+            return _blob_cache[cache_key]
+        path = (
+            f"/api/v3/plugin/ansible/content/published/collections/index/"
+            f"{namespace}/{name}/versions/{version}/docs-blob/"
+        )
+        params = {"format": "json"}
+        data = await self._safe_api_get(path, params=params)
+        blob = data.get("docs_blob", data)
+        _blob_cache[cache_key] = blob
+        return blob
+
+    @staticmethod
+    def _find_module(
+        blob: dict[str, Any], short_name: str,
+    ) -> dict[str, Any] | None:
+        for item in blob.get("contents", []):
+            if (
+                item.get("content_type") == "module"
+                and item.get("content_name") == short_name
+            ):
+                return item
+        return None
+
+    @staticmethod
+    def _transform_to_ansible_doc_format(
+        fqcn: str, entry: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Convert a Galaxy docs-blob content entry to ansible-doc --json format."""
+        ds = entry.get("doc_strings", {})
+        raw_doc = ds.get("doc", {})
+
+        raw_options = raw_doc.get("options", [])
+        if isinstance(raw_options, list):
+            options_dict: dict[str, Any] = {}
+            for opt in raw_options:
+                opt_copy = dict(opt)
+                opt_name = opt_copy.pop("name", None)
+                if opt_name:
+                    options_dict[opt_name] = opt_copy
+        else:
+            options_dict = raw_options
+
+        doc_section = {
+            "short_description": raw_doc.get("short_description", ""),
+            "description": raw_doc.get("description", []),
+            "options": options_dict,
+            "author": raw_doc.get("author", []),
+            "notes": raw_doc.get("notes", []),
+            "version_added": raw_doc.get("version_added", ""),
+        }
+
+        return {
+            fqcn: {
+                "doc": doc_section,
+                "examples": ds.get("examples", ""),
+                "return": ds.get("return", []),
+                "metadata": ds.get("metadata", {}),
+            }
+        }
+
+    async def fetch_module_doc(
+        self, module_name: str, version: str | None = None,
+    ) -> tuple[dict[str, Any], dict[str, str]]:
+        """Fetch module documentation from Galaxy.
+
+        Returns (module_doc, meta) where module_doc mimics ansible-doc --json
+        format and meta contains provenance fields.
+        """
+        namespace, name, short_module = _parse_fqcn(module_name)
+        resolved_version = version or await self.latest_version(namespace, name)
+        is_latest = version is None
+
+        blob = await self._fetch_docs_blob(namespace, name, resolved_version)
+        module_entry = self._find_module(blob, short_module)
+        if module_entry is None:
+            raise GalaxyError(
+                f"Module '{short_module}' not found in "
+                f"{namespace}.{name} {resolved_version} docs-blob."
+            )
+
+        doc = self._transform_to_ansible_doc_format(module_name, module_entry)
+
+        meta: dict[str, str] = {
+            "doc_source": "galaxy",
+            "doc_version": resolved_version,
+        }
+        if is_latest:
+            meta["doc_warning"] = (
+                f"Documentation sourced from Galaxy "
+                f"({namespace}.{name} {resolved_version}). "
+                f"Your installed version may differ."
+            )
+        return doc, meta
+
+    async def list_collection_modules(
+        self, collection_fqcn: str, version: str | None = None,
+    ) -> tuple[dict[str, str], dict[str, str]]:
+        """List modules in a collection from the Galaxy docs-blob.
+
+        Returns (modules, meta) where modules is {fqcn: description}.
+        """
+        parts = collection_fqcn.split(".")
+        if len(parts) != 2:
+            raise GalaxyError(
+                f"'{collection_fqcn}' is not a valid collection FQCN "
+                f"(expected namespace.name)."
+            )
+        namespace, name = parts
+        resolved_version = version or await self.latest_version(namespace, name)
+
+        blob = await self._fetch_docs_blob(namespace, name, resolved_version)
+        modules: dict[str, str] = {}
+        for item in blob.get("contents", []):
+            if item.get("content_type") == "module":
+                short = item.get("content_name", "")
+                fqcn = f"{collection_fqcn}.{short}"
+                desc = item.get("doc_strings", {}).get("doc", {}).get(
+                    "short_description", "",
+                ) or ""
+                modules[fqcn] = desc
+
+        meta = {"source": "galaxy", "version": resolved_version}
+        return modules, meta

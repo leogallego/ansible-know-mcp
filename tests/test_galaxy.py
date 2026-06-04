@@ -308,3 +308,231 @@ class TestDetailEnrichmentFailure:
             result = await client.search_collections("test")
 
         assert result["collections"][0]["download_count"] == 0
+
+
+SAMPLE_DOCS_BLOB = {
+    "docs_blob": {
+        "contents": [
+            {
+                "content_type": "module",
+                "content_name": "netbox_device",
+                "doc_strings": {
+                    "doc": {
+                        "short_description": "Create, update or delete devices",
+                        "description": ["Manages devices in NetBox."],
+                        "options": [
+                            {
+                                "name": "data",
+                                "description": ["Device data"],
+                                "type": "dict",
+                                "required": True,
+                            },
+                            {
+                                "name": "state",
+                                "description": ["Object state"],
+                                "type": "str",
+                                "required": False,
+                                "default": "present",
+                                "choices": ["present", "absent"],
+                            },
+                        ],
+                        "author": ["Author Name"],
+                        "notes": [],
+                        "version_added": "0.1.0",
+                    },
+                    "examples": "- name: Create device\n  netbox.netbox.netbox_device:\n    data:\n      name: Test\n",
+                    "return": [],
+                    "metadata": {},
+                },
+            },
+            {
+                "content_type": "module",
+                "content_name": "netbox_site",
+                "doc_strings": {
+                    "doc": {
+                        "short_description": "Create, update or delete sites",
+                        "description": ["Manages sites in NetBox."],
+                        "options": [],
+                        "author": [],
+                        "notes": [],
+                        "version_added": "0.1.0",
+                    },
+                    "examples": "",
+                    "return": [],
+                    "metadata": {},
+                },
+            },
+            {
+                "content_type": "inventory",
+                "content_name": "nb_inventory",
+                "doc_strings": {
+                    "doc": {"short_description": "Inventory plugin"},
+                    "examples": "",
+                    "return": [],
+                    "metadata": {},
+                },
+            },
+        ],
+    },
+}
+
+
+class TestFetchModuleDoc:
+    @pytest.mark.asyncio
+    async def test_returns_ansible_doc_format(self):
+        async def mock_api_get(self_client, path, params=None, client=None):
+            if "versions/" in path and "docs-blob" not in path:
+                return SAMPLE_VERSIONS_RESPONSE
+            if "docs-blob" in path:
+                return SAMPLE_DOCS_BLOB
+            return {}
+
+        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+            client = GalaxyClient()
+            doc, meta = await client.fetch_module_doc("netbox.netbox.netbox_device")
+
+        assert "netbox.netbox.netbox_device" in doc
+        module_doc = doc["netbox.netbox.netbox_device"]
+        assert module_doc["doc"]["short_description"] == "Create, update or delete devices"
+        options = module_doc["doc"]["options"]
+        assert isinstance(options, dict)
+        assert "data" in options
+        assert "state" in options
+        assert options["data"]["required"] is True
+        assert "name" not in options["data"]
+
+        assert meta["doc_source"] == "galaxy"
+        assert meta["doc_version"] == "3.23.0"
+
+    @pytest.mark.asyncio
+    async def test_with_explicit_version(self):
+        async def mock_api_get(self_client, path, params=None, client=None):
+            if "docs-blob" in path:
+                assert "3.20.0" in path
+                return SAMPLE_DOCS_BLOB
+            return {}
+
+        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+            client = GalaxyClient()
+            doc, meta = await client.fetch_module_doc(
+                "netbox.netbox.netbox_device", version="3.20.0",
+            )
+
+        assert meta["doc_version"] == "3.20.0"
+        assert "doc_warning" not in meta
+
+    @pytest.mark.asyncio
+    async def test_raises_for_missing_module(self):
+        async def mock_api_get(self_client, path, params=None, client=None):
+            if "versions/" in path and "docs-blob" not in path:
+                return SAMPLE_VERSIONS_RESPONSE
+            if "docs-blob" in path:
+                return SAMPLE_DOCS_BLOB
+            return {}
+
+        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+            client = GalaxyClient()
+            with pytest.raises(GalaxyError, match="not found"):
+                await client.fetch_module_doc("netbox.netbox.nonexistent_module")
+
+    @pytest.mark.asyncio
+    async def test_handles_options_already_as_dict(self):
+        blob_with_dict_options = {
+            "docs_blob": {
+                "contents": [
+                    {
+                        "content_type": "module",
+                        "content_name": "some_module",
+                        "doc_strings": {
+                            "doc": {
+                                "short_description": "A module",
+                                "description": [],
+                                "options": {
+                                    "param1": {"type": "str", "required": True},
+                                },
+                                "author": [],
+                                "notes": [],
+                                "version_added": "1.0.0",
+                            },
+                            "examples": "",
+                            "return": [],
+                            "metadata": {},
+                        },
+                    }
+                ],
+            },
+        }
+
+        async def mock_api_get(self_client, path, params=None, client=None):
+            if "versions/" in path and "docs-blob" not in path:
+                return SAMPLE_VERSIONS_RESPONSE
+            if "docs-blob" in path:
+                return blob_with_dict_options
+            return {}
+
+        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+            client = GalaxyClient()
+            doc, meta = await client.fetch_module_doc("test.col.some_module")
+
+        options = doc["test.col.some_module"]["doc"]["options"]
+        assert isinstance(options, dict)
+        assert "param1" in options
+
+
+class TestListCollectionModules:
+    @pytest.mark.asyncio
+    async def test_lists_modules_only(self):
+        async def mock_api_get(self_client, path, params=None, client=None):
+            if "versions/" in path and "docs-blob" not in path:
+                return SAMPLE_VERSIONS_RESPONSE
+            if "docs-blob" in path:
+                return SAMPLE_DOCS_BLOB
+            return {}
+
+        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+            client = GalaxyClient()
+            modules, meta = await client.list_collection_modules("netbox.netbox")
+
+        assert "netbox.netbox.netbox_device" in modules
+        assert "netbox.netbox.netbox_site" in modules
+        assert "netbox.netbox.nb_inventory" not in modules
+        assert len(modules) == 2
+        assert meta["source"] == "galaxy"
+
+    @pytest.mark.asyncio
+    async def test_raises_for_invalid_namespace(self):
+        client = GalaxyClient()
+        with pytest.raises(GalaxyError, match="not a valid collection"):
+            await client.list_collection_modules("just_one_part")
+
+
+class TestParseFqcn:
+    def test_valid_three_segments(self):
+        from ansible_know.galaxy import _parse_fqcn
+        ns, name, mod = _parse_fqcn("netbox.netbox.netbox_device")
+        assert ns == "netbox"
+        assert name == "netbox"
+        assert mod == "netbox_device"
+
+    def test_rejects_two_segments(self):
+        from ansible_know.galaxy import _parse_fqcn
+        with pytest.raises(GalaxyError, match="not a fully-qualified"):
+            _parse_fqcn("netbox.netbox")
+
+    def test_rejects_four_segments(self):
+        from ansible_know.galaxy import _parse_fqcn
+        with pytest.raises(GalaxyError, match="not a fully-qualified"):
+            _parse_fqcn("a.b.c.d")
+
+
+class TestNetworkErrors:
+    @pytest.mark.asyncio
+    async def test_raises_on_connect_timeout(self):
+        mock_client = AsyncMock()
+        mock_client.get.side_effect = httpx.ConnectTimeout("connection timed out")
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
+            client = GalaxyClient()
+            with pytest.raises(GalaxyError, match="Galaxy connection"):
+                await client.latest_version("netbox", "netbox")
