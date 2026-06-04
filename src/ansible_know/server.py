@@ -1,7 +1,7 @@
 """Ansible Know MCP Server.
 
-Provides 8 tools for module discovery, documentation search,
-and skill generation via the Model Context Protocol.
+Provides 9 tools for module discovery, documentation search,
+Galaxy collection discovery, and skill generation via the Model Context Protocol.
 """
 
 from __future__ import annotations
@@ -35,7 +35,9 @@ mcp = FastMCP(
     name="Ansible Know",
     instructions=(
         "Ansible module discovery, documentation, and skill generation. "
-        "Use search_modules to find modules, get_module_doc for details, "
+        "Use search_modules to find modules in installed collections, "
+        "search_collections to discover collections on Galaxy, "
+        "get_module_doc for details (falls back to Galaxy if not installed), "
         "search_docs for conceptual guides, and generate_skill to create "
         "ready-to-use skill packages."
     ),

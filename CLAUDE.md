@@ -18,12 +18,13 @@ Runtime requirement: `ansible-core` must be installed in the same environment (f
 
 ```
 src/ansible_know/
-├── server.py              # FastMCP server: 8 tools, 3 resources, 3 prompts (entrypoint)
+├── server.py              # FastMCP server: 9 tools, 3 resources, 3 prompts (entrypoint)
 ├── parser.py              # ansible-doc wrapper — module discovery and metadata extraction
 ├── skills.py              # skill rendering + package writing (Jinja2)
 ├── config.py              # paths, constants, doc source registry
 ├── collection_manifest.py # collection-level MANIFEST.json generation/caching
 ├── docs.py                # multi-manifest documentation client (httpx)
+├── galaxy.py              # Galaxy v3 API client — search, docs-blob, format conversion
 └── templates/             # Jinja2 templates for skill packages
 ```
 
@@ -34,6 +35,7 @@ src/ansible_know/
 | `search_modules` | read-only | Find modules by keyword |
 | `get_module_doc` | read-only | Get full module documentation |
 | `search_docs` | read-only | Search conceptual doc manifests |
+| `search_collections` | read-only | Search Galaxy for collections by keyword |
 | `get_collection_manifest` | read-only | Get collection-level module summary |
 | `list_skills` | read-only | List generated skills |
 | `get_skill` | read-only | Read a skill's content |
@@ -63,6 +65,8 @@ src/ansible_know/
 - All inputs are validated (FQCN format, path traversal, length limits) before processing.
 - Error messages are sanitized to strip filesystem paths.
 - `docs.py` fetches manifests via httpx, caches per-source in a dict.
+- `galaxy.py` provides async Galaxy v3 API client with version/docs-blob caching and format conversion.
+- `get_module_doc` falls back to Galaxy docs-blob when local collection is missing.
 - Tests mock `_run_ansible_doc` — no real `ansible-doc` needed.
 
 ## Testing
