@@ -22,9 +22,12 @@ logger = logging.getLogger("ansible_know")
 MAX_RESPONSE_SIZE = 500_000  # 500KB
 MAX_KEYWORD_LENGTH = 200
 MAX_QUERY_LENGTH = 500
+MAX_NAMESPACE_LENGTH = 128
+MAX_VERSION_LENGTH = 64
 
 _FQCN_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$")
 _NAMESPACE_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$")
+_VERSION_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
 _SENSITIVE_PREFIXES = ("/etc", "/usr", "/bin", "/sbin", "/boot", "/proc", "/sys", "/dev")
 _PATH_RE = re.compile(r"/(?:home|tmp|usr|etc|var|opt)/\S+")
 
@@ -52,7 +55,7 @@ def _validate_fqcn(name: str) -> None:
 
 
 def _validate_namespace(ns: str) -> None:
-    if not ns or not _NAMESPACE_RE.match(ns):
+    if not ns or len(ns) > MAX_NAMESPACE_LENGTH or not _NAMESPACE_RE.match(ns):
         raise ValidationError(
             f"Invalid collection namespace: expected format 'namespace.collection' "
             f"with alphanumeric/underscore segments."
@@ -63,6 +66,13 @@ def _validate_keyword(keyword: str) -> None:
     if len(keyword) > MAX_KEYWORD_LENGTH:
         raise ValidationError(
             f"Keyword too long: {len(keyword)} chars (max {MAX_KEYWORD_LENGTH})."
+        )
+
+
+def _validate_version(version: str) -> None:
+    if not version or len(version) > MAX_VERSION_LENGTH or not _VERSION_RE.match(version):
+        raise ValidationError(
+            f"Invalid version format: use alphanumeric characters, dots, dashes only."
         )
 
 
@@ -106,6 +116,23 @@ def _run_in_executor(func, *args, **kwargs):
     return loop.run_in_executor(None, partial(func, *args, **kwargs))
 
 
+_MISSING_COLLECTION_PATTERNS = ("has no attribute", "was not found", "could not be found")
+
+
+def _collection_hint(namespace: str) -> str:
+    return (
+        f" Collection '{namespace}' not installed locally. "
+        f"Use ensure_collection('{namespace}') to install it from Ansible Galaxy "
+        f"(latest version, or specify version='X.Y.Z')."
+    )
+
+
+def _maybe_add_hint(error_msg: str, namespace: str | None) -> str:
+    if namespace and any(p in error_msg.lower() for p in _MISSING_COLLECTION_PATTERNS):
+        return error_msg + _collection_hint(namespace)
+    return error_msg
+
+
 # --- Discovery tools (read-only) ---
 
 
@@ -133,7 +160,7 @@ async def search_modules(
         return results
     except Exception as exc:
         logger.warning("search_modules failed: %s", exc)
-        return {"error": _sanitize_error(str(exc))}
+        return {"error": _maybe_add_hint(_sanitize_error(str(exc)), namespace)}
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -159,7 +186,8 @@ async def get_module_doc(
         return metadata
     except Exception as exc:
         logger.warning("get_module_doc failed: %s", exc)
-        return {"error": _sanitize_error(str(exc))}
+        ns = ".".join(module_name.split(".")[:2]) if "." in module_name else None
+        return {"error": _maybe_add_hint(_sanitize_error(str(exc)), ns)}
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -215,7 +243,10 @@ async def get_collection_manifest(
 
         modules = await _run_in_executor(parser.search_modules, "", collection_namespace)
         if not modules:
-            return {"error": f"No modules found in collection '{collection_namespace}'"}
+            return {"error": (
+                f"No modules found in collection '{collection_namespace}'."
+                + _collection_hint(collection_namespace)
+            )}
 
         metadata_list = []
         for module_name in sorted(modules):
@@ -230,6 +261,42 @@ async def get_collection_manifest(
         raise
     except Exception as exc:
         logger.warning("get_collection_manifest failed: %s", exc)
+        return {"error": _maybe_add_hint(_sanitize_error(str(exc)), collection_namespace)}
+
+
+@mcp.tool(annotations=ToolAnnotations(idempotentHint=True, readOnlyHint=False))
+async def ensure_collection(
+    collection_namespace: Annotated[str, "Collection namespace (e.g. 'netbox.netbox')"],
+    version: Annotated[str | None, "Optional version (e.g. '4.1.0'). If omitted, installs latest and pins the resolved version."] = None,
+) -> dict[str, Any]:
+    """Install a collection to a temporary directory for this session.
+
+    Installs once and pins the resolved version. Subsequent calls with the
+    same namespace skip unless a different version is explicitly requested.
+
+    Returns dict with keys: namespace, version, status, message.
+    - status: 'installed' (freshly installed) or 'already_installed' (version matched).
+    - message: human-readable summary including the active version.
+    """
+    logger.info("ensure_collection namespace=%r version=%r", collection_namespace, version)
+    try:
+        _validate_namespace(collection_namespace)
+        if version:
+            _validate_version(version)
+    except ValidationError as exc:
+        return {"error": str(exc)}
+
+    try:
+        from ansible_know import collections
+
+        result = await _run_in_executor(collections.ensure_collection, collection_namespace, version)
+        logger.info(
+            "ensure_collection result: namespace=%s version=%s status=%s",
+            result["namespace"], result["version"], result["status"],
+        )
+        return result
+    except Exception as exc:
+        logger.warning("ensure_collection failed: %s", exc)
         return {"error": _sanitize_error(str(exc))}
 
 
@@ -341,7 +408,8 @@ async def generate_skill(
         return str(exc)
     except Exception as exc:
         logger.warning("generate_skill failed: %s", exc)
-        return _sanitize_error(str(exc))
+        ns = ".".join(module_name.split(".")[:2]) if "." in module_name else None
+        return _maybe_add_hint(_sanitize_error(str(exc)), ns)
 
 
 @mcp.tool
@@ -369,7 +437,10 @@ async def generate_collection_skills(
 
         modules = await _run_in_executor(parser.search_modules, "", collection_namespace)
         if not modules:
-            return {"error": f"No modules found in collection '{collection_namespace}'"}
+            return {"error": (
+                f"No modules found in collection '{collection_namespace}'."
+                + _collection_hint(collection_namespace)
+            )}
 
         total = len(modules)
         succeeded = 0
@@ -411,7 +482,7 @@ async def generate_collection_skills(
         raise
     except Exception as exc:
         logger.warning("generate_collection_skills failed: %s", exc)
-        return {"error": _sanitize_error(str(exc))}
+        return {"error": _maybe_add_hint(_sanitize_error(str(exc)), collection_namespace)}
 
 
 # --- Resources (read-only data) ---

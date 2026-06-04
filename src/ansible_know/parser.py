@@ -7,6 +7,7 @@ for skill generation and module discovery.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -35,12 +36,24 @@ def _run_ansible_doc(*args: str) -> str:
     """Execute ansible-doc with the given arguments and return stdout."""
     ansible_doc = _find_ansible_doc()
     cmd = [ansible_doc, *args]
+
+    from ansible_know import collections
+    collections_path = collections.get_collections_path()
+    env = None
+    if collections_path:
+        env = os.environ.copy()
+        existing = env.get("ANSIBLE_COLLECTIONS_PATH", "")
+        env["ANSIBLE_COLLECTIONS_PATH"] = (
+            f"{collections_path}{os.pathsep}{existing}" if existing else collections_path
+        )
+
     try:
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             timeout=60,
+            env=env,
         )
     except FileNotFoundError:
         raise AnsibleDocError(
