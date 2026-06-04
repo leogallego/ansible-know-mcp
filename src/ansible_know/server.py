@@ -144,10 +144,43 @@ def _collection_hint(namespace: str) -> str:
     )
 
 
+def _is_missing_collection_error(error_msg: str) -> bool:
+    """Check if an error message indicates a missing/not-found collection or module."""
+    msg_lower = error_msg.lower()
+    return any(p in msg_lower for p in _MISSING_COLLECTION_PATTERNS)
+
+
 def _maybe_add_hint(error_msg: str, namespace: str | None) -> str:
-    if namespace and any(p in error_msg.lower() for p in _MISSING_COLLECTION_PATTERNS):
+    if namespace and _is_missing_collection_error(error_msg):
         return error_msg + _collection_hint(namespace)
     return error_msg
+
+
+async def _resolve_module_doc(module_name: str) -> tuple[dict, dict | None]:
+    """Try local ansible-doc, fall back to Galaxy if the collection is missing.
+
+    Returns (raw_doc, galaxy_meta_or_none). Raises on non-missing-collection
+    errors and when both local and Galaxy lookups fail.
+    """
+    from ansible_know import parser
+
+    try:
+        raw_doc = await _run_in_executor(parser.get_module_doc, module_name)
+        return raw_doc, None
+    except Exception as local_exc:
+        if not _is_missing_collection_error(str(local_exc)):
+            raise
+
+        logger.info("Local lookup failed, trying Galaxy: %s", local_exc)
+        try:
+            from ansible_know.galaxy import GalaxyClient
+
+            client = GalaxyClient()
+            galaxy_doc, galaxy_meta = await client.fetch_module_doc(module_name)
+            return galaxy_doc, galaxy_meta
+        except Exception as galaxy_exc:
+            logger.warning("Galaxy fallback also failed: %s", galaxy_exc)
+            raise local_exc from galaxy_exc
 
 
 # --- Discovery tools (read-only) ---
@@ -198,8 +231,12 @@ async def get_module_doc(
     try:
         from ansible_know import parser
 
-        raw_doc = await _run_in_executor(parser.get_module_doc, module_name)
+        raw_doc, galaxy_meta = await _resolve_module_doc(module_name)
         metadata = parser.extract_module_metadata(raw_doc)
+        if galaxy_meta:
+            metadata.update(galaxy_meta)
+        else:
+            metadata["doc_source"] = "local"
         return metadata
     except Exception as exc:
         logger.warning("get_module_doc failed: %s", exc)
@@ -433,7 +470,7 @@ async def generate_skill(
         if ctx:
             await ctx.report_progress(progress=0, total=100)
 
-        raw_doc = await _run_in_executor(parser.get_module_doc, module_name)
+        raw_doc, _ = await _resolve_module_doc(module_name)
         metadata = parser.extract_module_metadata(raw_doc)
 
         if ctx:
