@@ -22,6 +22,8 @@ logger = logging.getLogger("ansible_know")
 MAX_RESPONSE_SIZE = 500_000  # 500KB
 MAX_KEYWORD_LENGTH = 200
 MAX_QUERY_LENGTH = 500
+MAX_NAMESPACE_LENGTH = 128
+MAX_VERSION_LENGTH = 64
 
 _FQCN_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$")
 _NAMESPACE_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$")
@@ -53,7 +55,7 @@ def _validate_fqcn(name: str) -> None:
 
 
 def _validate_namespace(ns: str) -> None:
-    if not ns or not _NAMESPACE_RE.match(ns):
+    if not ns or len(ns) > MAX_NAMESPACE_LENGTH or not _NAMESPACE_RE.match(ns):
         raise ValidationError(
             f"Invalid collection namespace: expected format 'namespace.collection' "
             f"with alphanumeric/underscore segments."
@@ -68,7 +70,7 @@ def _validate_keyword(keyword: str) -> None:
 
 
 def _validate_version(version: str) -> None:
-    if not version or not _VERSION_RE.match(version):
+    if not version or len(version) > MAX_VERSION_LENGTH or not _VERSION_RE.match(version):
         raise ValidationError(
             f"Invalid version format: use alphanumeric characters, dots, dashes only."
         )
@@ -119,8 +121,9 @@ _MISSING_COLLECTION_PATTERNS = ("has no attribute", "was not found", "could not 
 
 def _collection_hint(namespace: str) -> str:
     return (
-        f" Collection '{namespace}' not found. Use ensure_collection('{namespace}') "
-        f"to install it temporarily (latest version, or specify version='X.Y.Z')."
+        f" Collection '{namespace}' not installed locally. "
+        f"Use ensure_collection('{namespace}') to install it from Ansible Galaxy "
+        f"(latest version, or specify version='X.Y.Z')."
     )
 
 
@@ -261,15 +264,18 @@ async def get_collection_manifest(
         return {"error": _maybe_add_hint(_sanitize_error(str(exc)), collection_namespace)}
 
 
-@mcp.tool(annotations=ToolAnnotations(idempotentHint=True))
+@mcp.tool(annotations=ToolAnnotations(idempotentHint=True, readOnlyHint=False))
 async def ensure_collection(
     collection_namespace: Annotated[str, "Collection namespace (e.g. 'netbox.netbox')"],
-    version: Annotated[str | None, "Optional version pin (e.g. '4.1.0'). If omitted, installs latest."] = None,
+    version: Annotated[str | None, "Optional version (e.g. '4.1.0'). If omitted, installs latest and pins the resolved version."] = None,
 ) -> dict[str, Any]:
     """Install a collection to a temporary directory for this session.
 
+    Installs once and pins the resolved version. Subsequent calls with the
+    same namespace skip unless a different version is explicitly requested.
+
     Returns dict with keys: namespace, version, status, message.
-    - status: 'installed' (freshly installed) or 'already_installed' (version pin matched).
+    - status: 'installed' (freshly installed) or 'already_installed' (version matched).
     - message: human-readable summary including the active version.
     """
     logger.info("ensure_collection namespace=%r version=%r", collection_namespace, version)

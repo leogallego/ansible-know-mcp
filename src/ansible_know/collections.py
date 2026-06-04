@@ -25,6 +25,7 @@ _tmp_dir: tempfile.TemporaryDirectory | None = None
 _installed: dict[str, str] = {}
 _install_locks: dict[str, threading.Lock] = {}
 _locks_lock = threading.Lock()
+_install_gate = threading.Lock()  # serializes all ansible-galaxy subprocess calls
 
 
 class CollectionInstallError(Exception):
@@ -75,57 +76,68 @@ def _parse_version(stdout: str, namespace: str, tmpdir: str) -> str:
     return "unknown"
 
 
+MAX_TRACKED_COLLECTIONS = 100
+
+
 def ensure_collection(namespace: str, version: str | None = None) -> dict:
-    """Install a collection to the temp directory.
+    """Install a collection to the temp directory (thread-safe).
+
+    Installs once and pins the resolved version. Subsequent calls skip
+    unless a different version is explicitly requested.
 
     Returns dict with keys: namespace, version, status, message.
-    - No version: always installs latest (overwrites previous).
-    - Version specified: skips if already installed with same version.
     """
     with _locks_lock:
+        if len(_install_locks) >= MAX_TRACKED_COLLECTIONS and namespace not in _install_locks:
+            raise CollectionInstallError(
+                f"Too many collections tracked ({MAX_TRACKED_COLLECTIONS}). "
+                "Restart the server to reset."
+            )
         if namespace not in _install_locks:
             _install_locks[namespace] = threading.Lock()
         lock = _install_locks[namespace]
 
     with lock:
-        if version and _installed.get(namespace) == version:
+        current = _installed.get(namespace)
+        if current and (not version or current == version):
             return {
                 "namespace": namespace,
-                "version": version,
+                "version": current,
                 "status": "already_installed",
-                "message": f"Collection {namespace} v{version} is already available.",
+                "message": f"Collection {namespace} v{current} is already available.",
             }
 
-        previous_version = _installed.get(namespace)
+        previous_version = current
         tmpdir = _get_or_create_tmpdir()
         galaxy = _find_ansible_galaxy()
 
         collection_spec = f"{namespace}:=={version}" if version else namespace
         cmd = [galaxy, "collection", "install", collection_spec, "-p", tmpdir, "--force"]
 
-        try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-        except subprocess.TimeoutExpired:
-            raise CollectionInstallError(
-                f"ansible-galaxy timed out installing {namespace}"
-            )
+        with _install_gate:
+            try:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+            except subprocess.TimeoutExpired:
+                raise CollectionInstallError(
+                    f"ansible-galaxy timed out installing {namespace}"
+                )
 
-        if result.returncode != 0:
-            raise CollectionInstallError(
-                _sanitize_error(result.stderr.strip())
-            )
+            if result.returncode != 0:
+                raise CollectionInstallError(
+                    _sanitize_error(result.stderr.strip())
+                )
 
         installed_version = _parse_version(result.stdout, namespace, tmpdir)
         _installed[namespace] = installed_version
 
         if previous_version and previous_version != installed_version:
             message = (
-                f"Installed {namespace} v{installed_version} (latest), "
+                f"Installed {namespace} v{installed_version}, "
                 f"replacing previously installed v{previous_version}."
             )
         elif version:
@@ -142,10 +154,12 @@ def ensure_collection(namespace: str, version: str | None = None) -> dict:
 
 
 def get_collections_path() -> str | None:
-    if _tmp_dir is None:
-        return None
-    return _tmp_dir.name
+    with _locks_lock:
+        if _tmp_dir is None:
+            return None
+        return _tmp_dir.name
 
 
 def list_installed() -> dict[str, str]:
-    return dict(_installed)
+    with _locks_lock:
+        return dict(_installed)

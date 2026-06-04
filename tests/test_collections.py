@@ -91,26 +91,26 @@ class TestEnsureCollectionInstalls:
         args = mock_run.call_args[0][0]
         assert "netbox.netbox:==3.9.0" in args
 
-    def test_no_version_always_installs(self):
-        galaxy_stdout_1 = "Installing 'netbox.netbox:4.0.0' to '<path>'\nnetbox.netbox:4.0.0 was installed successfully"
-        galaxy_stdout_2 = "Installing 'netbox.netbox:4.1.0' to '<path>'\nnetbox.netbox:4.1.0 was installed successfully"
+    def test_no_version_skips_after_first_install(self):
+        galaxy_stdout = "Installing 'netbox.netbox:4.0.0' to '<path>'\nnetbox.netbox:4.0.0 was installed successfully"
         with patch("ansible_know.collections._find_ansible_galaxy", return_value="/usr/bin/ansible-galaxy"):
-            with patch("subprocess.run", return_value=_make_subprocess_result(stdout=galaxy_stdout_1)):
+            with patch("subprocess.run", return_value=_make_subprocess_result(stdout=galaxy_stdout)):
                 ensure_collection("netbox.netbox")
-            with patch("subprocess.run", return_value=_make_subprocess_result(stdout=galaxy_stdout_2)) as mock_run:
+            with patch("subprocess.run") as mock_run:
                 result = ensure_collection("netbox.netbox")
-        assert result["status"] == "installed"
-        assert result["version"] == "4.1.0"
-        mock_run.assert_called_once()
+        assert result["status"] == "already_installed"
+        assert result["version"] == "4.0.0"
+        mock_run.assert_not_called()
 
-    def test_no_version_reports_replacement(self):
+    def test_different_version_replaces(self):
         galaxy_stdout_1 = "Installing 'netbox.netbox:3.9.0' to '<path>'\nnetbox.netbox:3.9.0 was installed successfully"
         galaxy_stdout_2 = "Installing 'netbox.netbox:4.1.0' to '<path>'\nnetbox.netbox:4.1.0 was installed successfully"
         with patch("ansible_know.collections._find_ansible_galaxy", return_value="/usr/bin/ansible-galaxy"):
             with patch("subprocess.run", return_value=_make_subprocess_result(stdout=galaxy_stdout_1)):
                 ensure_collection("netbox.netbox", version="3.9.0")
             with patch("subprocess.run", return_value=_make_subprocess_result(stdout=galaxy_stdout_2)):
-                result = ensure_collection("netbox.netbox")
+                result = ensure_collection("netbox.netbox", version="4.1.0")
+        assert result["status"] == "installed"
         assert "replacing" in result["message"].lower()
         assert "3.9.0" in result["message"]
 
@@ -197,7 +197,7 @@ class TestVersionParsing:
 
 
 class TestConcurrentInstall:
-    def test_same_collection_serialized(self):
+    def test_same_collection_installs_once(self):
         call_count = 0
         def slow_run(*args, **kwargs):
             nonlocal call_count
@@ -214,7 +214,7 @@ class TestConcurrentInstall:
                 t2.start()
                 t1.join()
                 t2.join()
-        assert call_count == 2
+        assert call_count == 1  # second thread sees first's result and skips
 
     def test_different_collections_parallel(self):
         call_order = []
