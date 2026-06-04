@@ -37,6 +37,7 @@ def _mock_client_get(response_json):
     mock_resp = MagicMock()
     mock_resp.json.return_value = response_json
     mock_resp.raise_for_status.return_value = None
+    mock_resp.content = b"{}"
 
     mock_client = AsyncMock()
     mock_client.get.return_value = mock_resp
