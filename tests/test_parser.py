@@ -5,8 +5,8 @@ import os
 
 import pytest
 
+from ansible_know.errors import AnsibleDocError
 from ansible_know.parser import (
-    AnsibleDocError,
     extract_examples,
     extract_module_metadata,
     extract_params,

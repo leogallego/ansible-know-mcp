@@ -14,9 +14,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from ansible_know.errors import AnsibleDocError, CollectionNotFoundError
 
-class AnsibleDocError(Exception):
-    """Raised when ansible-doc fails or returns unexpected output."""
+_MISSING_COLLECTION_PATTERNS = ("has no attribute", "was not found", "could not be found")
 
 
 def _find_ansible_doc() -> str:
@@ -63,9 +63,11 @@ def _run_ansible_doc(*args: str) -> str:
         raise AnsibleDocError(f"ansible-doc timed out: {' '.join(cmd)}")
 
     if result.returncode != 0:
-        raise AnsibleDocError(
-            f"ansible-doc failed (exit {result.returncode}): {result.stderr.strip()}"
-        )
+        msg = f"ansible-doc failed (exit {result.returncode}): {result.stderr.strip()}"
+        msg_lower = msg.lower()
+        if any(p in msg_lower for p in _MISSING_COLLECTION_PATTERNS):
+            raise CollectionNotFoundError(msg)
+        raise AnsibleDocError(msg)
     return result.stdout
 
 

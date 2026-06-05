@@ -9,27 +9,28 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import re
 from functools import partial
-from pathlib import Path
 from typing import Annotated, Any
 
 from fastmcp import FastMCP, Context
 from mcp.types import ToolAnnotations
 
+from ansible_know.errors import ValidationError
+from ansible_know.validation import (
+    validate_fqcn,
+    validate_namespace,
+    validate_keyword,
+    validate_version,
+    validate_query,
+    validate_tags,
+    validate_install_path,
+    validate_path_containment,
+    sanitize_error,
+    truncate_response,
+    MAX_RESPONSE_SIZE,
+)
+
 logger = logging.getLogger("ansible_know")
-
-MAX_RESPONSE_SIZE = 500_000  # 500KB
-MAX_KEYWORD_LENGTH = 200
-MAX_QUERY_LENGTH = 500
-MAX_NAMESPACE_LENGTH = 128
-MAX_VERSION_LENGTH = 64
-
-_FQCN_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$")
-_NAMESPACE_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$")
-_VERSION_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
-_SENSITIVE_PREFIXES = ("/etc", "/usr", "/bin", "/sbin", "/boot", "/proc", "/sys", "/dev")
-_PATH_RE = re.compile(r"/(?:home|tmp|usr|etc|var|opt)/\S+")
 
 mcp = FastMCP(
     name="Ansible Know",
@@ -43,91 +44,6 @@ mcp = FastMCP(
         "(6) generate_skill to create ready-to-use skill packages."
     ),
 )
-
-
-class ValidationError(Exception):
-    """Raised when tool input fails validation."""
-
-
-def _validate_fqcn(name: str) -> None:
-    if not name or not _FQCN_RE.match(name):
-        raise ValidationError(
-            f"Invalid module name: expected format 'namespace.collection.module' "
-            f"with alphanumeric/underscore segments."
-        )
-
-
-def _validate_namespace(ns: str) -> None:
-    if not ns or len(ns) > MAX_NAMESPACE_LENGTH or not _NAMESPACE_RE.match(ns):
-        raise ValidationError(
-            f"Invalid collection namespace: expected format 'namespace.collection' "
-            f"with alphanumeric/underscore segments."
-        )
-
-
-def _validate_keyword(keyword: str) -> None:
-    if len(keyword) > MAX_KEYWORD_LENGTH:
-        raise ValidationError(
-            f"Keyword too long: {len(keyword)} chars (max {MAX_KEYWORD_LENGTH})."
-        )
-
-
-def _validate_version(version: str) -> None:
-    if not version or len(version) > MAX_VERSION_LENGTH or not _VERSION_RE.match(version):
-        raise ValidationError(
-            f"Invalid version format: use alphanumeric characters, dots, dashes only."
-        )
-
-
-def _validate_query(query: str) -> None:
-    if not query or not query.strip():
-        raise ValidationError("Query must not be empty.")
-    if len(query) > MAX_QUERY_LENGTH:
-        raise ValidationError(
-            f"Query too long: {len(query)} chars (max {MAX_QUERY_LENGTH})."
-        )
-
-
-_TAGS_RE = re.compile(r"^[a-zA-Z0-9_,-]+$")
-MAX_TAGS_LENGTH = 500
-
-
-def _validate_tags(tags: str) -> None:
-    if len(tags) > MAX_TAGS_LENGTH:
-        raise ValidationError(
-            f"Tags too long: {len(tags)} chars (max {MAX_TAGS_LENGTH})."
-        )
-    if not _TAGS_RE.match(tags):
-        raise ValidationError(
-            "Invalid tags: use alphanumeric characters, hyphens, underscores, and commas only."
-        )
-
-
-def _validate_install_path(path_str: str) -> Path:
-    resolved = Path(path_str).resolve()
-    for prefix in _SENSITIVE_PREFIXES:
-        if str(resolved).startswith(prefix):
-            raise ValidationError(
-                f"Install path not allowed: cannot write to system directories."
-            )
-    return resolved
-
-
-def _validate_path_containment(child: Path, parent: Path) -> None:
-    try:
-        child.resolve().relative_to(parent.resolve())
-    except ValueError:
-        raise ValidationError("Path escapes the allowed directory.")
-
-
-def _sanitize_error(msg: str) -> str:
-    return _PATH_RE.sub("<path>", str(msg))
-
-
-def _truncate_response(text: str) -> str:
-    if len(text) > MAX_RESPONSE_SIZE:
-        return text[:MAX_RESPONSE_SIZE] + "\n\n[Truncated — response exceeded size limit]"
-    return text
 
 
 def _run_in_executor(func, *args, **kwargs):
@@ -166,22 +82,20 @@ async def _resolve_module_doc(module_name: str) -> tuple[dict, dict | None]:
     errors and when both local and Galaxy lookups fail.
     """
     from ansible_know import parser
+    from ansible_know.errors import CollectionNotFoundError, GalaxyError
 
     try:
         raw_doc = await _run_in_executor(parser.get_module_doc, module_name)
         return raw_doc, None
-    except Exception as local_exc:
-        if not _is_missing_collection_error(str(local_exc)):
-            raise
-
-        logger.info("Local lookup failed, trying Galaxy: %s", local_exc)
+    except CollectionNotFoundError as local_exc:
+        logger.info("Collection not installed, trying Galaxy: %s", local_exc)
         try:
             from ansible_know.galaxy import GalaxyClient
 
             client = GalaxyClient()
             galaxy_doc, galaxy_meta = await client.fetch_module_doc(module_name)
             return galaxy_doc, galaxy_meta
-        except Exception as galaxy_exc:
+        except GalaxyError as galaxy_exc:
             logger.warning("Galaxy fallback also failed: %s", galaxy_exc)
             raise local_exc from galaxy_exc
 
@@ -197,9 +111,9 @@ async def search_modules(
     """Find Ansible modules by keyword in name or description. Returns up to 50 matches as {fqcn: short_description}."""
     logger.info("search_modules keyword=%r namespace=%r", keyword, namespace)
     try:
-        _validate_keyword(keyword)
+        validate_keyword(keyword)
         if namespace:
-            _validate_namespace(namespace)
+            validate_namespace(namespace)
     except ValidationError as exc:
         return {"error": str(exc)}
 
@@ -213,7 +127,7 @@ async def search_modules(
         return results
     except Exception as exc:
         logger.warning("search_modules failed: %s", exc)
-        return {"error": _maybe_add_hint(_sanitize_error(str(exc)), namespace)}
+        return {"error": _maybe_add_hint(sanitize_error(str(exc)), namespace)}
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -229,7 +143,7 @@ async def get_module_doc(
     """
     logger.info("get_module_doc module=%r", module_name)
     try:
-        _validate_fqcn(module_name)
+        validate_fqcn(module_name)
     except ValidationError as exc:
         return {"error": str(exc)}
 
@@ -246,7 +160,7 @@ async def get_module_doc(
     except Exception as exc:
         logger.warning("get_module_doc failed: %s", exc)
         ns = ".".join(module_name.split(".")[:2]) if "." in module_name else None
-        return {"error": _maybe_add_hint(_sanitize_error(str(exc)), ns)}
+        return {"error": _maybe_add_hint(sanitize_error(str(exc)), ns)}
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -263,7 +177,7 @@ async def search_docs(
     """
     logger.info("search_docs query=%r", query)
     try:
-        _validate_query(query)
+        validate_query(query)
     except ValidationError as exc:
         return [{"error": str(exc)}]
 
@@ -275,7 +189,7 @@ async def search_docs(
         )
     except Exception as exc:
         logger.warning("search_docs failed: %s", exc)
-        return [{"error": _sanitize_error(str(exc))}]
+        return [{"error": sanitize_error(str(exc))}]
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -298,9 +212,9 @@ async def search_collections(
     """
     logger.info("search_collections query=%r tags=%r", query, tags)
     try:
-        _validate_query(query)
+        validate_query(query)
         if tags:
-            _validate_tags(tags)
+            validate_tags(tags)
     except ValidationError as exc:
         return {"error": str(exc)}
 
@@ -311,7 +225,7 @@ async def search_collections(
         return await client.search_collections(query, tags=tags)
     except Exception as exc:
         logger.warning("search_collections failed: %s", exc)
-        return {"error": _sanitize_error(str(exc))}
+        return {"error": sanitize_error(str(exc))}
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -325,7 +239,7 @@ async def get_collection_manifest(
     """
     logger.info("get_collection_manifest namespace=%r", collection_namespace)
     try:
-        _validate_namespace(collection_namespace)
+        validate_namespace(collection_namespace)
     except ValidationError as exc:
         return {"error": str(exc)}
 
@@ -356,7 +270,7 @@ async def get_collection_manifest(
         raise
     except Exception as exc:
         logger.warning("get_collection_manifest failed: %s", exc)
-        return {"error": _maybe_add_hint(_sanitize_error(str(exc)), collection_namespace)}
+        return {"error": _maybe_add_hint(sanitize_error(str(exc)), collection_namespace)}
 
 
 @mcp.tool(annotations=ToolAnnotations(idempotentHint=True, readOnlyHint=False))
@@ -380,9 +294,9 @@ async def ensure_collection(
     """
     logger.info("ensure_collection namespace=%r version=%r", collection_namespace, version)
     try:
-        _validate_namespace(collection_namespace)
+        validate_namespace(collection_namespace)
         if version:
-            _validate_version(version)
+            validate_version(version)
     except ValidationError as exc:
         return {"error": str(exc)}
 
@@ -397,7 +311,7 @@ async def ensure_collection(
         return result
     except Exception as exc:
         logger.warning("ensure_collection failed: %s", exc)
-        return {"error": _sanitize_error(str(exc))}
+        return {"error": sanitize_error(str(exc))}
 
 
 # --- Skill management tools ---
@@ -432,7 +346,7 @@ async def list_skills() -> list[dict[str, str]]:
         return results
     except Exception as exc:
         logger.warning("list_skills failed: %s", exc)
-        return [{"error": _sanitize_error(str(exc))}]
+        return [{"error": sanitize_error(str(exc))}]
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -442,7 +356,7 @@ async def get_skill(
     """Read a specific skill's SKILL.md content by name."""
     logger.info("get_skill name=%r", skill_name)
     try:
-        _validate_fqcn(skill_name)
+        validate_fqcn(skill_name)
     except ValidationError as exc:
         return str(exc)
 
@@ -450,15 +364,15 @@ async def get_skill(
         from ansible_know.config import SKILLS_DIR
 
         skill_path = (SKILLS_DIR / skill_name / "SKILL.md").resolve()
-        _validate_path_containment(skill_path, SKILLS_DIR)
+        validate_path_containment(skill_path, SKILLS_DIR)
         if not skill_path.exists():
             return f"Skill '{skill_name}' not found."
-        return _truncate_response(skill_path.read_text())
+        return truncate_response(skill_path.read_text())
     except ValidationError as exc:
         return str(exc)
     except Exception as exc:
         logger.warning("get_skill failed: %s", exc)
-        return _sanitize_error(str(exc))
+        return sanitize_error(str(exc))
 
 
 @mcp.tool
@@ -474,9 +388,9 @@ async def generate_skill(
     """
     logger.info("generate_skill module=%r install_to=%r", module_name, install_to)
     try:
-        _validate_fqcn(module_name)
+        validate_fqcn(module_name)
         if install_to:
-            _validate_install_path(install_to)
+            validate_install_path(install_to)
     except ValidationError as exc:
         return str(exc)
 
@@ -496,7 +410,7 @@ async def generate_skill(
             await ctx.report_progress(progress=50, total=100)
 
         skill_name = skills._module_to_skill_name(metadata["module_name"])
-        base_dir = _validate_install_path(install_to) if install_to else SKILLS_DIR
+        base_dir = validate_install_path(install_to) if install_to else SKILLS_DIR
         output_dir = base_dir / skill_name
 
         await _run_in_executor(skills.write_skill_package, output_dir, metadata)
@@ -505,13 +419,13 @@ async def generate_skill(
         if ctx:
             await ctx.report_progress(progress=100, total=100)
 
-        return _truncate_response(skills.render_skill(metadata))
+        return truncate_response(skills.render_skill(metadata))
     except ValidationError as exc:
         return str(exc)
     except Exception as exc:
         logger.warning("generate_skill failed: %s", exc)
         ns = ".".join(module_name.split(".")[:2]) if "." in module_name else None
-        return _maybe_add_hint(_sanitize_error(str(exc)), ns)
+        return _maybe_add_hint(sanitize_error(str(exc)), ns)
 
 
 @mcp.tool
@@ -527,9 +441,9 @@ async def generate_collection_skills(
     """
     logger.info("generate_collection_skills namespace=%r install_to=%r", collection_namespace, install_to)
     try:
-        _validate_namespace(collection_namespace)
+        validate_namespace(collection_namespace)
         if install_to:
-            _validate_install_path(install_to)
+            validate_install_path(install_to)
     except ValidationError as exc:
         return {"error": str(exc)}
 
@@ -549,7 +463,7 @@ async def generate_collection_skills(
         failed = 0
         metadata_list = []
 
-        base_dir = _validate_install_path(install_to) if install_to else SKILLS_DIR
+        base_dir = validate_install_path(install_to) if install_to else SKILLS_DIR
 
         for i, module_name in enumerate(sorted(modules)):
             if ctx:
@@ -584,7 +498,7 @@ async def generate_collection_skills(
         raise
     except Exception as exc:
         logger.warning("generate_collection_skills failed: %s", exc)
-        return {"error": _maybe_add_hint(_sanitize_error(str(exc)), collection_namespace)}
+        return {"error": _maybe_add_hint(sanitize_error(str(exc)), collection_namespace)}
 
 
 # --- Resources (read-only data) ---
@@ -613,19 +527,19 @@ def resource_skill_content(skill_name: str) -> str:
     from ansible_know.config import SKILLS_DIR
 
     try:
-        _validate_fqcn(skill_name)
+        validate_fqcn(skill_name)
     except ValidationError as exc:
         return str(exc)
 
     skill_path = (SKILLS_DIR / skill_name / "SKILL.md").resolve()
     try:
-        _validate_path_containment(skill_path, SKILLS_DIR)
+        validate_path_containment(skill_path, SKILLS_DIR)
     except ValidationError as exc:
         return str(exc)
 
     if not skill_path.exists():
         return f"Skill '{skill_name}' not found."
-    return _truncate_response(skill_path.read_text())
+    return truncate_response(skill_path.read_text())
 
 
 @mcp.resource(

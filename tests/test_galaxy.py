@@ -5,11 +5,10 @@ from unittest.mock import AsyncMock, patch, MagicMock
 import httpx
 import pytest
 
+from ansible_know.errors import GalaxyError
 from ansible_know.galaxy import (
     GalaxyClient,
-    GalaxyError,
     clear_cache,
-    _validate_component,
     _get_version_cache,
     _put_version_cache,
     _get_blob_cache,
@@ -580,45 +579,6 @@ class TestParseFqcn:
         from ansible_know.galaxy import _parse_fqcn
         with pytest.raises(GalaxyError, match="not a fully-qualified"):
             _parse_fqcn("a.b.c.d")
-
-
-class TestValidateComponent:
-    def test_rejects_empty_string(self):
-        with pytest.raises(GalaxyError, match="Invalid namespace"):
-            _validate_component("", "namespace")
-
-    def test_rejects_special_characters(self):
-        with pytest.raises(GalaxyError, match="Invalid name"):
-            _validate_component("foo-bar", "name")
-
-    def test_rejects_dots(self):
-        with pytest.raises(GalaxyError, match="Invalid namespace"):
-            _validate_component("foo.bar", "namespace")
-
-    def test_rejects_path_traversal(self):
-        with pytest.raises(GalaxyError, match="Invalid namespace"):
-            _validate_component("../etc", "namespace")
-
-    def test_rejects_unicode(self):
-        with pytest.raises(GalaxyError, match="Invalid name"):
-            _validate_component("café", "name")
-
-    def test_rejects_spaces(self):
-        with pytest.raises(GalaxyError, match="Invalid namespace"):
-            _validate_component("foo bar", "namespace")
-
-    def test_rejects_shell_metacharacters(self):
-        with pytest.raises(GalaxyError, match="Invalid name"):
-            _validate_component("$(whoami)", "name")
-
-    def test_accepts_valid_alphanumeric(self):
-        _validate_component("netbox", "namespace")
-
-    def test_accepts_underscores(self):
-        _validate_component("my_collection", "name")
-
-    def test_accepts_numbers(self):
-        _validate_component("col2", "name")
 
 
 class TestResponseSizeLimit:

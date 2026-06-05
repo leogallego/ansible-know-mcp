@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import threading
 from collections import OrderedDict
 from typing import Any
@@ -16,10 +15,9 @@ from typing import Any
 import httpx
 
 from ansible_know.config import GALAXY_BASE_URL
+from ansible_know.errors import GalaxyError
 
 logger = logging.getLogger("ansible_know")
-
-_COMPONENT_RE_PATTERN = r"^[a-zA-Z0-9_]+$"
 
 MAX_GALAXY_RESPONSE_SIZE = 5_000_000  # 5MB
 MAX_VERSION_CACHE_SIZE = 500
@@ -61,16 +59,6 @@ def clear_cache() -> None:
         _version_cache.clear()
     with _blob_lock:
         _blob_cache.clear()
-
-
-class GalaxyError(Exception):
-    """Raised when a Galaxy API request fails."""
-
-
-def _validate_component(value: str, label: str) -> None:
-    """Validate a namespace or name component for safe URL interpolation."""
-    if not value or not re.match(_COMPONENT_RE_PATTERN, value):
-        raise GalaxyError(f"Invalid {label}: '{value}'")
 
 
 def _parse_fqcn(module_name: str) -> tuple[str, str, str]:
@@ -150,8 +138,6 @@ class GalaxyClient:
         Raises:
             GalaxyError: If the collection is not found or the API fails.
         """
-        _validate_component(namespace, "namespace")
-        _validate_component(name, "name")
         cache_key = (namespace, name)
         cached = _get_version_cache(cache_key)
         if cached is not None:
@@ -175,8 +161,6 @@ class GalaxyClient:
         self, namespace: str, name: str,
         client: httpx.AsyncClient | None = None,
     ) -> dict[str, Any]:
-        _validate_component(namespace, "namespace")
-        _validate_component(name, "name")
         path = (
             f"/api/v3/plugin/ansible/content/published/collections/index/"
             f"{namespace}/{name}/"

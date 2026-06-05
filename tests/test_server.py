@@ -253,33 +253,33 @@ class TestPathTraversal:
 class TestErrorSanitization:
     @pytest.mark.asyncio
     async def test_error_strips_paths(self):
-        from ansible_know.server import _sanitize_error
+        from ansible_know.validation import sanitize_error
         msg = "Failed at /home/user/.ansible/tmp/something: permission denied"
-        sanitized = _sanitize_error(msg)
+        sanitized = sanitize_error(msg)
         assert "/home/user" not in sanitized
         assert "<path>" in sanitized
 
     @pytest.mark.asyncio
     async def test_error_preserves_message(self):
-        from ansible_know.server import _sanitize_error
+        from ansible_know.validation import sanitize_error
         msg = "Module not found"
-        assert _sanitize_error(msg) == msg
+        assert sanitize_error(msg) == msg
 
 
 class TestOutputTruncation:
     @pytest.mark.asyncio
     async def test_truncates_large_response(self):
-        from ansible_know.server import _truncate_response, MAX_RESPONSE_SIZE
+        from ansible_know.validation import truncate_response, MAX_RESPONSE_SIZE
         large = "x" * (MAX_RESPONSE_SIZE + 100)
-        result = _truncate_response(large)
+        result = truncate_response(large)
         assert len(result) < len(large)
         assert "Truncated" in result
 
     @pytest.mark.asyncio
     async def test_preserves_small_response(self):
-        from ansible_know.server import _truncate_response
+        from ansible_know.validation import truncate_response
         small = "hello world"
-        assert _truncate_response(small) == small
+        assert truncate_response(small) == small
 
 
 class TestEnsureCollectionTool:
@@ -333,9 +333,8 @@ class TestEnsureCollectionTool:
 class TestMissingCollectionHints:
     @pytest.mark.asyncio
     async def test_get_module_doc_hint(self, mock_ansible_doc):
-        from ansible_know.parser import AnsibleDocError
-        from ansible_know.galaxy import GalaxyError
-        mock_ansible_doc.side_effect = AnsibleDocError(
+        from ansible_know.errors import CollectionNotFoundError, GalaxyError
+        mock_ansible_doc.side_effect = CollectionNotFoundError(
             "ansible-doc failed (exit 1): netbox.netbox.netbox_device has no attribute"
         )
         with patch(
@@ -349,8 +348,8 @@ class TestMissingCollectionHints:
 
     @pytest.mark.asyncio
     async def test_search_modules_hint(self, mock_ansible_doc):
-        from ansible_know.parser import AnsibleDocError
-        mock_ansible_doc.side_effect = AnsibleDocError(
+        from ansible_know.errors import CollectionNotFoundError
+        mock_ansible_doc.side_effect = CollectionNotFoundError(
             "ansible-doc failed (exit 1): netbox.netbox was not found"
         )
         from ansible_know.server import search_modules
@@ -359,9 +358,8 @@ class TestMissingCollectionHints:
 
     @pytest.mark.asyncio
     async def test_generate_skill_hint(self, mock_ansible_doc):
-        from ansible_know.parser import AnsibleDocError
-        from ansible_know.galaxy import GalaxyError
-        mock_ansible_doc.side_effect = AnsibleDocError(
+        from ansible_know.errors import CollectionNotFoundError, GalaxyError
+        mock_ansible_doc.side_effect = CollectionNotFoundError(
             "ansible-doc failed (exit 1): netbox.netbox.netbox_device could not be found"
         )
         with patch(
@@ -374,7 +372,7 @@ class TestMissingCollectionHints:
 
     @pytest.mark.asyncio
     async def test_no_hint_for_unrelated_errors(self, mock_ansible_doc):
-        from ansible_know.parser import AnsibleDocError
+        from ansible_know.errors import AnsibleDocError
         mock_ansible_doc.side_effect = AnsibleDocError("Some unrelated error")
         from ansible_know.server import get_module_doc
         result = await get_module_doc("ansible.builtin.copy")
@@ -417,8 +415,8 @@ class TestGalaxyDocsFallback:
 
     @pytest.mark.asyncio
     async def test_get_module_doc_falls_back_to_galaxy(self, mock_ansible_doc):
-        from ansible_know.parser import AnsibleDocError
-        mock_ansible_doc.side_effect = AnsibleDocError(
+        from ansible_know.errors import CollectionNotFoundError
+        mock_ansible_doc.side_effect = CollectionNotFoundError(
             "ansible-doc failed (exit 1): netbox.netbox.netbox_device has no attribute"
         )
 
@@ -453,7 +451,7 @@ class TestGalaxyDocsFallback:
 
     @pytest.mark.asyncio
     async def test_get_module_doc_no_fallback_for_non_missing_errors(self, mock_ansible_doc):
-        from ansible_know.parser import AnsibleDocError
+        from ansible_know.errors import AnsibleDocError
         mock_ansible_doc.side_effect = AnsibleDocError("ansible-doc timed out")
 
         with patch(
@@ -467,9 +465,8 @@ class TestGalaxyDocsFallback:
 
     @pytest.mark.asyncio
     async def test_get_module_doc_returns_error_when_both_fail(self, mock_ansible_doc):
-        from ansible_know.parser import AnsibleDocError
-        from ansible_know.galaxy import GalaxyError
-        mock_ansible_doc.side_effect = AnsibleDocError(
+        from ansible_know.errors import CollectionNotFoundError, GalaxyError
+        mock_ansible_doc.side_effect = CollectionNotFoundError(
             "ansible-doc failed (exit 1): some.col.mod was not found"
         )
 
@@ -484,8 +481,8 @@ class TestGalaxyDocsFallback:
 
     @pytest.mark.asyncio
     async def test_generate_skill_falls_back_to_galaxy(self, mock_ansible_doc, tmp_path, monkeypatch):
-        from ansible_know.parser import AnsibleDocError
-        mock_ansible_doc.side_effect = AnsibleDocError(
+        from ansible_know.errors import CollectionNotFoundError
+        mock_ansible_doc.side_effect = CollectionNotFoundError(
             "ansible-doc failed (exit 1): netbox.netbox.netbox_device has no attribute"
         )
 
@@ -521,7 +518,7 @@ class TestGalaxyDocsFallback:
 class TestResolveModuleDoc:
     @pytest.mark.asyncio
     async def test_non_missing_collection_error_not_retried(self, mock_ansible_doc):
-        from ansible_know.parser import AnsibleDocError
+        from ansible_know.errors import AnsibleDocError
         mock_ansible_doc.side_effect = AnsibleDocError("ansible-doc timed out")
 
         with patch(
@@ -534,9 +531,8 @@ class TestResolveModuleDoc:
 
     @pytest.mark.asyncio
     async def test_galaxy_fallback_raises_original_on_galaxy_failure(self, mock_ansible_doc):
-        from ansible_know.parser import AnsibleDocError
-        from ansible_know.galaxy import GalaxyError
-        mock_ansible_doc.side_effect = AnsibleDocError(
+        from ansible_know.errors import CollectionNotFoundError, GalaxyError
+        mock_ansible_doc.side_effect = CollectionNotFoundError(
             "ansible-doc failed (exit 1): some.col.mod has no attribute"
         )
 
@@ -545,7 +541,7 @@ class TestResolveModuleDoc:
             side_effect=GalaxyError("Module 'mod' not found in docs-blob"),
         ):
             from ansible_know.server import _resolve_module_doc
-            with pytest.raises(AnsibleDocError, match="has no attribute"):
+            with pytest.raises(CollectionNotFoundError, match="has no attribute"):
                 await _resolve_module_doc("some.col.mod")
 
 
@@ -664,7 +660,7 @@ class TestSearchCollectionsTool:
 
     @pytest.mark.asyncio
     async def test_handles_galaxy_error(self):
-        from ansible_know.galaxy import GalaxyError
+        from ansible_know.errors import GalaxyError
         with patch("ansible_know.galaxy.GalaxyClient.search_collections", side_effect=GalaxyError("timeout")):
             from ansible_know.server import search_collections
             result = await search_collections("netbox")
