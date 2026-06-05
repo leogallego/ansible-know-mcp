@@ -1066,3 +1066,54 @@ class TestHttpClientInjection:
             await gc.latest_version("ns1", "col1")
             await gc.latest_version("ns2", "col2")
         assert mock_ctor.call_count == 1
+
+
+class TestEnrichmentSemaphore:
+    @pytest.mark.asyncio
+    async def test_limits_concurrent_enrichment(self):
+        import asyncio
+        from ansible_know.galaxy import _enrichment_semaphore
+
+        max_concurrent = 0
+        current_concurrent = 0
+
+        async def tracking_detail(self_client, namespace, name):
+            nonlocal max_concurrent, current_concurrent
+            current_concurrent += 1
+            max_concurrent = max(max_concurrent, current_concurrent)
+            await asyncio.sleep(0.01)
+            current_concurrent -= 1
+            return {"download_count": 100, "highest_version": {"version": "1.0.0"}}
+
+        search_data = {
+            "meta": {"count": 8}, "links": {},
+            "data": [
+                {
+                    "collection_version": {
+                        "namespace": f"ns{i}", "name": "col",
+                        "version": "1.0.0", "contents": [], "dependencies": {},
+                        "description": f"Col {i}", "tags": [],
+                        "pulp_href": "", "requires_ansible": "", "pulp_created": "",
+                    },
+                    "is_highest": True, "is_deprecated": False, "is_signed": False,
+                    "repository": {}, "repository_version": "",
+                    "namespace_metadata": {
+                        "pulp_href": "", "name": "", "company": "",
+                        "description": "", "avatar_url": None,
+                    },
+                }
+                for i in range(8)
+            ],
+        }
+
+        async def mock_api_get(self_client, path, params=None, timeout=None):
+            if "search/collection-versions" in path:
+                return search_data
+            return {"download_count": 100, "highest_version": {"version": "1.0.0"}}
+
+        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+            with patch.object(GalaxyClient, "_get_collection_detail", tracking_detail):
+                client = GalaxyClient()
+                await client.search_collections("test")
+
+        assert max_concurrent <= 5, f"Expected max 5 concurrent, got {max_concurrent}"

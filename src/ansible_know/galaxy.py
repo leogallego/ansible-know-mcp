@@ -29,6 +29,8 @@ TIMEOUT_FAST = httpx.Timeout(10.0)
 TIMEOUT_DEFAULT = httpx.Timeout(10.0, read=30.0)
 TIMEOUT_SLOW = httpx.Timeout(10.0, read=60.0)
 
+_enrichment_semaphore = asyncio.Semaphore(5)
+
 _version_cache: OrderedDict[tuple[str, str], tuple[str, float]] = OrderedDict()
 _version_lock = threading.Lock()
 _blob_cache: OrderedDict[tuple[str, str, str], tuple[dict[str, Any], float]] = OrderedDict()
@@ -235,18 +237,19 @@ class GalaxyClient:
             })
 
         async def _enrich(cand: dict) -> None:
-            try:
-                detail = await self._get_collection_detail(
-                    cand["_ns"], cand["_name"],
-                )
-                cand["download_count"] = detail.get("download_count", 0)
-                highest = detail.get("highest_version", {})
-                if isinstance(highest, dict):
-                    cand["latest_version"] = highest.get(
-                        "version", cand["latest_version"],
+            async with _enrichment_semaphore:
+                try:
+                    detail = await self._get_collection_detail(
+                        cand["_ns"], cand["_name"],
                     )
-            except GalaxyError:
-                cand["download_count"] = 0
+                    cand["download_count"] = detail.get("download_count", 0)
+                    highest = detail.get("highest_version", {})
+                    if isinstance(highest, dict):
+                        cand["latest_version"] = highest.get(
+                            "version", cand["latest_version"],
+                        )
+                except GalaxyError:
+                    cand["download_count"] = 0
 
         await asyncio.gather(*[_enrich(c) for c in candidates])
 
