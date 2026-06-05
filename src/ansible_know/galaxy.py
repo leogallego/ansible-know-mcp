@@ -25,6 +25,10 @@ MAX_VERSION_CACHE_SIZE = 500
 MAX_BLOB_CACHE_SIZE = 50
 CACHE_TTL_SECONDS = 3600
 
+TIMEOUT_FAST = httpx.Timeout(10.0)
+TIMEOUT_DEFAULT = httpx.Timeout(10.0, read=30.0)
+TIMEOUT_SLOW = httpx.Timeout(10.0, read=60.0)
+
 _version_cache: OrderedDict[tuple[str, str], tuple[str, float]] = OrderedDict()
 _version_lock = threading.Lock()
 _blob_cache: OrderedDict[tuple[str, str, str], tuple[dict[str, Any], float]] = OrderedDict()
@@ -99,16 +103,17 @@ class GalaxyClient:
         path: str,
         params: dict[str, str] | None = None,
         client: httpx.AsyncClient | None = None,
+        timeout: httpx.Timeout = TIMEOUT_DEFAULT,
     ) -> dict[str, Any]:
         url = f"{self._base}{path}"
         if client is not None:
             resp = await client.get(
-                url, params=params, headers={"Accept": "application/json"},
+                url, params=params, headers={"Accept": "application/json"}, timeout=timeout,
             )
         else:
-            async with httpx.AsyncClient(timeout=30, verify=True) as c:
+            async with httpx.AsyncClient(verify=True) as c:
                 resp = await c.get(
-                    url, params=params, headers={"Accept": "application/json"},
+                    url, params=params, headers={"Accept": "application/json"}, timeout=timeout,
                 )
         try:
             resp.raise_for_status()
@@ -132,10 +137,11 @@ class GalaxyClient:
         path: str,
         params: dict[str, str] | None = None,
         client: httpx.AsyncClient | None = None,
+        timeout: httpx.Timeout = TIMEOUT_DEFAULT,
     ) -> dict[str, Any]:
         """Wrap _api_get with network error handling."""
         try:
-            return await self._api_get(path, params=params, client=client)
+            return await self._api_get(path, params=params, client=client, timeout=timeout)
         except httpx.TimeoutException:
             raise GalaxyError("Galaxy connection timed out")
         except httpx.RequestError as exc:
@@ -163,7 +169,7 @@ class GalaxyClient:
             f"{namespace}/{name}/versions/"
         )
         params = {"limit": "1", "ordering": "-version", "format": "json"}
-        data = await self._safe_api_get(path, params=params)
+        data = await self._safe_api_get(path, params=params, timeout=TIMEOUT_FAST)
         versions = data.get("data", [])
         if not versions:
             raise GalaxyError(
@@ -181,7 +187,7 @@ class GalaxyClient:
             f"/api/v3/plugin/ansible/content/published/collections/index/"
             f"{namespace}/{name}/"
         )
-        return await self._safe_api_get(path, client=client)
+        return await self._safe_api_get(path, client=client, timeout=TIMEOUT_FAST)
 
     async def search_collections(
         self, query: str, tags: str | None = None,
@@ -264,7 +270,7 @@ class GalaxyClient:
             f"{namespace}/{name}/versions/{version}/docs-blob/"
         )
         params = {"format": "json"}
-        data = await self._safe_api_get(path, params=params)
+        data = await self._safe_api_get(path, params=params, timeout=TIMEOUT_SLOW)
         blob = data.get("docs_blob", data)
         _put_blob_cache(cache_key, blob)
         return blob
