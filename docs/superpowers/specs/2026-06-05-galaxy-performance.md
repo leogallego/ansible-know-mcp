@@ -20,20 +20,22 @@ Five changes to `galaxy.py` and `server.py`. `docs.py` is explicitly out of scop
 
 ### Design
 
-- Add a `@lifespan` function in `server.py` that creates one `httpx.AsyncClient` on server startup and closes it on shutdown via `async with`. The client is yielded as `{"http_client": client}` and available to tools via `ctx.lifespan_context["http_client"]`.
+- Add a `@lifespan` function in `server.py` that creates one `httpx.AsyncClient` on server startup and closes it on shutdown via `async with`. The client is yielded as `{"http_client": client}` and available to tools via `ctx.lifespan_context["http_client"]`. Register it with `mcp = FastMCP(..., lifespan=app_lifespan)`.
 
-- `GalaxyClient.__init__` accepts an optional `http_client: httpx.AsyncClient | None = None`. When provided, all API calls use it. When `None` (standalone use, testing), `GalaxyClient` creates its own internal client lazily (one per instance, for test isolation).
+- The shared client is created with a conservative default timeout (`httpx.Timeout(connect=10.0, read=120.0)`) as a safety net. Per-request timeouts (section 3) override this.
 
-- Remove the `client: httpx.AsyncClient | None` parameter from `_api_get`, `_safe_api_get`, and `_get_collection_detail`. These methods always use `self._http_client`.
+- `GalaxyClient.__init__` signature becomes `(self, base_url=None, http_client=None)`. When `http_client` is provided, all API calls use it. When `None` (standalone use, testing), `GalaxyClient` creates its own internal client lazily via a `_get_client()` helper method (one per instance, for test isolation). The lazily-created client is stored as `self._owned_client` and reused for the instance's lifetime.
+
+- Remove the `client: httpx.AsyncClient | None` parameter from `_api_get`, `_safe_api_get`, and `_get_collection_detail`. These methods always use `self._get_client()`. All call sites that passed `client=shared_client` drop that argument.
 
 - Remove the `async with httpx.AsyncClient() as shared_client:` context manager in `search_collections` — no longer needed.
 
-- `_resolve_module_doc` accepts an `http_client` parameter, passed from calling tools that have access to `ctx.lifespan_context`.
+- `_resolve_module_doc` signature becomes `(module_name, http_client=None)`. It passes `http_client` to `GalaxyClient(http_client=http_client)`. Calling tools extract the client from `ctx.lifespan_context.get("http_client")` and pass it through. Tools that already have `ctx: Context` (`generate_skill`, `generate_collection_skills`) get this naturally; `get_module_doc` and `search_collections` (the Galaxy fallback path) need `ctx` added to their signature.
 
 ### Files Changed
 
-- `server.py`: add lifespan, pass http_client to GalaxyClient and `_resolve_module_doc`
-- `galaxy.py`: refactor `__init__`, `_api_get`, `_safe_api_get`, `_get_collection_detail`, `search_collections`
+- `server.py`: add lifespan, register with FastMCP, update `_resolve_module_doc` signature, pass http_client from ctx in tool handlers
+- `galaxy.py`: refactor `__init__` (add `http_client`, `_owned_client`, `_get_client()`), `_api_get`, `_safe_api_get`, `_get_collection_detail`, `search_collections`
 
 ---
 
@@ -45,7 +47,7 @@ Five changes to `galaxy.py` and `server.py`. `docs.py` is explicitly out of scop
 
 ### Design
 
-- Add `self._enrichment_semaphore = asyncio.Semaphore(5)` as an instance attribute on `GalaxyClient`.
+- Add a **module-level** `_enrichment_semaphore = asyncio.Semaphore(5)` in `galaxy.py`. Must be module-level, not instance-level, because `GalaxyClient` is instantiated per tool call — an instance attribute would give each call its own semaphore, defeating the throttle.
 
 - The `_enrich` coroutine inside `search_collections` acquires the semaphore before calling `_get_collection_detail`.
 
@@ -53,7 +55,7 @@ Five changes to `galaxy.py` and `server.py`. `docs.py` is explicitly out of scop
 
 ### Files Changed
 
-- `galaxy.py`: add semaphore to `__init__`, wrap `_enrich` in `search_collections`
+- `galaxy.py`: add module-level semaphore, wrap `_enrich` in `search_collections`
 
 ---
 
@@ -65,7 +67,7 @@ All API calls use a flat `timeout=30`. Version lookups should fail faster (small
 
 ### Design
 
-Three timeout profiles defined as module-level constants in `galaxy.py`:
+Three timeout profiles defined as `httpx.Timeout` constants in `galaxy.py`:
 
 | Profile | connect | read | Used by |
 |---------|---------|------|---------|
@@ -73,9 +75,7 @@ Three timeout profiles defined as module-level constants in `galaxy.py`:
 | `TIMEOUT_DEFAULT` | 10s | 30s | `search_collections` search call |
 | `TIMEOUT_SLOW` | 10s | 60s | `_fetch_docs_blob` |
 
-Each method passes its timeout to `_api_get`, which passes it through to `self._http_client.get(url, timeout=...)`.
-
-The shared lifespan `httpx.AsyncClient` is created with `timeout=None` (no default) — per-request timeouts take precedence.
+`_api_get` gains a `timeout` parameter. Each calling method passes its appropriate timeout constant. The timeout is forwarded to `self._get_client().get(url, timeout=...)`, overriding the shared client's conservative default (120s, see section 1).
 
 ### Files Changed
 
@@ -125,6 +125,8 @@ The shared lifespan `httpx.AsyncClient` is created with `timeout=None` (no defau
 
 - No TTL needed. The set lives in-process and resets when the server restarts — same lifecycle as the temp collection directory managed by `ensure_collection`.
 
+- **Race condition note**: Two concurrent lookups for the same missing collection could both call `ansible-doc` before either populates the set. This is acceptable — the worst case is two wasted subprocess calls, after which the namespace is cached. No data corruption or incorrect behavior. A lock is not worth the complexity.
+
 ### Files Changed
 
 - `server.py`: add `_missing_collections` set, modify `_resolve_module_doc` and `ensure_collection`
@@ -139,6 +141,9 @@ The shared lifespan `httpx.AsyncClient` is created with `timeout=None` (no defau
 
 ## Testing Strategy
 
-- Existing tests mock `_api_get` or `httpx.AsyncClient` — both patterns continue to work. `GalaxyClient(http_client=None)` preserves standalone behavior for tests.
-- New tests for: semaphore limiting concurrent enrichment, TTL expiry evicting cache entries, negative cache hit/miss/invalidation, timeout constants being passed correctly.
+- Existing tests that mock `_api_get` via `patch.object(GalaxyClient, "_api_get", ...)` continue to work. Mock signatures must drop the `client` parameter (it no longer exists).
+- `GalaxyClient(http_client=None)` creates its own internal client, preserving standalone behavior for tests that don't need the lifespan.
+- Tests for tools that depend on `ctx.lifespan_context["http_client"]` will mock the context or pass `http_client=None` (which falls back to lazy client creation).
+- Tests that patch `httpx.AsyncClient` at the module level continue to work for the lazy-creation path.
+- New tests for: semaphore limiting concurrent enrichment, TTL expiry evicting cache entries, negative cache hit/miss/invalidation, timeout constants being passed to `_api_get`.
 - All 182 existing tests must continue to pass.
