@@ -5,7 +5,7 @@ import os
 
 import pytest
 
-from ansible_know.errors import AnsibleDocError
+from ansible_know.errors import AnsibleDocError, CollectionNotFoundError
 from ansible_know.parser import (
     extract_examples,
     extract_module_metadata,
@@ -159,3 +159,48 @@ class TestRunAnsibleDocEnvInjection:
                     _run_ansible_doc("--list", "--json")
                     call_kwargs = mock_run.call_args[1]
                     assert call_kwargs.get("env") is None
+
+
+class TestCollectionNotFoundDetection:
+    def test_raises_collection_not_found_on_has_no_attribute(self):
+        with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):
+            with patch("ansible_know.collections.get_collections_path", return_value=None):
+                with patch("subprocess.run", return_value=MagicMock(
+                    returncode=1, stdout='', stderr='netbox.netbox has no attribute',
+                )):
+                    from ansible_know.parser import _run_ansible_doc
+                    with pytest.raises(CollectionNotFoundError, match="has no attribute"):
+                        _run_ansible_doc("netbox.netbox.netbox_device", "--json")
+
+    def test_raises_collection_not_found_on_was_not_found(self):
+        with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):
+            with patch("ansible_know.collections.get_collections_path", return_value=None):
+                with patch("subprocess.run", return_value=MagicMock(
+                    returncode=1, stdout='', stderr='netbox.netbox was not found',
+                )):
+                    from ansible_know.parser import _run_ansible_doc
+                    with pytest.raises(CollectionNotFoundError, match="was not found"):
+                        _run_ansible_doc("netbox.netbox.netbox_device", "--json")
+
+    def test_raises_collection_not_found_on_could_not_be_found(self):
+        with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):
+            with patch("ansible_know.collections.get_collections_path", return_value=None):
+                with patch("subprocess.run", return_value=MagicMock(
+                    returncode=1, stdout='', stderr='module could not be found',
+                )):
+                    from ansible_know.parser import _run_ansible_doc
+                    with pytest.raises(CollectionNotFoundError, match="could not be found"):
+                        _run_ansible_doc("netbox.netbox.netbox_device", "--json")
+
+    def test_raises_ansible_doc_error_on_other_errors(self):
+        with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):
+            with patch("ansible_know.collections.get_collections_path", return_value=None):
+                with patch("subprocess.run", return_value=MagicMock(
+                    returncode=1, stdout='', stderr='ansible-doc timed out',
+                )):
+                    from ansible_know.parser import _run_ansible_doc
+                    with pytest.raises(AnsibleDocError, match="timed out"):
+                        _run_ansible_doc("ansible.builtin.copy", "--json")
+
+    def test_collection_not_found_is_subclass_of_ansible_doc_error(self):
+        assert issubclass(CollectionNotFoundError, AnsibleDocError)

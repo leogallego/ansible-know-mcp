@@ -15,7 +15,7 @@ from typing import Annotated, Any
 from fastmcp import FastMCP, Context
 from mcp.types import ToolAnnotations
 
-from ansible_know.errors import ValidationError
+from ansible_know.errors import AnsibleDocError, ValidationError
 from ansible_know.validation import (
     validate_fqcn,
     validate_namespace,
@@ -262,7 +262,7 @@ async def get_collection_manifest(
             try:
                 raw_doc = await _run_in_executor(parser.get_module_doc, module_name)
                 metadata_list.append(parser.extract_module_metadata(raw_doc))
-            except parser.AnsibleDocError:
+            except AnsibleDocError:
                 continue
 
         return collection_manifest.generate_manifest(collection_namespace, metadata_list)
