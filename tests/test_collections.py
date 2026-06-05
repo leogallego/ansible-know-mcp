@@ -6,8 +6,8 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
+from ansible_know.errors import CollectionInstallError
 from ansible_know.collections import (
-    CollectionInstallError,
     ensure_collection,
     get_collections_path,
     list_installed,

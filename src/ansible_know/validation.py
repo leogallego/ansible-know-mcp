@@ -1,0 +1,99 @@
+"""Input validation, error sanitization, and response truncation utilities."""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+from ansible_know.errors import ValidationError
+
+MAX_RESPONSE_SIZE = 500_000  # 500KB
+MAX_KEYWORD_LENGTH = 200
+MAX_QUERY_LENGTH = 500
+MAX_NAMESPACE_LENGTH = 128
+MAX_VERSION_LENGTH = 64
+MAX_TAGS_LENGTH = 500
+
+_FQCN_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$")
+_NAMESPACE_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$")
+_VERSION_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
+_TAGS_RE = re.compile(r"^[a-zA-Z0-9_,-]+$")
+_SENSITIVE_PREFIXES = ("/etc", "/usr", "/bin", "/sbin", "/boot", "/proc", "/sys", "/dev")
+_PATH_RE = re.compile(r"/(?:home|tmp|usr|etc|var|opt)/\S+")
+
+
+def validate_fqcn(name: str) -> None:
+    if not name or not _FQCN_RE.match(name):
+        raise ValidationError(
+            "Invalid module name: expected format 'namespace.collection.module' "
+            "with alphanumeric/underscore segments."
+        )
+
+
+def validate_namespace(ns: str) -> None:
+    if not ns or len(ns) > MAX_NAMESPACE_LENGTH or not _NAMESPACE_RE.match(ns):
+        raise ValidationError(
+            "Invalid collection namespace: expected format 'namespace.collection' "
+            "with alphanumeric/underscore segments."
+        )
+
+
+def validate_keyword(keyword: str) -> None:
+    if len(keyword) > MAX_KEYWORD_LENGTH:
+        raise ValidationError(
+            f"Keyword too long: {len(keyword)} chars (max {MAX_KEYWORD_LENGTH})."
+        )
+
+
+def validate_version(version: str) -> None:
+    if not version or len(version) > MAX_VERSION_LENGTH or not _VERSION_RE.match(version):
+        raise ValidationError(
+            "Invalid version format: use alphanumeric characters, dots, dashes only."
+        )
+
+
+def validate_query(query: str) -> None:
+    if not query or not query.strip():
+        raise ValidationError("Query must not be empty.")
+    if len(query) > MAX_QUERY_LENGTH:
+        raise ValidationError(
+            f"Query too long: {len(query)} chars (max {MAX_QUERY_LENGTH})."
+        )
+
+
+def validate_tags(tags: str) -> None:
+    if len(tags) > MAX_TAGS_LENGTH:
+        raise ValidationError(
+            f"Tags too long: {len(tags)} chars (max {MAX_TAGS_LENGTH})."
+        )
+    if not _TAGS_RE.match(tags):
+        raise ValidationError(
+            "Invalid tags: use alphanumeric characters, hyphens, underscores, and commas only."
+        )
+
+
+def validate_install_path(path_str: str) -> Path:
+    resolved = Path(path_str).resolve()
+    for prefix in _SENSITIVE_PREFIXES:
+        if str(resolved).startswith(prefix):
+            raise ValidationError(
+                "Install path not allowed: cannot write to system directories."
+            )
+    return resolved
+
+
+def validate_path_containment(child: Path, parent: Path) -> None:
+    try:
+        child.resolve().relative_to(parent.resolve())
+    except ValueError:
+        raise ValidationError("Path escapes the allowed directory.")
+
+
+def sanitize_error(msg: str) -> str:
+    return _PATH_RE.sub("<path>", str(msg))
+
+
+def truncate_response(text: str) -> str:
+    if len(text) > MAX_RESPONSE_SIZE:
+        return text[:MAX_RESPONSE_SIZE] + "\n\n[Truncated — response exceeded size limit]"
+    return text

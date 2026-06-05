@@ -16,24 +16,18 @@ import tempfile
 import threading
 from pathlib import Path
 
+from ansible_know.errors import CollectionInstallError
+from ansible_know.validation import sanitize_error
+
 logger = logging.getLogger("ansible_know")
 
 _VERSION_PARSE_RE = re.compile(r"(\S+\.\S+):(\d+\.\d+\.\d+\S*)")
-_PATH_RE = re.compile(r"/(?:home|tmp|usr|etc|var|opt)/\S+")
 
 _tmp_dir: tempfile.TemporaryDirectory | None = None
 _installed: dict[str, str] = {}
 _install_locks: dict[str, threading.Lock] = {}
 _locks_lock = threading.Lock()
 _install_gate = threading.Lock()  # serializes all ansible-galaxy subprocess calls
-
-
-class CollectionInstallError(Exception):
-    """Raised when ansible-galaxy collection install fails."""
-
-
-def _sanitize_error(msg: str) -> str:
-    return _PATH_RE.sub("<path>", str(msg))
 
 
 def _find_ansible_galaxy() -> str:
@@ -129,7 +123,7 @@ def ensure_collection(namespace: str, version: str | None = None) -> dict:
 
             if result.returncode != 0:
                 raise CollectionInstallError(
-                    _sanitize_error(result.stderr.strip())
+                    sanitize_error(result.stderr.strip())
                 )
 
         installed_version = _parse_version(result.stdout, namespace, tmpdir)
