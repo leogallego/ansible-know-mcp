@@ -1,6 +1,8 @@
 """Tests for ansible_know.galaxy."""
 
+import time
 from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import patch as stdlib_patch
 
 import httpx
 import pytest
@@ -16,6 +18,10 @@ from ansible_know.galaxy import (
     MAX_VERSION_CACHE_SIZE,
     MAX_BLOB_CACHE_SIZE,
     MAX_GALAXY_RESPONSE_SIZE,
+    CACHE_TTL_SECONDS,
+    TIMEOUT_FAST,
+    TIMEOUT_DEFAULT,
+    TIMEOUT_SLOW,
 )
 
 
@@ -162,18 +168,13 @@ SAMPLE_DETAIL_RESPONSE = {
 
 
 def _mock_search_context(mock_api_get_fn):
-    """Patch both _api_get and httpx.AsyncClient for search_collections tests.
+    """Patch _api_get for search_collections tests.
 
-    search_collections creates a shared httpx.AsyncClient that may fail in
-    environments with SOCKS proxies.  Since _api_get is fully mocked, the
-    real client is never used — we just need its async-context-manager
-    protocol to work.
+    Since search_collections now uses the GalaxyClient's _get_client method
+    instead of creating its own httpx.AsyncClient, we only need to patch
+    _api_get itself.
     """
-    dummy_client = _mock_client_get({})
-    return (
-        patch.object(GalaxyClient, "_api_get", mock_api_get_fn),
-        patch("ansible_know.galaxy.httpx.AsyncClient", return_value=dummy_client),
-    )
+    return patch.object(GalaxyClient, "_api_get", mock_api_get_fn)
 
 
 class TestSearchCollections:
@@ -181,7 +182,7 @@ class TestSearchCollections:
     async def test_returns_enriched_results(self):
         call_count = 0
 
-        async def mock_api_get(self_client, path, params=None, client=None):
+        async def mock_api_get(self_client, path, params=None, timeout=None):
             nonlocal call_count
             call_count += 1
             if "search/collection-versions" in path:
@@ -190,8 +191,7 @@ class TestSearchCollections:
                 return SAMPLE_DETAIL_RESPONSE
             return {"download_count": 0, "highest_version": {"version": "1.0.0"}, "deprecated": True}
 
-        p1, p2 = _mock_search_context(mock_api_get)
-        with p1, p2:
+        with _mock_search_context(mock_api_get):
             client = GalaxyClient()
             result = await client.search_collections("netbox")
 
@@ -207,15 +207,14 @@ class TestSearchCollections:
 
     @pytest.mark.asyncio
     async def test_filters_deprecated(self):
-        async def mock_api_get(self_client, path, params=None, client=None):
+        async def mock_api_get(self_client, path, params=None, timeout=None):
             if "search/collection-versions" in path:
                 return SAMPLE_SEARCH_RESPONSE
             if "index/netbox/netbox/" in path:
                 return SAMPLE_DETAIL_RESPONSE
             return {"download_count": 50, "highest_version": {"version": "1.0.0"}, "deprecated": True}
 
-        p1, p2 = _mock_search_context(mock_api_get)
-        with p1, p2:
+        with _mock_search_context(mock_api_get):
             client = GalaxyClient()
             result = await client.search_collections("netbox")
 
@@ -253,15 +252,14 @@ class TestSearchCollections:
             ],
         }
 
-        async def mock_api_get(self_client, path, params=None, client=None):
+        async def mock_api_get(self_client, path, params=None, timeout=None):
             if "search/collection-versions" in path:
                 return search_data
             if "high_downloads/col" in path:
                 return {"download_count": 5000000, "highest_version": {"version": "2.0.0"}, "deprecated": False}
             return {"download_count": 100, "highest_version": {"version": "1.0.0"}, "deprecated": False}
 
-        p1, p2 = _mock_search_context(mock_api_get)
-        with p1, p2:
+        with _mock_search_context(mock_api_get):
             client = GalaxyClient()
             result = await client.search_collections("col")
 
@@ -272,14 +270,13 @@ class TestSearchCollections:
     async def test_with_tags_filter(self):
         call_args = []
 
-        async def mock_api_get(self_client, path, params=None, client=None):
+        async def mock_api_get(self_client, path, params=None, timeout=None):
             call_args.append({"path": path, "params": params})
             if "search/collection-versions" in path:
                 return {"meta": {"count": 0}, "links": {}, "data": []}
             return {}
 
-        p1, p2 = _mock_search_context(mock_api_get)
-        with p1, p2:
+        with _mock_search_context(mock_api_get):
             client = GalaxyClient()
             result = await client.search_collections("network", tags="networking")
 
@@ -309,13 +306,12 @@ class TestDetailEnrichmentFailure:
             }],
         }
 
-        async def mock_api_get(self_client, path, params=None, client=None):
+        async def mock_api_get(self_client, path, params=None, timeout=None):
             if "search/collection-versions" in path:
                 return search_data
             raise GalaxyError("detail request failed")
 
-        p1, p2 = _mock_search_context(mock_api_get)
-        with p1, p2:
+        with _mock_search_context(mock_api_get):
             client = GalaxyClient()
             result = await client.search_collections("test")
 
@@ -352,13 +348,12 @@ class TestDetailEnrichmentFailure:
             ],
         }
 
-        async def mock_api_get(self_client, path, params=None, client=None):
+        async def mock_api_get(self_client, path, params=None, timeout=None):
             if "search/collection-versions" in path:
                 return search_data
             raise GalaxyError("all detail requests fail")
 
-        p1, p2 = _mock_search_context(mock_api_get)
-        with p1, p2:
+        with _mock_search_context(mock_api_get):
             client = GalaxyClient()
             result = await client.search_collections("test")
 
@@ -436,7 +431,7 @@ SAMPLE_DOCS_BLOB = {
 class TestFetchModuleDoc:
     @pytest.mark.asyncio
     async def test_returns_ansible_doc_format(self):
-        async def mock_api_get(self_client, path, params=None, client=None):
+        async def mock_api_get(self_client, path, params=None, timeout=None):
             if "versions/" in path and "docs-blob" not in path:
                 return SAMPLE_VERSIONS_RESPONSE
             if "docs-blob" in path:
@@ -462,7 +457,7 @@ class TestFetchModuleDoc:
 
     @pytest.mark.asyncio
     async def test_with_explicit_version(self):
-        async def mock_api_get(self_client, path, params=None, client=None):
+        async def mock_api_get(self_client, path, params=None, timeout=None):
             if "docs-blob" in path:
                 assert "3.20.0" in path
                 return SAMPLE_DOCS_BLOB
@@ -479,7 +474,7 @@ class TestFetchModuleDoc:
 
     @pytest.mark.asyncio
     async def test_raises_for_missing_module(self):
-        async def mock_api_get(self_client, path, params=None, client=None):
+        async def mock_api_get(self_client, path, params=None, timeout=None):
             if "versions/" in path and "docs-blob" not in path:
                 return SAMPLE_VERSIONS_RESPONSE
             if "docs-blob" in path:
@@ -519,7 +514,7 @@ class TestFetchModuleDoc:
             },
         }
 
-        async def mock_api_get(self_client, path, params=None, client=None):
+        async def mock_api_get(self_client, path, params=None, timeout=None):
             if "versions/" in path and "docs-blob" not in path:
                 return SAMPLE_VERSIONS_RESPONSE
             if "docs-blob" in path:
@@ -538,7 +533,7 @@ class TestFetchModuleDoc:
 class TestListCollectionModules:
     @pytest.mark.asyncio
     async def test_lists_modules_only(self):
-        async def mock_api_get(self_client, path, params=None, client=None):
+        async def mock_api_get(self_client, path, params=None, timeout=None):
             if "versions/" in path and "docs-blob" not in path:
                 return SAMPLE_VERSIONS_RESPONSE
             if "docs-blob" in path:
@@ -768,13 +763,12 @@ class TestSearchCollectionsEdgeCases:
             ],
         }
 
-        async def mock_api_get(self_client, path, params=None, client=None):
+        async def mock_api_get(self_client, path, params=None, timeout=None):
             if "search/collection-versions" in path:
                 return search_data
             return {"download_count": 100, "highest_version": {"version": "1.0.0"}}
 
-        p1, p2 = _mock_search_context(mock_api_get)
-        with p1, p2:
+        with _mock_search_context(mock_api_get):
             client = GalaxyClient()
             result = await client.search_collections("test")
 
@@ -799,13 +793,12 @@ class TestSearchCollectionsEdgeCases:
             }],
         }
 
-        async def mock_api_get(self_client, path, params=None, client=None):
+        async def mock_api_get(self_client, path, params=None, timeout=None):
             if "search/collection-versions" in path:
                 return search_data
             return {"download_count": 0, "highest_version": {"version": "1.0.0"}}
 
-        p1, p2 = _mock_search_context(mock_api_get)
-        with p1, p2:
+        with _mock_search_context(mock_api_get):
             client = GalaxyClient()
             result = await client.search_collections("test")
 
@@ -842,7 +835,7 @@ class TestModuleWithoutDocStrings:
             },
         }
 
-        async def mock_api_get(self_client, path, params=None, client=None):
+        async def mock_api_get(self_client, path, params=None, timeout=None):
             if "versions/" in path and "docs-blob" not in path:
                 return SAMPLE_VERSIONS_RESPONSE
             if "docs-blob" in path:
@@ -935,6 +928,34 @@ class TestUnicodeQueries:
         assert result == []
 
 
+class TestCacheTTL:
+    def test_version_cache_returns_none_after_ttl(self):
+        _put_version_cache(("ns", "col"), "1.0.0")
+        assert _get_version_cache(("ns", "col")) == "1.0.0"
+        with stdlib_patch("ansible_know.galaxy.time") as mock_time:
+            mock_time.monotonic.return_value = time.monotonic() + CACHE_TTL_SECONDS + 1
+            assert _get_version_cache(("ns", "col")) is None
+
+    def test_blob_cache_returns_none_after_ttl(self):
+        _put_blob_cache(("ns", "col", "1.0.0"), {"data": "test"})
+        assert _get_blob_cache(("ns", "col", "1.0.0")) == {"data": "test"}
+        with stdlib_patch("ansible_know.galaxy.time") as mock_time:
+            mock_time.monotonic.return_value = time.monotonic() + CACHE_TTL_SECONDS + 1
+            assert _get_blob_cache(("ns", "col", "1.0.0")) is None
+
+    def test_version_cache_returns_value_before_ttl(self):
+        _put_version_cache(("ns", "col"), "2.0.0")
+        with stdlib_patch("ansible_know.galaxy.time") as mock_time:
+            mock_time.monotonic.return_value = time.monotonic() + CACHE_TTL_SECONDS - 10
+            assert _get_version_cache(("ns", "col")) == "2.0.0"
+
+    def test_blob_cache_returns_value_before_ttl(self):
+        _put_blob_cache(("ns", "col", "1.0.0"), {"data": "fresh"})
+        with stdlib_patch("ansible_know.galaxy.time") as mock_time:
+            mock_time.monotonic.return_value = time.monotonic() + CACHE_TTL_SECONDS - 10
+            assert _get_blob_cache(("ns", "col", "1.0.0")) == {"data": "fresh"}
+
+
 class TestConcurrentCacheAccess:
     def test_concurrent_version_cache_writes(self):
         import threading
@@ -977,3 +998,122 @@ class TestConcurrentCacheAccess:
             t.join()
 
         assert errors == []
+
+
+class TestTimeoutConstants:
+    def test_timeout_fast_values(self):
+        assert TIMEOUT_FAST.connect == 10.0
+        assert TIMEOUT_FAST.read == 10.0
+        assert TIMEOUT_FAST.write == 10.0
+        assert TIMEOUT_FAST.pool == 10.0
+
+    def test_timeout_default_values(self):
+        assert TIMEOUT_DEFAULT.connect == 10.0
+        assert TIMEOUT_DEFAULT.read == 30.0
+        assert TIMEOUT_DEFAULT.write == 10.0
+        assert TIMEOUT_DEFAULT.pool == 10.0
+
+    def test_timeout_slow_values(self):
+        assert TIMEOUT_SLOW.connect == 10.0
+        assert TIMEOUT_SLOW.read == 60.0
+        assert TIMEOUT_SLOW.write == 10.0
+        assert TIMEOUT_SLOW.pool == 10.0
+
+
+class TestTimeoutPassthrough:
+    @pytest.mark.asyncio
+    async def test_latest_version_uses_fast_timeout(self):
+        mock_client = _mock_client_get(SAMPLE_VERSIONS_RESPONSE)
+        with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
+            client = GalaxyClient()
+            await client.latest_version("netbox", "netbox")
+        call_kwargs = mock_client.get.call_args[1]
+        assert call_kwargs["timeout"] == TIMEOUT_FAST
+
+    @pytest.mark.asyncio
+    async def test_fetch_docs_blob_uses_slow_timeout(self):
+        _put_version_cache(("netbox", "netbox"), "3.23.0")
+        mock_client = _mock_client_get(SAMPLE_DOCS_BLOB)
+        with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
+            client = GalaxyClient()
+            await client._fetch_docs_blob("netbox", "netbox", "3.23.0")
+        call_kwargs = mock_client.get.call_args[1]
+        assert call_kwargs["timeout"] == TIMEOUT_SLOW
+
+
+class TestHttpClientInjection:
+    @pytest.mark.asyncio
+    async def test_uses_injected_client(self):
+        mock_client = _mock_client_get(SAMPLE_VERSIONS_RESPONSE)
+        gc = GalaxyClient(http_client=mock_client)
+        version = await gc.latest_version("netbox", "netbox")
+        assert version == "3.23.0"
+        mock_client.get.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_creates_own_client_when_none(self):
+        mock_client = _mock_client_get(SAMPLE_VERSIONS_RESPONSE)
+        with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
+            gc = GalaxyClient()
+            version = await gc.latest_version("netbox", "netbox")
+        assert version == "3.23.0"
+
+    @pytest.mark.asyncio
+    async def test_reuses_owned_client(self):
+        mock_client = _mock_client_get(SAMPLE_VERSIONS_RESPONSE)
+        with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client) as mock_ctor:
+            gc = GalaxyClient()
+            await gc.latest_version("ns1", "col1")
+            await gc.latest_version("ns2", "col2")
+        assert mock_ctor.call_count == 1
+
+
+class TestEnrichmentSemaphore:
+    @pytest.mark.asyncio
+    async def test_limits_concurrent_enrichment(self):
+        import asyncio
+        from ansible_know.galaxy import _enrichment_semaphore
+
+        max_concurrent = 0
+        current_concurrent = 0
+
+        async def tracking_detail(self_client, namespace, name):
+            nonlocal max_concurrent, current_concurrent
+            current_concurrent += 1
+            max_concurrent = max(max_concurrent, current_concurrent)
+            await asyncio.sleep(0.01)
+            current_concurrent -= 1
+            return {"download_count": 100, "highest_version": {"version": "1.0.0"}}
+
+        search_data = {
+            "meta": {"count": 8}, "links": {},
+            "data": [
+                {
+                    "collection_version": {
+                        "namespace": f"ns{i}", "name": "col",
+                        "version": "1.0.0", "contents": [], "dependencies": {},
+                        "description": f"Col {i}", "tags": [],
+                        "pulp_href": "", "requires_ansible": "", "pulp_created": "",
+                    },
+                    "is_highest": True, "is_deprecated": False, "is_signed": False,
+                    "repository": {}, "repository_version": "",
+                    "namespace_metadata": {
+                        "pulp_href": "", "name": "", "company": "",
+                        "description": "", "avatar_url": None,
+                    },
+                }
+                for i in range(8)
+            ],
+        }
+
+        async def mock_api_get(self_client, path, params=None, timeout=None):
+            if "search/collection-versions" in path:
+                return search_data
+            return {"download_count": 100, "highest_version": {"version": "1.0.0"}}
+
+        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+            with patch.object(GalaxyClient, "_get_collection_detail", tracking_detail):
+                client = GalaxyClient()
+                await client.search_collections("test")
+
+        assert max_concurrent <= 5, f"Expected max 5 concurrent, got {max_concurrent}"

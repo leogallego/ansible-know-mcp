@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+import time
 from collections import OrderedDict
 from typing import Any
 
@@ -21,34 +22,55 @@ logger = logging.getLogger("ansible_know")
 
 MAX_GALAXY_RESPONSE_SIZE = 5_000_000  # 5MB
 MAX_VERSION_CACHE_SIZE = 500
-MAX_BLOB_CACHE_SIZE = 100
+MAX_BLOB_CACHE_SIZE = 50
+CACHE_TTL_SECONDS = 3600
 
-_version_cache: OrderedDict[tuple[str, str], str] = OrderedDict()
+TIMEOUT_FAST = httpx.Timeout(10.0)
+TIMEOUT_DEFAULT = httpx.Timeout(10.0, read=30.0)
+TIMEOUT_SLOW = httpx.Timeout(10.0, read=60.0)
+
+_enrichment_semaphore = asyncio.Semaphore(5)
+
+_version_cache: OrderedDict[tuple[str, str], tuple[str, float]] = OrderedDict()
 _version_lock = threading.Lock()
-_blob_cache: OrderedDict[tuple[str, str, str], dict[str, Any]] = OrderedDict()
+_blob_cache: OrderedDict[tuple[str, str, str], tuple[dict[str, Any], float]] = OrderedDict()
 _blob_lock = threading.Lock()
 
 
 def _get_version_cache(key: tuple[str, str]) -> str | None:
     with _version_lock:
-        return _version_cache.get(key)
+        cached = _version_cache.get(key)
+        if cached is None:
+            return None
+        value, timestamp = cached
+        if time.monotonic() - timestamp > CACHE_TTL_SECONDS:
+            del _version_cache[key]
+            return None
+        return value
 
 
 def _put_version_cache(key: tuple[str, str], value: str) -> None:
     with _version_lock:
-        _version_cache[key] = value
+        _version_cache[key] = (value, time.monotonic())
         while len(_version_cache) > MAX_VERSION_CACHE_SIZE:
             _version_cache.popitem(last=False)
 
 
 def _get_blob_cache(key: tuple[str, str, str]) -> dict[str, Any] | None:
     with _blob_lock:
-        return _blob_cache.get(key)
+        cached = _blob_cache.get(key)
+        if cached is None:
+            return None
+        value, timestamp = cached
+        if time.monotonic() - timestamp > CACHE_TTL_SECONDS:
+            del _blob_cache[key]
+            return None
+        return value
 
 
 def _put_blob_cache(key: tuple[str, str, str], value: dict[str, Any]) -> None:
     with _blob_lock:
-        _blob_cache[key] = value
+        _blob_cache[key] = (value, time.monotonic())
         while len(_blob_cache) > MAX_BLOB_CACHE_SIZE:
             _blob_cache.popitem(last=False)
 
@@ -75,25 +97,33 @@ def _parse_fqcn(module_name: str) -> tuple[str, str, str]:
 class GalaxyClient:
     """Async client for the Galaxy v3 API."""
 
-    def __init__(self, base_url: str | None = None):
+    def __init__(self, base_url: str | None = None, http_client: httpx.AsyncClient | None = None):
         self._base = (base_url or GALAXY_BASE_URL).rstrip("/")
+        self._http_client = http_client
+        self._owned_client: httpx.AsyncClient | None = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        """Get the http client to use for requests."""
+        if self._http_client is not None:
+            return self._http_client
+        if self._owned_client is None:
+            self._owned_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(10.0, read=120.0),
+                verify=True,
+            )
+        return self._owned_client
 
     async def _api_get(
         self,
         path: str,
         params: dict[str, str] | None = None,
-        client: httpx.AsyncClient | None = None,
+        timeout: httpx.Timeout = TIMEOUT_DEFAULT,
     ) -> dict[str, Any]:
         url = f"{self._base}{path}"
-        if client is not None:
-            resp = await client.get(
-                url, params=params, headers={"Accept": "application/json"},
-            )
-        else:
-            async with httpx.AsyncClient(timeout=30, verify=True) as c:
-                resp = await c.get(
-                    url, params=params, headers={"Accept": "application/json"},
-                )
+        client = self._get_client()
+        resp = await client.get(
+            url, params=params, headers={"Accept": "application/json"}, timeout=timeout,
+        )
         try:
             resp.raise_for_status()
         except httpx.HTTPStatusError as exc:
@@ -115,11 +145,11 @@ class GalaxyClient:
         self,
         path: str,
         params: dict[str, str] | None = None,
-        client: httpx.AsyncClient | None = None,
+        timeout: httpx.Timeout = TIMEOUT_DEFAULT,
     ) -> dict[str, Any]:
         """Wrap _api_get with network error handling."""
         try:
-            return await self._api_get(path, params=params, client=client)
+            return await self._api_get(path, params=params, timeout=timeout)
         except httpx.TimeoutException:
             raise GalaxyError("Galaxy connection timed out")
         except httpx.RequestError as exc:
@@ -147,7 +177,7 @@ class GalaxyClient:
             f"{namespace}/{name}/versions/"
         )
         params = {"limit": "1", "ordering": "-version", "format": "json"}
-        data = await self._safe_api_get(path, params=params)
+        data = await self._safe_api_get(path, params=params, timeout=TIMEOUT_FAST)
         versions = data.get("data", [])
         if not versions:
             raise GalaxyError(
@@ -159,13 +189,12 @@ class GalaxyClient:
 
     async def _get_collection_detail(
         self, namespace: str, name: str,
-        client: httpx.AsyncClient | None = None,
     ) -> dict[str, Any]:
         path = (
             f"/api/v3/plugin/ansible/content/published/collections/index/"
             f"{namespace}/{name}/"
         )
-        return await self._safe_api_get(path, client=client)
+        return await self._safe_api_get(path, timeout=TIMEOUT_FAST)
 
     async def search_collections(
         self, query: str, tags: str | None = None,
@@ -179,39 +208,39 @@ class GalaxyClient:
         if tags:
             search_params["tags"] = tags
 
-        async with httpx.AsyncClient(timeout=30, verify=True) as shared_client:
-            data = await self._safe_api_get(
-                search_path, params=search_params, client=shared_client,
+        data = await self._safe_api_get(
+            search_path, params=search_params,
+        )
+
+        candidates = []
+        for item in data.get("data", []):
+            if item.get("is_deprecated", False):
+                continue
+            cv = item.get("collection_version", {})
+            ns = cv.get("namespace", "")
+            name = cv.get("name", "")
+            contents = cv.get("contents", [])
+            module_count = sum(
+                1 for c in contents if c.get("content_type") == "module"
             )
+            tags_list = [t["name"] for t in cv.get("tags", []) if isinstance(t, dict)]
+            candidates.append({
+                "namespace": f"{ns}.{name}",
+                "description": cv.get("description", ""),
+                "tags": tags_list,
+                "latest_version": cv.get("version", ""),
+                "module_count": module_count,
+                "deprecated": False,
+                "signed": item.get("is_signed", False),
+                "_ns": ns,
+                "_name": name,
+            })
 
-            candidates = []
-            for item in data.get("data", []):
-                if item.get("is_deprecated", False):
-                    continue
-                cv = item.get("collection_version", {})
-                ns = cv.get("namespace", "")
-                name = cv.get("name", "")
-                contents = cv.get("contents", [])
-                module_count = sum(
-                    1 for c in contents if c.get("content_type") == "module"
-                )
-                tags_list = [t["name"] for t in cv.get("tags", []) if isinstance(t, dict)]
-                candidates.append({
-                    "namespace": f"{ns}.{name}",
-                    "description": cv.get("description", ""),
-                    "tags": tags_list,
-                    "latest_version": cv.get("version", ""),
-                    "module_count": module_count,
-                    "deprecated": False,
-                    "signed": item.get("is_signed", False),
-                    "_ns": ns,
-                    "_name": name,
-                })
-
-            async def _enrich(cand: dict) -> None:
+        async def _enrich(cand: dict) -> None:
+            async with _enrichment_semaphore:
                 try:
                     detail = await self._get_collection_detail(
-                        cand["_ns"], cand["_name"], client=shared_client,
+                        cand["_ns"], cand["_name"],
                     )
                     cand["download_count"] = detail.get("download_count", 0)
                     highest = detail.get("highest_version", {})
@@ -222,7 +251,7 @@ class GalaxyClient:
                 except GalaxyError:
                     cand["download_count"] = 0
 
-            await asyncio.gather(*[_enrich(c) for c in candidates])
+        await asyncio.gather(*[_enrich(c) for c in candidates])
 
         for cand in candidates:
             cand.pop("_ns", None)
@@ -248,7 +277,7 @@ class GalaxyClient:
             f"{namespace}/{name}/versions/{version}/docs-blob/"
         )
         params = {"format": "json"}
-        data = await self._safe_api_get(path, params=params)
+        data = await self._safe_api_get(path, params=params, timeout=TIMEOUT_SLOW)
         blob = data.get("docs_blob", data)
         _put_blob_cache(cache_key, blob)
         return blob
