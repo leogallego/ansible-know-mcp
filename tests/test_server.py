@@ -676,6 +676,45 @@ class TestSearchCollectionsTool:
         assert "error" in result
 
 
+class TestLifespanHttpClient:
+    @pytest.mark.asyncio
+    async def test_get_module_doc_passes_lifespan_http_client(self, mock_ansible_doc):
+        mock_ansible_doc.return_value = json.dumps(SAMPLE_MODULE_DOC)
+        mock_client = AsyncMock()
+        mock_ctx = MagicMock()
+        mock_ctx.lifespan_context = {"http_client": mock_client}
+
+        with patch("ansible_know.server._resolve_module_doc") as mock_resolve:
+            mock_resolve.return_value = (SAMPLE_MODULE_DOC, None)
+            from ansible_know.server import get_module_doc
+            await get_module_doc("ansible.builtin.package", ctx=mock_ctx)
+
+        mock_resolve.assert_called_once_with(
+            "ansible.builtin.package", http_client=mock_client,
+        )
+
+    @pytest.mark.asyncio
+    async def test_search_collections_passes_lifespan_http_client(self):
+        mock_client = AsyncMock()
+        mock_ctx = MagicMock()
+        mock_ctx.lifespan_context = {"http_client": mock_client}
+
+        mock_result = {"query": "test", "count": 0, "collections": []}
+        with patch("ansible_know.galaxy.GalaxyClient.__init__", return_value=None) as mock_init:
+            with patch("ansible_know.galaxy.GalaxyClient.search_collections", return_value=mock_result):
+                from ansible_know.server import search_collections
+                await search_collections("test", ctx=mock_ctx)
+
+        mock_init.assert_called_once_with(http_client=mock_client)
+
+    @pytest.mark.asyncio
+    async def test_tools_work_without_ctx(self, mock_ansible_doc):
+        mock_ansible_doc.return_value = json.dumps(SAMPLE_MODULE_DOC)
+        from ansible_know.server import get_module_doc
+        result = await get_module_doc("ansible.builtin.package")
+        assert result["doc_source"] == "local"
+
+
 class TestNegativeCache:
     @pytest.mark.asyncio
     async def test_skips_ansible_doc_on_cache_hit(self, mock_ansible_doc):
