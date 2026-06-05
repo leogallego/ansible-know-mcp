@@ -334,11 +334,16 @@ class TestMissingCollectionHints:
     @pytest.mark.asyncio
     async def test_get_module_doc_hint(self, mock_ansible_doc):
         from ansible_know.parser import AnsibleDocError
+        from ansible_know.galaxy import GalaxyError
         mock_ansible_doc.side_effect = AnsibleDocError(
             "ansible-doc failed (exit 1): netbox.netbox.netbox_device has no attribute"
         )
-        from ansible_know.server import get_module_doc
-        result = await get_module_doc("netbox.netbox.netbox_device")
+        with patch(
+            "ansible_know.galaxy.GalaxyClient.fetch_module_doc",
+            side_effect=GalaxyError("not found on Galaxy"),
+        ):
+            from ansible_know.server import get_module_doc
+            result = await get_module_doc("netbox.netbox.netbox_device")
         assert "ensure_collection" in result["error"]
         assert "netbox.netbox" in result["error"]
 
@@ -355,11 +360,16 @@ class TestMissingCollectionHints:
     @pytest.mark.asyncio
     async def test_generate_skill_hint(self, mock_ansible_doc):
         from ansible_know.parser import AnsibleDocError
+        from ansible_know.galaxy import GalaxyError
         mock_ansible_doc.side_effect = AnsibleDocError(
             "ansible-doc failed (exit 1): netbox.netbox.netbox_device could not be found"
         )
-        from ansible_know.server import generate_skill
-        result = await generate_skill("netbox.netbox.netbox_device")
+        with patch(
+            "ansible_know.galaxy.GalaxyClient.fetch_module_doc",
+            side_effect=GalaxyError("not found on Galaxy"),
+        ):
+            from ansible_know.server import generate_skill
+            result = await generate_skill("netbox.netbox.netbox_device")
         assert "ensure_collection" in result
 
     @pytest.mark.asyncio
@@ -369,3 +379,207 @@ class TestMissingCollectionHints:
         from ansible_know.server import get_module_doc
         result = await get_module_doc("ansible.builtin.copy")
         assert "ensure_collection" not in result.get("error", "")
+
+
+class TestIsMissingCollectionError:
+    def test_has_no_attribute(self):
+        from ansible_know.server import _is_missing_collection_error
+        assert _is_missing_collection_error("netbox.netbox has no attribute") is True
+
+    def test_was_not_found(self):
+        from ansible_know.server import _is_missing_collection_error
+        assert _is_missing_collection_error("module was not found") is True
+
+    def test_could_not_be_found(self):
+        from ansible_know.server import _is_missing_collection_error
+        assert _is_missing_collection_error("could not be found in Galaxy") is True
+
+    def test_unrelated_error(self):
+        from ansible_know.server import _is_missing_collection_error
+        assert _is_missing_collection_error("ansible-doc timed out") is False
+
+    def test_empty_string(self):
+        from ansible_know.server import _is_missing_collection_error
+        assert _is_missing_collection_error("") is False
+
+    def test_case_insensitive(self):
+        from ansible_know.server import _is_missing_collection_error
+        assert _is_missing_collection_error("HAS NO ATTRIBUTE") is True
+
+
+class TestGalaxyDocsFallback:
+    @pytest.mark.asyncio
+    async def test_get_module_doc_local_includes_doc_source(self, mock_ansible_doc):
+        mock_ansible_doc.return_value = json.dumps(SAMPLE_MODULE_DOC)
+        from ansible_know.server import get_module_doc
+        result = await get_module_doc("ansible.builtin.package")
+        assert result["doc_source"] == "local"
+
+    @pytest.mark.asyncio
+    async def test_get_module_doc_falls_back_to_galaxy(self, mock_ansible_doc):
+        from ansible_know.parser import AnsibleDocError
+        mock_ansible_doc.side_effect = AnsibleDocError(
+            "ansible-doc failed (exit 1): netbox.netbox.netbox_device has no attribute"
+        )
+
+        galaxy_doc = {
+            "netbox.netbox.netbox_device": {
+                "doc": {
+                    "short_description": "Create, update or delete devices",
+                    "description": ["Manages devices."],
+                    "options": {"data": {"type": "dict", "required": True}},
+                    "author": [],
+                    "notes": [],
+                    "version_added": "0.1.0",
+                },
+                "examples": "",
+                "return": [],
+                "metadata": {},
+            }
+        }
+        galaxy_meta = {"doc_source": "galaxy", "doc_version": "3.23.0"}
+
+        with patch(
+            "ansible_know.galaxy.GalaxyClient.fetch_module_doc",
+            return_value=(galaxy_doc, galaxy_meta),
+        ):
+            from ansible_know.server import get_module_doc
+            result = await get_module_doc("netbox.netbox.netbox_device")
+
+        assert result["module_name"] == "netbox.netbox.netbox_device"
+        assert result["doc_source"] == "galaxy"
+        assert result["doc_version"] == "3.23.0"
+        assert result["short_description"] == "Create, update or delete devices"
+
+    @pytest.mark.asyncio
+    async def test_get_module_doc_no_fallback_for_non_missing_errors(self, mock_ansible_doc):
+        from ansible_know.parser import AnsibleDocError
+        mock_ansible_doc.side_effect = AnsibleDocError("ansible-doc timed out")
+
+        with patch(
+            "ansible_know.galaxy.GalaxyClient.fetch_module_doc",
+            side_effect=AssertionError("Galaxy fallback should not fire"),
+        ):
+            from ansible_know.server import get_module_doc
+            result = await get_module_doc("ansible.builtin.copy")
+        assert "error" in result
+        assert "timed out" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_get_module_doc_returns_error_when_both_fail(self, mock_ansible_doc):
+        from ansible_know.parser import AnsibleDocError
+        from ansible_know.galaxy import GalaxyError
+        mock_ansible_doc.side_effect = AnsibleDocError(
+            "ansible-doc failed (exit 1): some.col.mod was not found"
+        )
+
+        with patch(
+            "ansible_know.galaxy.GalaxyClient.fetch_module_doc",
+            side_effect=GalaxyError("Module 'mod' not found in some.col docs-blob."),
+        ):
+            from ansible_know.server import get_module_doc
+            result = await get_module_doc("some.col.mod")
+
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_generate_skill_falls_back_to_galaxy(self, mock_ansible_doc, tmp_path, monkeypatch):
+        from ansible_know.parser import AnsibleDocError
+        mock_ansible_doc.side_effect = AnsibleDocError(
+            "ansible-doc failed (exit 1): netbox.netbox.netbox_device has no attribute"
+        )
+
+        galaxy_doc = {
+            "netbox.netbox.netbox_device": {
+                "doc": {
+                    "short_description": "Create, update or delete devices",
+                    "description": ["Manages devices."],
+                    "options": {"data": {"type": "dict", "required": True}},
+                    "author": [],
+                    "notes": [],
+                    "version_added": "0.1.0",
+                },
+                "examples": "- name: Create device\n  netbox.netbox.netbox_device:\n    data:\n      name: Test\n",
+                "return": [],
+                "metadata": {},
+            }
+        }
+        galaxy_meta = {"doc_source": "galaxy", "doc_version": "3.23.0"}
+
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+        with patch(
+            "ansible_know.galaxy.GalaxyClient.fetch_module_doc",
+            return_value=(galaxy_doc, galaxy_meta),
+        ):
+            from ansible_know.server import generate_skill
+            result = await generate_skill("netbox.netbox.netbox_device")
+
+        assert "netbox.netbox.netbox_device" in result
+        assert (tmp_path / "netbox.netbox.netbox_device" / "SKILL.md").exists()
+
+
+class TestSearchCollectionsTool:
+    @pytest.mark.asyncio
+    async def test_returns_results(self):
+        mock_result = {
+            "query": "netbox",
+            "count": 1,
+            "collections": [
+                {
+                    "namespace": "netbox.netbox",
+                    "description": "Ansible modules for NetBox",
+                    "tags": ["dcim", "ipam"],
+                    "download_count": 11999959,
+                    "latest_version": "3.23.0",
+                    "module_count": 88,
+                    "deprecated": False,
+                    "signed": False,
+                }
+            ],
+        }
+        with patch("ansible_know.galaxy.GalaxyClient.search_collections", return_value=mock_result):
+            from ansible_know.server import search_collections
+            result = await search_collections("netbox")
+        assert result["count"] == 1
+        assert result["collections"][0]["namespace"] == "netbox.netbox"
+
+    @pytest.mark.asyncio
+    async def test_with_tags(self):
+        mock_result = {"query": "network", "count": 0, "collections": []}
+        with patch("ansible_know.galaxy.GalaxyClient.search_collections", return_value=mock_result) as mock_search:
+            from ansible_know.server import search_collections
+            result = await search_collections("network", tags="networking,cloud")
+        mock_search.assert_called_once_with("network", tags="networking,cloud")
+        assert result["count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_rejects_empty_query(self):
+        from ansible_know.server import search_collections
+        result = await search_collections("")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_rejects_long_query(self):
+        from ansible_know.server import search_collections
+        result = await search_collections("a" * 501)
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_rejects_invalid_tags(self):
+        from ansible_know.server import search_collections
+        result = await search_collections("netbox", tags="valid,tags&inject=bad")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_rejects_long_tags(self):
+        from ansible_know.server import search_collections
+        result = await search_collections("netbox", tags="a" * 501)
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_handles_galaxy_error(self):
+        from ansible_know.galaxy import GalaxyError
+        with patch("ansible_know.galaxy.GalaxyClient.search_collections", side_effect=GalaxyError("timeout")):
+            from ansible_know.server import search_collections
+            result = await search_collections("netbox")
+        assert "error" in result

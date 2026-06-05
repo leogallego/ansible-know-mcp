@@ -34,3 +34,8 @@ def get_doc_sources() -> dict[str, dict[str, str]]:
 
 SEARCH_MODULES_LIMIT = 50
 SEARCH_DOCS_LIMIT = 20
+
+GALAXY_BASE_URL = os.environ.get(
+    "ANSIBLE_KNOWLEDGE_GALAXY_URL",
+    "https://galaxy.ansible.com",
+)

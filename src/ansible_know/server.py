@@ -1,7 +1,7 @@
 """Ansible Know MCP Server.
 
-Provides 8 tools for module discovery, documentation search,
-and skill generation via the Model Context Protocol.
+Provides 10 tools for module discovery, documentation search,
+Galaxy collection discovery, and skill generation via the Model Context Protocol.
 """
 
 from __future__ import annotations
@@ -35,9 +35,12 @@ mcp = FastMCP(
     name="Ansible Know",
     instructions=(
         "Ansible module discovery, documentation, and skill generation. "
-        "Use search_modules to find modules, get_module_doc for details, "
-        "search_docs for conceptual guides, and generate_skill to create "
-        "ready-to-use skill packages."
+        "Workflow: (1) search_collections to discover collections on Galaxy, "
+        "(2) ensure_collection to install one for this session, "
+        "(3) search_modules to find modules in installed collections, "
+        "(4) get_module_doc for structured docs (falls back to Galaxy if not installed), "
+        "(5) search_docs for conceptual guides, "
+        "(6) generate_skill to create ready-to-use skill packages."
     ),
 )
 
@@ -77,9 +80,26 @@ def _validate_version(version: str) -> None:
 
 
 def _validate_query(query: str) -> None:
+    if not query or not query.strip():
+        raise ValidationError("Query must not be empty.")
     if len(query) > MAX_QUERY_LENGTH:
         raise ValidationError(
             f"Query too long: {len(query)} chars (max {MAX_QUERY_LENGTH})."
+        )
+
+
+_TAGS_RE = re.compile(r"^[a-zA-Z0-9_,-]+$")
+MAX_TAGS_LENGTH = 500
+
+
+def _validate_tags(tags: str) -> None:
+    if len(tags) > MAX_TAGS_LENGTH:
+        raise ValidationError(
+            f"Tags too long: {len(tags)} chars (max {MAX_TAGS_LENGTH})."
+        )
+    if not _TAGS_RE.match(tags):
+        raise ValidationError(
+            "Invalid tags: use alphanumeric characters, hyphens, underscores, and commas only."
         )
 
 
@@ -127,10 +147,43 @@ def _collection_hint(namespace: str) -> str:
     )
 
 
+def _is_missing_collection_error(error_msg: str) -> bool:
+    """Check if an error message indicates a missing/not-found collection or module."""
+    msg_lower = error_msg.lower()
+    return any(p in msg_lower for p in _MISSING_COLLECTION_PATTERNS)
+
+
 def _maybe_add_hint(error_msg: str, namespace: str | None) -> str:
-    if namespace and any(p in error_msg.lower() for p in _MISSING_COLLECTION_PATTERNS):
+    if namespace and _is_missing_collection_error(error_msg):
         return error_msg + _collection_hint(namespace)
     return error_msg
+
+
+async def _resolve_module_doc(module_name: str) -> tuple[dict, dict | None]:
+    """Try local ansible-doc, fall back to Galaxy if the collection is missing.
+
+    Returns (raw_doc, galaxy_meta_or_none). Raises on non-missing-collection
+    errors and when both local and Galaxy lookups fail.
+    """
+    from ansible_know import parser
+
+    try:
+        raw_doc = await _run_in_executor(parser.get_module_doc, module_name)
+        return raw_doc, None
+    except Exception as local_exc:
+        if not _is_missing_collection_error(str(local_exc)):
+            raise
+
+        logger.info("Local lookup failed, trying Galaxy: %s", local_exc)
+        try:
+            from ansible_know.galaxy import GalaxyClient
+
+            client = GalaxyClient()
+            galaxy_doc, galaxy_meta = await client.fetch_module_doc(module_name)
+            return galaxy_doc, galaxy_meta
+        except Exception as galaxy_exc:
+            logger.warning("Galaxy fallback also failed: %s", galaxy_exc)
+            raise local_exc from galaxy_exc
 
 
 # --- Discovery tools (read-only) ---
@@ -170,7 +223,9 @@ async def get_module_doc(
     """Get full structured documentation for one module.
 
     Returns: module_name, short_description, params (list with name/type/required/default/choices/description/aliases),
-    examples (raw YAML), is_api_module.
+    examples (raw YAML), is_api_module, doc_source ('local' or 'galaxy').
+    When doc_source is 'galaxy', also includes doc_version and optionally doc_warning.
+    Falls back to Galaxy if collection is not installed locally.
     """
     logger.info("get_module_doc module=%r", module_name)
     try:
@@ -181,8 +236,12 @@ async def get_module_doc(
     try:
         from ansible_know import parser
 
-        raw_doc = await _run_in_executor(parser.get_module_doc, module_name)
+        raw_doc, galaxy_meta = await _resolve_module_doc(module_name)
         metadata = parser.extract_module_metadata(raw_doc)
+        if galaxy_meta:
+            metadata.update(galaxy_meta)
+        else:
+            metadata["doc_source"] = "local"
         return metadata
     except Exception as exc:
         logger.warning("get_module_doc failed: %s", exc)
@@ -217,6 +276,42 @@ async def search_docs(
     except Exception as exc:
         logger.warning("search_docs failed: %s", exc)
         return [{"error": _sanitize_error(str(exc))}]
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+async def search_collections(
+    query: Annotated[str, "Search keyword (e.g., 'netbox', 'cisco ios', 'vmware')"],
+    tags: Annotated[str | None, "Optional comma-separated Galaxy tags to filter (e.g., 'networking,cloud')"] = None,
+) -> dict[str, Any]:
+    """Search Ansible Galaxy for collections by keyword.
+
+    Returns non-deprecated collections ranked by download count.
+    Use this to discover which collection provides modules for a
+    specific platform or use case.
+
+    After finding a collection, use ensure_collection() to install it,
+    then get_module_doc() or get_collection_manifest() to explore its modules.
+
+    Returns: {"query": str, "count": int, "collections": [{"namespace": str,
+    "description": str, "tags": [str], "latest_version": str, "module_count": int,
+    "download_count": int, "deprecated": bool, "signed": bool}, ...]}
+    """
+    logger.info("search_collections query=%r tags=%r", query, tags)
+    try:
+        _validate_query(query)
+        if tags:
+            _validate_tags(tags)
+    except ValidationError as exc:
+        return {"error": str(exc)}
+
+    try:
+        from ansible_know.galaxy import GalaxyClient
+
+        client = GalaxyClient()
+        return await client.search_collections(query, tags=tags)
+    except Exception as exc:
+        logger.warning("search_collections failed: %s", exc)
+        return {"error": _sanitize_error(str(exc))}
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -273,10 +368,15 @@ async def ensure_collection(
 
     Installs once and pins the resolved version. Subsequent calls with the
     same namespace skip unless a different version is explicitly requested.
+    If a different version is requested than currently installed, the
+    collection will be reinstalled.
 
-    Returns dict with keys: namespace, version, status, message.
-    - status: 'installed' (freshly installed) or 'already_installed' (version matched).
-    - message: human-readable summary including the active version.
+    Returns dict with keys:
+    - namespace: str — the collection namespace
+    - version: str — the installed/active version (always set)
+    - status: 'installed' (freshly installed or upgraded) or
+      'already_installed' (same version already present, no action taken)
+    - message: str — human-readable summary including the active version
     """
     logger.info("ensure_collection namespace=%r version=%r", collection_namespace, version)
     try:
@@ -387,8 +487,10 @@ async def generate_skill(
         if ctx:
             await ctx.report_progress(progress=0, total=100)
 
-        raw_doc = await _run_in_executor(parser.get_module_doc, module_name)
+        raw_doc, galaxy_meta = await _resolve_module_doc(module_name)
         metadata = parser.extract_module_metadata(raw_doc)
+        if galaxy_meta:
+            metadata.update(galaxy_meta)
 
         if ctx:
             await ctx.report_progress(progress=50, total=100)

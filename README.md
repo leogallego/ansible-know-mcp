@@ -6,10 +6,12 @@ Module discovery, documentation search, and skill generation for AI agents via t
 
 Ansible Know is the foundational "learn" layer for AI agents working with Ansible. It provides:
 
-- **Module discovery** — search and explore Ansible modules across all installed collections
-- **Module documentation** — get structured parameter specs, examples, and metadata
+- **Galaxy collection discovery** — search 2000+ collections on Ansible Galaxy by keyword, ranked by download count
+- **Module discovery** — search and explore Ansible modules across installed collections
+- **Module documentation** — get structured parameter specs, examples, and metadata (falls back to Galaxy if not installed locally)
 - **Documentation search** — find conceptual guides from Ansible's AI-friendly docs
 - **Skill generation** — create ready-to-use skill packages that teach agents how to use specific modules
+- **Collection bootstrapping** — auto-install collections from Galaxy for the current session
 - **Collection manifests** — get collection-level overviews with per-module summaries
 - **Resources** — browse skills and doc sources as MCP resources
 - **Prompts** — pre-built templates for playbook review, module explanation, and role generation
@@ -23,13 +25,15 @@ Together with [Ansible Devtools MCP](https://github.com/ansible/ansible-dev-tool
  | Ansible Know          |  | Ansible Devtools  |  |   AAP MCP     |
  | (this project)        |  |                   |  |               |
  |                       |  |                   |  |               |
- | search_modules        |  | ansible_lint      |  | controller.*  |
- | get_module_doc        |  | ansible_navigator |  | eda.*         |
- | get_collection_       |  | ansible_create_*  |  | gateway.*     |
- |   manifest            |  | build_ee          |  | galaxy.*      |
- | search_docs           |  | zen_of_ansible    |  |               |
- | generate_skill        |  | setup_environment |  |               |
- | generate_collection   |  | environment_info  |  |               |
+ | search_collections    |  | ansible_lint      |  | controller.*  |
+ | search_modules        |  | ansible_navigator |  | eda.*         |
+ | get_module_doc        |  | ansible_create_*  |  | gateway.*     |
+ | get_collection_       |  | build_ee          |  | galaxy.*      |
+ |   manifest            |  | zen_of_ansible    |  |               |
+ | search_docs           |  | setup_environment |  |               |
+ | ensure_collection     |  | environment_info  |  |               |
+ | generate_skill        |  |                   |  |               |
+ | generate_collection   |  |                   |  |               |
  | list_skills           |  |                   |  |               |
  | get_skill             |  |                   |  |               |
  |                       |  |                   |  |               |
@@ -109,10 +113,17 @@ uvx ansible-know-mcp
 
 | Tool | Description |
 |------|-------------|
+| `search_collections(query, tags?)` | Search Ansible Galaxy for collections by keyword. Returns results ranked by download count. |
 | `search_modules(keyword, namespace?)` | Find modules by keyword in name or description. Returns up to 50 matches. |
-| `get_module_doc(module_name)` | Get full structured docs: params, examples, API detection. |
+| `get_module_doc(module_name)` | Get full structured docs: params, examples, API detection. Falls back to Galaxy if not installed locally. |
 | `search_docs(query, source?, topic?, audience?, core_only?)` | Search documentation manifests for conceptual guides. Returns up to 20 matches. |
 | `get_collection_manifest(collection_namespace)` | Get collection-level manifest with per-module summaries. |
+
+### Collection management
+
+| Tool | Description |
+|------|-------------|
+| `ensure_collection(collection_namespace, version?)` | Install a collection to a temporary directory for this session. |
 
 ### Skill management
 
@@ -155,6 +166,7 @@ pytest
 |---------------------|-------------|---------|
 | `ANSIBLE_KNOWLEDGE_SKILLS_DIR` | Where to write generated skills | `./skills/` |
 | `ANSIBLE_KNOWLEDGE_DOC_SOURCES` | JSON dict of doc manifest sources | Built-in ansible-core source |
+| `ANSIBLE_KNOWLEDGE_GALAXY_URL` | Galaxy API base URL | `https://galaxy.ansible.com` |
 
 ## License
 
