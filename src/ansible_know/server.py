@@ -35,11 +35,12 @@ mcp = FastMCP(
     name="Ansible Know",
     instructions=(
         "Ansible module discovery, documentation, and skill generation. "
-        "Use search_modules to find modules in installed collections, "
-        "search_collections to discover collections on Galaxy, "
-        "get_module_doc for details (falls back to Galaxy if not installed), "
-        "search_docs for conceptual guides, and generate_skill to create "
-        "ready-to-use skill packages."
+        "Workflow: (1) search_collections to discover collections on Galaxy, "
+        "(2) ensure_collection to install one for this session, "
+        "(3) search_modules to find modules in installed collections, "
+        "(4) get_module_doc for structured docs (falls back to Galaxy if not installed), "
+        "(5) search_docs for conceptual guides, "
+        "(6) generate_skill to create ready-to-use skill packages."
     ),
 )
 
@@ -284,9 +285,16 @@ async def search_collections(
 ) -> dict[str, Any]:
     """Search Ansible Galaxy for collections by keyword.
 
-    Returns collections ranked by download count, with module counts
-    and descriptions. Use this to discover which collection provides
-    modules for a specific platform or use case.
+    Returns non-deprecated collections ranked by download count.
+    Use this to discover which collection provides modules for a
+    specific platform or use case.
+
+    After finding a collection, use ensure_collection() to install it,
+    then get_module_doc() or get_collection_manifest() to explore its modules.
+
+    Returns: {"query": str, "count": int, "collections": [{"namespace": str,
+    "description": str, "tags": [str], "latest_version": str, "module_count": int,
+    "download_count": int, "deprecated": bool, "signed": bool}, ...]}
     """
     logger.info("search_collections query=%r tags=%r", query, tags)
     try:
@@ -360,10 +368,15 @@ async def ensure_collection(
 
     Installs once and pins the resolved version. Subsequent calls with the
     same namespace skip unless a different version is explicitly requested.
+    If a different version is requested than currently installed, the
+    collection will be reinstalled.
 
-    Returns dict with keys: namespace, version, status, message.
-    - status: 'installed' (freshly installed) or 'already_installed' (version matched).
-    - message: human-readable summary including the active version.
+    Returns dict with keys:
+    - namespace: str — the collection namespace
+    - version: str — the installed/active version (always set)
+    - status: 'installed' (freshly installed or upgraded) or
+      'already_installed' (same version already present, no action taken)
+    - message: str — human-readable summary including the active version
     """
     logger.info("ensure_collection namespace=%r version=%r", collection_namespace, version)
     try:
