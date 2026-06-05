@@ -113,8 +113,12 @@ class GalaxyClient:
                 f"Galaxy API error (HTTP {exc.response.status_code})"
             )
         content_length = resp.headers.get("content-length")
-        if content_length and int(content_length) > MAX_GALAXY_RESPONSE_SIZE:
-            raise GalaxyError("Galaxy API response too large")
+        if content_length:
+            try:
+                if int(content_length) > MAX_GALAXY_RESPONSE_SIZE:
+                    raise GalaxyError("Galaxy API response too large")
+            except (ValueError, OverflowError):
+                pass
         if len(resp.content) > MAX_GALAXY_RESPONSE_SIZE:
             raise GalaxyError("Galaxy API response too large")
         return resp.json()
