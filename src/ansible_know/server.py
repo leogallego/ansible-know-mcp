@@ -65,6 +65,7 @@ def _run_in_executor(func, *args, **kwargs):
 
 
 _MISSING_COLLECTION_PATTERNS = ("has no attribute", "was not found", "could not be found")
+_missing_collections: set[str] = set()
 
 
 def _collection_hint(namespace: str) -> str:
@@ -96,10 +97,25 @@ async def _resolve_module_doc(module_name: str, http_client: httpx.AsyncClient |
     from ansible_know import parser
     from ansible_know.errors import CollectionNotFoundError, GalaxyError
 
+    namespace = ".".join(module_name.split(".")[:2]) if "." in module_name else None
+
+    if namespace and namespace in _missing_collections:
+        try:
+            from ansible_know.galaxy import GalaxyClient
+            client = GalaxyClient(http_client=http_client)
+            galaxy_doc, galaxy_meta = await client.fetch_module_doc(module_name)
+            return galaxy_doc, galaxy_meta
+        except GalaxyError as galaxy_exc:
+            raise CollectionNotFoundError(
+                f"Collection '{namespace}' not installed locally"
+            ) from galaxy_exc
+
     try:
         raw_doc = await _run_in_executor(parser.get_module_doc, module_name)
         return raw_doc, None
     except CollectionNotFoundError as local_exc:
+        if namespace:
+            _missing_collections.add(namespace)
         logger.info("Collection not installed, trying Galaxy: %s", local_exc)
         try:
             from ansible_know.galaxy import GalaxyClient
@@ -320,6 +336,7 @@ async def ensure_collection(
         from ansible_know import collections
 
         result = await _run_in_executor(collections.ensure_collection, collection_namespace, version)
+        _missing_collections.discard(collection_namespace)
         logger.info(
             "ensure_collection result: namespace=%s version=%s status=%s",
             result["namespace"], result["version"], result["status"],
