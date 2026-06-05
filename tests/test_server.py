@@ -533,15 +533,16 @@ class TestResolveModuleDoc:
                 await _resolve_module_doc("ansible.builtin.copy")
 
     @pytest.mark.asyncio
-    async def test_galaxy_malformed_response(self, mock_ansible_doc):
+    async def test_galaxy_fallback_raises_original_on_galaxy_failure(self, mock_ansible_doc):
         from ansible_know.parser import AnsibleDocError
+        from ansible_know.galaxy import GalaxyError
         mock_ansible_doc.side_effect = AnsibleDocError(
             "ansible-doc failed (exit 1): some.col.mod has no attribute"
         )
 
         with patch(
             "ansible_know.galaxy.GalaxyClient.fetch_module_doc",
-            side_effect=KeyError("malformed data"),
+            side_effect=GalaxyError("Module 'mod' not found in docs-blob"),
         ):
             from ansible_know.server import _resolve_module_doc
             with pytest.raises(AnsibleDocError, match="has no attribute"):

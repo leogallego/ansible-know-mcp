@@ -287,6 +287,7 @@ class TestSearchCollections:
         search_call = [c for c in call_args if "search/collection-versions" in c["path"]][0]
         assert search_call["params"]["tags"] == "networking"
         assert search_call["params"]["keywords"] == "network"
+        assert result["query"] == "network"
         assert result["count"] == 0
         assert result["collections"] == []
 
@@ -320,6 +321,50 @@ class TestDetailEnrichmentFailure:
             result = await client.search_collections("test")
 
         assert result["collections"][0]["download_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_all_enrichment_failures_still_returns_results(self):
+        """When every detail call fails, results still come back with download_count=0."""
+        search_data = {
+            "meta": {"count": 2}, "links": {},
+            "data": [
+                {
+                    "collection_version": {
+                        "namespace": "ns1", "name": "col1",
+                        "version": "1.0.0", "contents": [], "dependencies": {},
+                        "description": "First", "tags": [],
+                        "pulp_href": "", "requires_ansible": "", "pulp_created": "",
+                    },
+                    "is_highest": True, "is_deprecated": False, "is_signed": False,
+                    "repository": {}, "repository_version": "",
+                    "namespace_metadata": {"pulp_href": "", "name": "", "company": "", "description": "", "avatar_url": None},
+                },
+                {
+                    "collection_version": {
+                        "namespace": "ns2", "name": "col2",
+                        "version": "2.0.0", "contents": [], "dependencies": {},
+                        "description": "Second", "tags": [],
+                        "pulp_href": "", "requires_ansible": "", "pulp_created": "",
+                    },
+                    "is_highest": True, "is_deprecated": False, "is_signed": False,
+                    "repository": {}, "repository_version": "",
+                    "namespace_metadata": {"pulp_href": "", "name": "", "company": "", "description": "", "avatar_url": None},
+                },
+            ],
+        }
+
+        async def mock_api_get(self_client, path, params=None, client=None):
+            if "search/collection-versions" in path:
+                return search_data
+            raise GalaxyError("all detail requests fail")
+
+        p1, p2 = _mock_search_context(mock_api_get)
+        with p1, p2:
+            client = GalaxyClient()
+            result = await client.search_collections("test")
+
+        assert result["count"] == 2
+        assert all(c["download_count"] == 0 for c in result["collections"])
 
 
 SAMPLE_DOCS_BLOB = {
