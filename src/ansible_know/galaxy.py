@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+import time
 from collections import OrderedDict
 from typing import Any
 
@@ -21,34 +22,49 @@ logger = logging.getLogger("ansible_know")
 
 MAX_GALAXY_RESPONSE_SIZE = 5_000_000  # 5MB
 MAX_VERSION_CACHE_SIZE = 500
-MAX_BLOB_CACHE_SIZE = 100
+MAX_BLOB_CACHE_SIZE = 50
+CACHE_TTL_SECONDS = 3600
 
-_version_cache: OrderedDict[tuple[str, str], str] = OrderedDict()
+_version_cache: OrderedDict[tuple[str, str], tuple[str, float]] = OrderedDict()
 _version_lock = threading.Lock()
-_blob_cache: OrderedDict[tuple[str, str, str], dict[str, Any]] = OrderedDict()
+_blob_cache: OrderedDict[tuple[str, str, str], tuple[dict[str, Any], float]] = OrderedDict()
 _blob_lock = threading.Lock()
 
 
 def _get_version_cache(key: tuple[str, str]) -> str | None:
     with _version_lock:
-        return _version_cache.get(key)
+        cached = _version_cache.get(key)
+        if cached is None:
+            return None
+        value, timestamp = cached
+        if time.monotonic() - timestamp > CACHE_TTL_SECONDS:
+            del _version_cache[key]
+            return None
+        return value
 
 
 def _put_version_cache(key: tuple[str, str], value: str) -> None:
     with _version_lock:
-        _version_cache[key] = value
+        _version_cache[key] = (value, time.monotonic())
         while len(_version_cache) > MAX_VERSION_CACHE_SIZE:
             _version_cache.popitem(last=False)
 
 
 def _get_blob_cache(key: tuple[str, str, str]) -> dict[str, Any] | None:
     with _blob_lock:
-        return _blob_cache.get(key)
+        cached = _blob_cache.get(key)
+        if cached is None:
+            return None
+        value, timestamp = cached
+        if time.monotonic() - timestamp > CACHE_TTL_SECONDS:
+            del _blob_cache[key]
+            return None
+        return value
 
 
 def _put_blob_cache(key: tuple[str, str, str], value: dict[str, Any]) -> None:
     with _blob_lock:
-        _blob_cache[key] = value
+        _blob_cache[key] = (value, time.monotonic())
         while len(_blob_cache) > MAX_BLOB_CACHE_SIZE:
             _blob_cache.popitem(last=False)
 

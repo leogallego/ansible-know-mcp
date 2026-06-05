@@ -1,6 +1,8 @@
 """Tests for ansible_know.galaxy."""
 
+import time
 from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import patch as stdlib_patch
 
 import httpx
 import pytest
@@ -16,6 +18,7 @@ from ansible_know.galaxy import (
     MAX_VERSION_CACHE_SIZE,
     MAX_BLOB_CACHE_SIZE,
     MAX_GALAXY_RESPONSE_SIZE,
+    CACHE_TTL_SECONDS,
 )
 
 
@@ -933,6 +936,34 @@ class TestUnicodeQueries:
         with patch("ansible_know.docs.search_docs", return_value=[]):
             result = await search_docs_tool("配置管理")
         assert result == []
+
+
+class TestCacheTTL:
+    def test_version_cache_returns_none_after_ttl(self):
+        _put_version_cache(("ns", "col"), "1.0.0")
+        assert _get_version_cache(("ns", "col")) == "1.0.0"
+        with stdlib_patch("ansible_know.galaxy.time") as mock_time:
+            mock_time.monotonic.return_value = time.monotonic() + CACHE_TTL_SECONDS + 1
+            assert _get_version_cache(("ns", "col")) is None
+
+    def test_blob_cache_returns_none_after_ttl(self):
+        _put_blob_cache(("ns", "col", "1.0.0"), {"data": "test"})
+        assert _get_blob_cache(("ns", "col", "1.0.0")) == {"data": "test"}
+        with stdlib_patch("ansible_know.galaxy.time") as mock_time:
+            mock_time.monotonic.return_value = time.monotonic() + CACHE_TTL_SECONDS + 1
+            assert _get_blob_cache(("ns", "col", "1.0.0")) is None
+
+    def test_version_cache_returns_value_before_ttl(self):
+        _put_version_cache(("ns", "col"), "2.0.0")
+        with stdlib_patch("ansible_know.galaxy.time") as mock_time:
+            mock_time.monotonic.return_value = time.monotonic() + CACHE_TTL_SECONDS - 10
+            assert _get_version_cache(("ns", "col")) == "2.0.0"
+
+    def test_blob_cache_returns_value_before_ttl(self):
+        _put_blob_cache(("ns", "col", "1.0.0"), {"data": "fresh"})
+        with stdlib_patch("ansible_know.galaxy.time") as mock_time:
+            mock_time.monotonic.return_value = time.monotonic() + CACHE_TTL_SECONDS - 10
+            assert _get_blob_cache(("ns", "col", "1.0.0")) == {"data": "fresh"}
 
 
 class TestConcurrentCacheAccess:
