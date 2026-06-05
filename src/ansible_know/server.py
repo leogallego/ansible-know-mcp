@@ -12,7 +12,9 @@ import logging
 from functools import partial
 from typing import Annotated, Any
 
+import httpx
 from fastmcp import FastMCP, Context
+from fastmcp.server.lifespan import lifespan
 from mcp.types import ToolAnnotations
 
 from ansible_know.errors import AnsibleDocError, ValidationError
@@ -31,6 +33,16 @@ from ansible_know.validation import (
 
 logger = logging.getLogger("ansible_know")
 
+
+@lifespan
+async def app_lifespan(server):
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(10.0, read=120.0),
+        verify=True,
+    ) as client:
+        yield {"http_client": client}
+
+
 mcp = FastMCP(
     name="Ansible Know",
     instructions=(
@@ -42,6 +54,7 @@ mcp = FastMCP(
         "(5) search_docs for conceptual guides, "
         "(6) generate_skill to create ready-to-use skill packages."
     ),
+    lifespan=app_lifespan,
 )
 
 
@@ -74,7 +87,7 @@ def _maybe_add_hint(error_msg: str, namespace: str | None) -> str:
     return error_msg
 
 
-async def _resolve_module_doc(module_name: str) -> tuple[dict, dict | None]:
+async def _resolve_module_doc(module_name: str, http_client: httpx.AsyncClient | None = None) -> tuple[dict, dict | None]:
     """Try local ansible-doc, fall back to Galaxy if the collection is missing.
 
     Returns (raw_doc, galaxy_meta_or_none). Raises on non-missing-collection
@@ -91,7 +104,7 @@ async def _resolve_module_doc(module_name: str) -> tuple[dict, dict | None]:
         try:
             from ansible_know.galaxy import GalaxyClient
 
-            client = GalaxyClient()
+            client = GalaxyClient(http_client=http_client)
             galaxy_doc, galaxy_meta = await client.fetch_module_doc(module_name)
             return galaxy_doc, galaxy_meta
         except GalaxyError as galaxy_exc:
@@ -132,6 +145,7 @@ async def search_modules(
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_module_doc(
     module_name: Annotated[str, "Fully-qualified collection name (e.g. 'ansible.builtin.copy')"],
+    ctx: Context = None,
 ) -> dict[str, Any]:
     """Get full structured documentation for one module.
 
@@ -149,7 +163,8 @@ async def get_module_doc(
     try:
         from ansible_know import parser
 
-        raw_doc, galaxy_meta = await _resolve_module_doc(module_name)
+        http_client = ctx.lifespan_context.get("http_client") if ctx else None
+        raw_doc, galaxy_meta = await _resolve_module_doc(module_name, http_client=http_client)
         metadata = parser.extract_module_metadata(raw_doc)
         if galaxy_meta:
             metadata.update(galaxy_meta)
@@ -195,6 +210,7 @@ async def search_docs(
 async def search_collections(
     query: Annotated[str, "Search keyword (e.g., 'netbox', 'cisco ios', 'vmware')"],
     tags: Annotated[str | None, "Optional comma-separated Galaxy tags to filter (e.g., 'networking,cloud')"] = None,
+    ctx: Context = None,
 ) -> dict[str, Any]:
     """Search Ansible Galaxy for collections by keyword.
 
@@ -220,7 +236,8 @@ async def search_collections(
     try:
         from ansible_know.galaxy import GalaxyClient
 
-        client = GalaxyClient()
+        http_client = ctx.lifespan_context.get("http_client") if ctx else None
+        client = GalaxyClient(http_client=http_client)
         return await client.search_collections(query, tags=tags)
     except Exception as exc:
         logger.warning("search_collections failed: %s", exc)
@@ -400,7 +417,8 @@ async def generate_skill(
         if ctx:
             await ctx.report_progress(progress=0, total=100)
 
-        raw_doc, galaxy_meta = await _resolve_module_doc(module_name)
+        http_client = ctx.lifespan_context.get("http_client") if ctx else None
+        raw_doc, galaxy_meta = await _resolve_module_doc(module_name, http_client=http_client)
         metadata = parser.extract_module_metadata(raw_doc)
         if galaxy_meta:
             metadata.update(galaxy_meta)

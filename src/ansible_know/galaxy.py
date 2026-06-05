@@ -95,26 +95,33 @@ def _parse_fqcn(module_name: str) -> tuple[str, str, str]:
 class GalaxyClient:
     """Async client for the Galaxy v3 API."""
 
-    def __init__(self, base_url: str | None = None):
+    def __init__(self, base_url: str | None = None, http_client: httpx.AsyncClient | None = None):
         self._base = (base_url or GALAXY_BASE_URL).rstrip("/")
+        self._http_client = http_client
+        self._owned_client: httpx.AsyncClient | None = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        """Get the http client to use for requests."""
+        if self._http_client is not None:
+            return self._http_client
+        if self._owned_client is None:
+            self._owned_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(10.0, read=120.0),
+                verify=True,
+            )
+        return self._owned_client
 
     async def _api_get(
         self,
         path: str,
         params: dict[str, str] | None = None,
-        client: httpx.AsyncClient | None = None,
         timeout: httpx.Timeout = TIMEOUT_DEFAULT,
     ) -> dict[str, Any]:
         url = f"{self._base}{path}"
-        if client is not None:
-            resp = await client.get(
-                url, params=params, headers={"Accept": "application/json"}, timeout=timeout,
-            )
-        else:
-            async with httpx.AsyncClient(verify=True) as c:
-                resp = await c.get(
-                    url, params=params, headers={"Accept": "application/json"}, timeout=timeout,
-                )
+        client = self._get_client()
+        resp = await client.get(
+            url, params=params, headers={"Accept": "application/json"}, timeout=timeout,
+        )
         try:
             resp.raise_for_status()
         except httpx.HTTPStatusError as exc:
@@ -136,12 +143,11 @@ class GalaxyClient:
         self,
         path: str,
         params: dict[str, str] | None = None,
-        client: httpx.AsyncClient | None = None,
         timeout: httpx.Timeout = TIMEOUT_DEFAULT,
     ) -> dict[str, Any]:
         """Wrap _api_get with network error handling."""
         try:
-            return await self._api_get(path, params=params, client=client, timeout=timeout)
+            return await self._api_get(path, params=params, timeout=timeout)
         except httpx.TimeoutException:
             raise GalaxyError("Galaxy connection timed out")
         except httpx.RequestError as exc:
@@ -181,13 +187,12 @@ class GalaxyClient:
 
     async def _get_collection_detail(
         self, namespace: str, name: str,
-        client: httpx.AsyncClient | None = None,
     ) -> dict[str, Any]:
         path = (
             f"/api/v3/plugin/ansible/content/published/collections/index/"
             f"{namespace}/{name}/"
         )
-        return await self._safe_api_get(path, client=client, timeout=TIMEOUT_FAST)
+        return await self._safe_api_get(path, timeout=TIMEOUT_FAST)
 
     async def search_collections(
         self, query: str, tags: str | None = None,
@@ -201,50 +206,49 @@ class GalaxyClient:
         if tags:
             search_params["tags"] = tags
 
-        async with httpx.AsyncClient(timeout=30, verify=True) as shared_client:
-            data = await self._safe_api_get(
-                search_path, params=search_params, client=shared_client,
+        data = await self._safe_api_get(
+            search_path, params=search_params,
+        )
+
+        candidates = []
+        for item in data.get("data", []):
+            if item.get("is_deprecated", False):
+                continue
+            cv = item.get("collection_version", {})
+            ns = cv.get("namespace", "")
+            name = cv.get("name", "")
+            contents = cv.get("contents", [])
+            module_count = sum(
+                1 for c in contents if c.get("content_type") == "module"
             )
+            tags_list = [t["name"] for t in cv.get("tags", []) if isinstance(t, dict)]
+            candidates.append({
+                "namespace": f"{ns}.{name}",
+                "description": cv.get("description", ""),
+                "tags": tags_list,
+                "latest_version": cv.get("version", ""),
+                "module_count": module_count,
+                "deprecated": False,
+                "signed": item.get("is_signed", False),
+                "_ns": ns,
+                "_name": name,
+            })
 
-            candidates = []
-            for item in data.get("data", []):
-                if item.get("is_deprecated", False):
-                    continue
-                cv = item.get("collection_version", {})
-                ns = cv.get("namespace", "")
-                name = cv.get("name", "")
-                contents = cv.get("contents", [])
-                module_count = sum(
-                    1 for c in contents if c.get("content_type") == "module"
+        async def _enrich(cand: dict) -> None:
+            try:
+                detail = await self._get_collection_detail(
+                    cand["_ns"], cand["_name"],
                 )
-                tags_list = [t["name"] for t in cv.get("tags", []) if isinstance(t, dict)]
-                candidates.append({
-                    "namespace": f"{ns}.{name}",
-                    "description": cv.get("description", ""),
-                    "tags": tags_list,
-                    "latest_version": cv.get("version", ""),
-                    "module_count": module_count,
-                    "deprecated": False,
-                    "signed": item.get("is_signed", False),
-                    "_ns": ns,
-                    "_name": name,
-                })
-
-            async def _enrich(cand: dict) -> None:
-                try:
-                    detail = await self._get_collection_detail(
-                        cand["_ns"], cand["_name"], client=shared_client,
+                cand["download_count"] = detail.get("download_count", 0)
+                highest = detail.get("highest_version", {})
+                if isinstance(highest, dict):
+                    cand["latest_version"] = highest.get(
+                        "version", cand["latest_version"],
                     )
-                    cand["download_count"] = detail.get("download_count", 0)
-                    highest = detail.get("highest_version", {})
-                    if isinstance(highest, dict):
-                        cand["latest_version"] = highest.get(
-                            "version", cand["latest_version"],
-                        )
-                except GalaxyError:
-                    cand["download_count"] = 0
+            except GalaxyError:
+                cand["download_count"] = 0
 
-            await asyncio.gather(*[_enrich(c) for c in candidates])
+        await asyncio.gather(*[_enrich(c) for c in candidates])
 
         for cand in candidates:
             cand.pop("_ns", None)
