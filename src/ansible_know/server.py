@@ -27,7 +27,6 @@ from ansible_know.validation import (
     validate_path_containment,
     sanitize_error,
     truncate_response,
-    MAX_RESPONSE_SIZE,
 )
 
 logger = logging.getLogger("ansible_know")
