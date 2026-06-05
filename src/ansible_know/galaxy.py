@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import threading
 from collections import OrderedDict
 from typing import Any
 
@@ -25,25 +26,41 @@ MAX_VERSION_CACHE_SIZE = 500
 MAX_BLOB_CACHE_SIZE = 100
 
 _version_cache: OrderedDict[tuple[str, str], str] = OrderedDict()
+_version_lock = threading.Lock()
 _blob_cache: OrderedDict[tuple[str, str, str], dict[str, Any]] = OrderedDict()
+_blob_lock = threading.Lock()
+
+
+def _get_version_cache(key: tuple[str, str]) -> str | None:
+    with _version_lock:
+        return _version_cache.get(key)
 
 
 def _put_version_cache(key: tuple[str, str], value: str) -> None:
-    _version_cache[key] = value
-    if len(_version_cache) > MAX_VERSION_CACHE_SIZE:
-        _version_cache.popitem(last=False)
+    with _version_lock:
+        _version_cache[key] = value
+        while len(_version_cache) > MAX_VERSION_CACHE_SIZE:
+            _version_cache.popitem(last=False)
+
+
+def _get_blob_cache(key: tuple[str, str, str]) -> dict[str, Any] | None:
+    with _blob_lock:
+        return _blob_cache.get(key)
 
 
 def _put_blob_cache(key: tuple[str, str, str], value: dict[str, Any]) -> None:
-    _blob_cache[key] = value
-    if len(_blob_cache) > MAX_BLOB_CACHE_SIZE:
-        _blob_cache.popitem(last=False)
+    with _blob_lock:
+        _blob_cache[key] = value
+        while len(_blob_cache) > MAX_BLOB_CACHE_SIZE:
+            _blob_cache.popitem(last=False)
 
 
 def clear_cache() -> None:
     """Clear Galaxy caches (useful for testing)."""
-    _version_cache.clear()
-    _blob_cache.clear()
+    with _version_lock:
+        _version_cache.clear()
+    with _blob_lock:
+        _blob_cache.clear()
 
 
 class GalaxyError(Exception):
@@ -132,8 +149,9 @@ class GalaxyClient:
         _validate_component(namespace, "namespace")
         _validate_component(name, "name")
         cache_key = (namespace, name)
-        if cache_key in _version_cache:
-            return _version_cache[cache_key]
+        cached = _get_version_cache(cache_key)
+        if cached is not None:
+            return cached
         path = (
             f"/api/v3/plugin/ansible/content/published/collections/index/"
             f"{namespace}/{name}/versions/"
@@ -234,8 +252,9 @@ class GalaxyClient:
         self, namespace: str, name: str, version: str,
     ) -> dict[str, Any]:
         cache_key = (namespace, name, version)
-        if cache_key in _blob_cache:
-            return _blob_cache[cache_key]
+        cached = _get_blob_cache(cache_key)
+        if cached is not None:
+            return cached
         path = (
             f"/api/v3/plugin/ansible/content/published/collections/index/"
             f"{namespace}/{name}/versions/{version}/docs-blob/"
