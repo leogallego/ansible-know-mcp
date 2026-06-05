@@ -518,6 +518,92 @@ class TestGalaxyDocsFallback:
         assert (tmp_path / "netbox.netbox.netbox_device" / "SKILL.md").exists()
 
 
+class TestResolveModuleDoc:
+    @pytest.mark.asyncio
+    async def test_non_missing_collection_error_not_retried(self, mock_ansible_doc):
+        from ansible_know.parser import AnsibleDocError
+        mock_ansible_doc.side_effect = AnsibleDocError("ansible-doc timed out")
+
+        with patch(
+            "ansible_know.galaxy.GalaxyClient.fetch_module_doc",
+            side_effect=AssertionError("Galaxy should not be called"),
+        ):
+            from ansible_know.server import _resolve_module_doc
+            with pytest.raises(AnsibleDocError, match="timed out"):
+                await _resolve_module_doc("ansible.builtin.copy")
+
+    @pytest.mark.asyncio
+    async def test_galaxy_fallback_raises_original_on_galaxy_failure(self, mock_ansible_doc):
+        from ansible_know.parser import AnsibleDocError
+        from ansible_know.galaxy import GalaxyError
+        mock_ansible_doc.side_effect = AnsibleDocError(
+            "ansible-doc failed (exit 1): some.col.mod has no attribute"
+        )
+
+        with patch(
+            "ansible_know.galaxy.GalaxyClient.fetch_module_doc",
+            side_effect=GalaxyError("Module 'mod' not found in docs-blob"),
+        ):
+            from ansible_know.server import _resolve_module_doc
+            with pytest.raises(AnsibleDocError, match="has no attribute"):
+                await _resolve_module_doc("some.col.mod")
+
+
+class TestResourceFunctions:
+    def test_resource_skills_list_empty(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+        from ansible_know.server import resource_skills_list
+        result = json.loads(resource_skills_list())
+        assert result == []
+
+    def test_resource_skills_list_with_skills(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+        skill_dir = tmp_path / "ansible.builtin.copy"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text("# Copy skill")
+        from ansible_know.server import resource_skills_list
+        result = json.loads(resource_skills_list())
+        assert "ansible.builtin.copy" in result
+
+    def test_resource_skill_content_not_found(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+        from ansible_know.server import resource_skill_content
+        result = resource_skill_content("ansible.builtin.copy")
+        assert "not found" in result.lower()
+
+    def test_resource_skill_content_invalid_fqcn(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+        from ansible_know.server import resource_skill_content
+        result = resource_skill_content("../../etc/passwd")
+        assert "invalid" in result.lower() or "expected" in result.lower()
+
+    def test_resource_doc_sources(self):
+        from ansible_know.server import resource_doc_sources
+        result = json.loads(resource_doc_sources())
+        assert isinstance(result, dict)
+        assert len(result) >= 1
+
+
+class TestPromptFunctions:
+    def test_review_playbook_prompt(self):
+        from ansible_know.server import review_playbook
+        result = review_playbook("- hosts: all\n  tasks: []")
+        assert "Review" in result
+        assert "- hosts: all" in result
+
+    def test_explain_module_prompt(self):
+        from ansible_know.server import explain_module
+        result = explain_module("ansible.builtin.copy")
+        assert "ansible.builtin.copy" in result
+        assert "get_module_doc" in result
+
+    def test_generate_role_prompt(self):
+        from ansible_know.server import generate_role
+        result = generate_role("Install nginx", "ansible.builtin.package, ansible.builtin.service")
+        assert "Install nginx" in result
+        assert "ansible.builtin.package" in result
+
+
 class TestSearchCollectionsTool:
     @pytest.mark.asyncio
     async def test_returns_results(self):

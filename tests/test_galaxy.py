@@ -5,7 +5,19 @@ from unittest.mock import AsyncMock, patch, MagicMock
 import httpx
 import pytest
 
-from ansible_know.galaxy import GalaxyClient, GalaxyError, clear_cache
+from ansible_know.galaxy import (
+    GalaxyClient,
+    GalaxyError,
+    clear_cache,
+    _validate_component,
+    _get_version_cache,
+    _put_version_cache,
+    _get_blob_cache,
+    _put_blob_cache,
+    MAX_VERSION_CACHE_SIZE,
+    MAX_BLOB_CACHE_SIZE,
+    MAX_GALAXY_RESPONSE_SIZE,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -275,6 +287,7 @@ class TestSearchCollections:
         search_call = [c for c in call_args if "search/collection-versions" in c["path"]][0]
         assert search_call["params"]["tags"] == "networking"
         assert search_call["params"]["keywords"] == "network"
+        assert result["query"] == "network"
         assert result["count"] == 0
         assert result["collections"] == []
 
@@ -308,6 +321,50 @@ class TestDetailEnrichmentFailure:
             result = await client.search_collections("test")
 
         assert result["collections"][0]["download_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_all_enrichment_failures_still_returns_results(self):
+        """When every detail call fails, results still come back with download_count=0."""
+        search_data = {
+            "meta": {"count": 2}, "links": {},
+            "data": [
+                {
+                    "collection_version": {
+                        "namespace": "ns1", "name": "col1",
+                        "version": "1.0.0", "contents": [], "dependencies": {},
+                        "description": "First", "tags": [],
+                        "pulp_href": "", "requires_ansible": "", "pulp_created": "",
+                    },
+                    "is_highest": True, "is_deprecated": False, "is_signed": False,
+                    "repository": {}, "repository_version": "",
+                    "namespace_metadata": {"pulp_href": "", "name": "", "company": "", "description": "", "avatar_url": None},
+                },
+                {
+                    "collection_version": {
+                        "namespace": "ns2", "name": "col2",
+                        "version": "2.0.0", "contents": [], "dependencies": {},
+                        "description": "Second", "tags": [],
+                        "pulp_href": "", "requires_ansible": "", "pulp_created": "",
+                    },
+                    "is_highest": True, "is_deprecated": False, "is_signed": False,
+                    "repository": {}, "repository_version": "",
+                    "namespace_metadata": {"pulp_href": "", "name": "", "company": "", "description": "", "avatar_url": None},
+                },
+            ],
+        }
+
+        async def mock_api_get(self_client, path, params=None, client=None):
+            if "search/collection-versions" in path:
+                return search_data
+            raise GalaxyError("all detail requests fail")
+
+        p1, p2 = _mock_search_context(mock_api_get)
+        with p1, p2:
+            client = GalaxyClient()
+            result = await client.search_collections("test")
+
+        assert result["count"] == 2
+        assert all(c["download_count"] == 0 for c in result["collections"])
 
 
 SAMPLE_DOCS_BLOB = {
@@ -525,6 +582,140 @@ class TestParseFqcn:
             _parse_fqcn("a.b.c.d")
 
 
+class TestValidateComponent:
+    def test_rejects_empty_string(self):
+        with pytest.raises(GalaxyError, match="Invalid namespace"):
+            _validate_component("", "namespace")
+
+    def test_rejects_special_characters(self):
+        with pytest.raises(GalaxyError, match="Invalid name"):
+            _validate_component("foo-bar", "name")
+
+    def test_rejects_dots(self):
+        with pytest.raises(GalaxyError, match="Invalid namespace"):
+            _validate_component("foo.bar", "namespace")
+
+    def test_rejects_path_traversal(self):
+        with pytest.raises(GalaxyError, match="Invalid namespace"):
+            _validate_component("../etc", "namespace")
+
+    def test_rejects_unicode(self):
+        with pytest.raises(GalaxyError, match="Invalid name"):
+            _validate_component("café", "name")
+
+    def test_rejects_spaces(self):
+        with pytest.raises(GalaxyError, match="Invalid namespace"):
+            _validate_component("foo bar", "namespace")
+
+    def test_rejects_shell_metacharacters(self):
+        with pytest.raises(GalaxyError, match="Invalid name"):
+            _validate_component("$(whoami)", "name")
+
+    def test_accepts_valid_alphanumeric(self):
+        _validate_component("netbox", "namespace")
+
+    def test_accepts_underscores(self):
+        _validate_component("my_collection", "name")
+
+    def test_accepts_numbers(self):
+        _validate_component("col2", "name")
+
+
+class TestResponseSizeLimit:
+    @pytest.mark.asyncio
+    async def test_rejects_large_content_length_header(self):
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.headers = {"content-length": str(MAX_GALAXY_RESPONSE_SIZE + 1)}
+        mock_resp.content = b"{}"
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_resp
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
+            client = GalaxyClient()
+            with pytest.raises(GalaxyError, match="too large"):
+                await client.latest_version("netbox", "netbox")
+
+    @pytest.mark.asyncio
+    async def test_rejects_large_response_body(self):
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.headers = {}
+        mock_resp.content = b"x" * (MAX_GALAXY_RESPONSE_SIZE + 1)
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_resp
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
+            client = GalaxyClient()
+            with pytest.raises(GalaxyError, match="too large"):
+                await client.latest_version("netbox", "netbox")
+
+    @pytest.mark.asyncio
+    async def test_accepts_response_at_limit(self):
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.headers = {"content-length": str(MAX_GALAXY_RESPONSE_SIZE)}
+        mock_resp.content = b"x" * MAX_GALAXY_RESPONSE_SIZE
+        mock_resp.json.return_value = SAMPLE_VERSIONS_RESPONSE
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_resp
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
+            client = GalaxyClient()
+            version = await client.latest_version("netbox", "netbox")
+        assert version == "3.23.0"
+
+    @pytest.mark.asyncio
+    async def test_malformed_content_length_falls_through(self):
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.headers = {"content-length": "not-a-number"}
+        mock_resp.content = b"{}"
+        mock_resp.json.return_value = SAMPLE_VERSIONS_RESPONSE
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_resp
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
+            client = GalaxyClient()
+            version = await client.latest_version("netbox", "netbox")
+        assert version == "3.23.0"
+
+
+class TestCacheEviction:
+    def test_version_cache_evicts_oldest(self):
+        for i in range(MAX_VERSION_CACHE_SIZE + 5):
+            _put_version_cache(("ns", f"col{i}"), f"1.0.{i}")
+        assert _get_version_cache(("ns", "col0")) is None
+        assert _get_version_cache(("ns", "col1")) is None
+        assert _get_version_cache(("ns", f"col{MAX_VERSION_CACHE_SIZE + 4}")) == f"1.0.{MAX_VERSION_CACHE_SIZE + 4}"
+
+    def test_blob_cache_evicts_oldest(self):
+        for i in range(MAX_BLOB_CACHE_SIZE + 5):
+            _put_blob_cache(("ns", f"col{i}", "1.0.0"), {"idx": i})
+        assert _get_blob_cache(("ns", "col0", "1.0.0")) is None
+        assert _get_blob_cache(("ns", "col1", "1.0.0")) is None
+        assert _get_blob_cache(("ns", f"col{MAX_BLOB_CACHE_SIZE + 4}", "1.0.0")) == {"idx": MAX_BLOB_CACHE_SIZE + 4}
+
+    def test_version_cache_stays_at_max_size(self):
+        from ansible_know.galaxy import _version_cache, _version_lock
+        for i in range(MAX_VERSION_CACHE_SIZE + 10):
+            _put_version_cache(("ns", f"c{i}"), f"v{i}")
+        with _version_lock:
+            assert len(_version_cache) <= MAX_VERSION_CACHE_SIZE
+
+
 class TestNetworkErrors:
     @pytest.mark.asyncio
     async def test_raises_on_connect_timeout(self):
@@ -536,3 +727,293 @@ class TestNetworkErrors:
             client = GalaxyClient()
             with pytest.raises(GalaxyError, match="Galaxy connection"):
                 await client.latest_version("netbox", "netbox")
+
+    @pytest.mark.asyncio
+    async def test_raises_on_read_timeout(self):
+        mock_client = AsyncMock()
+        mock_client.get.side_effect = httpx.ReadTimeout("read timed out")
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
+            client = GalaxyClient()
+            with pytest.raises(GalaxyError, match="timed out"):
+                await client.latest_version("netbox", "netbox")
+
+    @pytest.mark.asyncio
+    async def test_raises_on_connect_error(self):
+        mock_client = AsyncMock()
+        mock_client.get.side_effect = httpx.ConnectError("connection refused")
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
+            client = GalaxyClient()
+            with pytest.raises(GalaxyError, match="connection error"):
+                await client.latest_version("netbox", "netbox")
+
+    @pytest.mark.asyncio
+    async def test_raises_on_proxy_error(self):
+        mock_client = AsyncMock()
+        mock_client.get.side_effect = httpx.ProxyError("proxy failed")
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
+            client = GalaxyClient()
+            with pytest.raises(GalaxyError, match="connection error"):
+                await client.latest_version("netbox", "netbox")
+
+
+class TestCacheHitPaths:
+    @pytest.mark.asyncio
+    async def test_version_cache_hit_skips_api(self):
+        _put_version_cache(("netbox", "netbox"), "3.23.0")
+        mock_client = _mock_client_get({})
+        with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
+            client = GalaxyClient()
+            version = await client.latest_version("netbox", "netbox")
+        assert version == "3.23.0"
+        mock_client.get.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_blob_cache_hit_skips_api(self):
+        _put_version_cache(("netbox", "netbox"), "3.23.0")
+        _put_blob_cache(("netbox", "netbox", "3.23.0"), SAMPLE_DOCS_BLOB["docs_blob"])
+
+        with patch.object(GalaxyClient, "_api_get", side_effect=AssertionError("should not call API")):
+            client = GalaxyClient()
+            doc, meta = await client.fetch_module_doc("netbox.netbox.netbox_device")
+
+        assert "netbox.netbox.netbox_device" in doc
+        assert meta["doc_source"] == "galaxy"
+
+
+class TestSearchCollectionsEdgeCases:
+    @pytest.mark.asyncio
+    async def test_count_data_mismatch(self):
+        """API reports count=5 but data only has 1 non-deprecated entry."""
+        search_data = {
+            "meta": {"count": 5},
+            "links": {},
+            "data": [
+                {
+                    "collection_version": {
+                        "namespace": "ns", "name": "col",
+                        "version": "1.0.0", "contents": [], "dependencies": {},
+                        "description": "Test", "tags": [],
+                        "pulp_href": "", "requires_ansible": "", "pulp_created": "",
+                    },
+                    "is_highest": True, "is_deprecated": False, "is_signed": False,
+                    "repository": {}, "repository_version": "",
+                    "namespace_metadata": {"pulp_href": "", "name": "", "company": "", "description": "", "avatar_url": None},
+                },
+            ],
+        }
+
+        async def mock_api_get(self_client, path, params=None, client=None):
+            if "search/collection-versions" in path:
+                return search_data
+            return {"download_count": 100, "highest_version": {"version": "1.0.0"}}
+
+        p1, p2 = _mock_search_context(mock_api_get)
+        with p1, p2:
+            client = GalaxyClient()
+            result = await client.search_collections("test")
+
+        assert result["count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_empty_tags_in_content(self):
+        """Tags that are not dicts should be skipped."""
+        search_data = {
+            "meta": {"count": 1}, "links": {},
+            "data": [{
+                "collection_version": {
+                    "namespace": "ns", "name": "col",
+                    "version": "1.0.0", "contents": [], "dependencies": {},
+                    "description": "Test",
+                    "tags": ["plain_string", {"name": "valid"}],
+                    "pulp_href": "", "requires_ansible": "", "pulp_created": "",
+                },
+                "is_highest": True, "is_deprecated": False, "is_signed": False,
+                "repository": {}, "repository_version": "",
+                "namespace_metadata": {"pulp_href": "", "name": "", "company": "", "description": "", "avatar_url": None},
+            }],
+        }
+
+        async def mock_api_get(self_client, path, params=None, client=None):
+            if "search/collection-versions" in path:
+                return search_data
+            return {"download_count": 0, "highest_version": {"version": "1.0.0"}}
+
+        p1, p2 = _mock_search_context(mock_api_get)
+        with p1, p2:
+            client = GalaxyClient()
+            result = await client.search_collections("test")
+
+        assert result["collections"][0]["tags"] == ["valid"]
+
+    @pytest.mark.asyncio
+    async def test_whitespace_query_rejected_by_server_tool(self):
+        from ansible_know.server import search_collections as search_collections_tool
+        result = await search_collections_tool("   ")
+        assert "error" in result
+
+
+class TestModuleWithoutDocStrings:
+    @pytest.mark.asyncio
+    async def test_list_modules_missing_doc_strings(self):
+        blob = {
+            "docs_blob": {
+                "contents": [
+                    {
+                        "content_type": "module",
+                        "content_name": "no_docs_module",
+                    },
+                    {
+                        "content_type": "module",
+                        "content_name": "has_docs",
+                        "doc_strings": {
+                            "doc": {"short_description": "Has docs"},
+                            "examples": "",
+                            "return": [],
+                            "metadata": {},
+                        },
+                    },
+                ],
+            },
+        }
+
+        async def mock_api_get(self_client, path, params=None, client=None):
+            if "versions/" in path and "docs-blob" not in path:
+                return SAMPLE_VERSIONS_RESPONSE
+            if "docs-blob" in path:
+                return blob
+            return {}
+
+        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+            client = GalaxyClient()
+            modules, meta = await client.list_collection_modules("test.col")
+
+        assert "test.col.no_docs_module" in modules
+        assert modules["test.col.no_docs_module"] == ""
+        assert "test.col.has_docs" in modules
+        assert modules["test.col.has_docs"] == "Has docs"
+
+
+class TestTransformEdgeCases:
+    def test_missing_doc_strings(self):
+        entry = {"content_type": "module", "content_name": "test"}
+        result = GalaxyClient._transform_to_ansible_doc_format("ns.col.test", entry)
+        doc = result["ns.col.test"]["doc"]
+        assert doc["short_description"] == ""
+        assert doc["options"] == {}
+
+    def test_missing_short_description(self):
+        entry = {
+            "doc_strings": {
+                "doc": {"description": ["Some desc"], "options": []},
+                "examples": "",
+                "return": [],
+                "metadata": {},
+            }
+        }
+        result = GalaxyClient._transform_to_ansible_doc_format("ns.col.mod", entry)
+        assert result["ns.col.mod"]["doc"]["short_description"] == ""
+
+    def test_options_list_with_non_dict_items(self):
+        entry = {
+            "doc_strings": {
+                "doc": {
+                    "short_description": "Test",
+                    "options": [
+                        {"name": "valid", "type": "str"},
+                        "not_a_dict",
+                        42,
+                    ],
+                },
+                "examples": "",
+                "return": [],
+                "metadata": {},
+            }
+        }
+        result = GalaxyClient._transform_to_ansible_doc_format("ns.col.mod", entry)
+        opts = result["ns.col.mod"]["doc"]["options"]
+        assert "valid" in opts
+        assert len(opts) == 1
+
+    def test_option_without_name_key(self):
+        entry = {
+            "doc_strings": {
+                "doc": {
+                    "short_description": "Test",
+                    "options": [
+                        {"type": "str", "required": True},
+                    ],
+                },
+                "examples": "",
+                "return": [],
+                "metadata": {},
+            }
+        }
+        result = GalaxyClient._transform_to_ansible_doc_format("ns.col.mod", entry)
+        assert result["ns.col.mod"]["doc"]["options"] == {}
+
+
+class TestUnicodeQueries:
+    @pytest.mark.asyncio
+    async def test_unicode_search_collections(self):
+        mock_result = {"query": "réseau", "count": 0, "collections": []}
+        with patch("ansible_know.galaxy.GalaxyClient.search_collections", return_value=mock_result):
+            from ansible_know.server import search_collections as search_collections_tool
+            result = await search_collections_tool("réseau")
+        assert result["count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_unicode_search_docs(self):
+        from ansible_know.server import search_docs as search_docs_tool
+        with patch("ansible_know.docs.search_docs", return_value=[]):
+            result = await search_docs_tool("配置管理")
+        assert result == []
+
+
+class TestConcurrentCacheAccess:
+    def test_concurrent_version_cache_writes(self):
+        import threading
+
+        errors = []
+
+        def write_batch(start):
+            try:
+                for i in range(100):
+                    _put_version_cache(("ns", f"col_{start}_{i}"), f"v{i}")
+                    _get_version_cache(("ns", f"col_{start}_{i}"))
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=write_batch, args=(t,)) for t in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert errors == []
+
+    def test_concurrent_blob_cache_writes(self):
+        import threading
+
+        errors = []
+
+        def write_batch(start):
+            try:
+                for i in range(50):
+                    _put_blob_cache(("ns", f"col_{start}_{i}", "1.0"), {"v": i})
+                    _get_blob_cache(("ns", f"col_{start}_{i}", "1.0"))
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=write_batch, args=(t,)) for t in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert errors == []
