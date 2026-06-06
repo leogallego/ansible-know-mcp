@@ -135,7 +135,7 @@ class TestRunAnsibleDocEnvInjection:
                     env = mock_run.call_args[1]["env"]
                     assert "/tmp/ansible_know_abc123" in env["ANSIBLE_COLLECTIONS_PATH"]
 
-    def test_overrides_existing_collections_path(self):
+    def test_prepends_to_existing_collections_path(self):
         with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):
             with patch("ansible_know.collections.get_collections_path", return_value="/tmp/ansible_know_abc123"):
                 with patch.dict("os.environ", {"ANSIBLE_COLLECTIONS_PATH": "/existing/path"}):
@@ -145,8 +145,8 @@ class TestRunAnsibleDocEnvInjection:
                         from ansible_know.parser import _run_ansible_doc
                         _run_ansible_doc("--list", "--json")
                         env = mock_run.call_args[1]["env"]
-                        assert env["ANSIBLE_COLLECTIONS_PATH"] == "/tmp/ansible_know_abc123"
-                        assert "/existing/path" not in env["ANSIBLE_COLLECTIONS_PATH"]
+                        assert env["ANSIBLE_COLLECTIONS_PATH"].startswith("/tmp/ansible_know_abc123")
+                        assert "/existing/path" in env["ANSIBLE_COLLECTIONS_PATH"]
 
     def test_no_injection_when_no_collections(self):
         with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):

@@ -26,8 +26,13 @@ async def _fetch_manifest(source_name: str, url: str) -> list[dict[str, Any]]:
         resp = await client.get(url)
         resp.raise_for_status()
         content_length = resp.headers.get("content-length")
-        if content_length and int(content_length) > MAX_MANIFEST_SIZE:
-            raise ValueError(f"Manifest too large: {content_length} bytes (max {MAX_MANIFEST_SIZE})")
+        if content_length:
+            try:
+                size = int(content_length)
+            except (ValueError, OverflowError):
+                size = None
+            if size is not None and size > MAX_MANIFEST_SIZE:
+                raise ValueError(f"Manifest too large: {content_length} bytes (max {MAX_MANIFEST_SIZE})")
         if len(resp.content) > MAX_MANIFEST_SIZE:
             raise ValueError(f"Manifest too large: {len(resp.content)} bytes (max {MAX_MANIFEST_SIZE})")
         data = resp.json()

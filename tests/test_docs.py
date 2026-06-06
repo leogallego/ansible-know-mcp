@@ -149,3 +149,20 @@ class TestManifestSizeLimit:
         with patch("ansible_know.docs.httpx.AsyncClient", return_value=mock_client):
             results = await search_docs("test")
         assert results == []
+
+    @pytest.mark.asyncio
+    async def test_malformed_content_length_falls_through(self):
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.headers = {"content-length": "not-a-number"}
+        mock_resp.content = b"[]"
+        mock_resp.json.return_value = []
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_resp
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("ansible_know.docs.httpx.AsyncClient", return_value=mock_client):
+            results = await search_docs("test")
+        assert results == []
