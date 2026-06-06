@@ -49,6 +49,9 @@ packages = ["src/ansible_know"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "integration: opt-in tests that hit real ansible-doc or Galaxy API (deselect with '-m not integration')",
+]
 
 [tool.ruff]
 line-length = 120

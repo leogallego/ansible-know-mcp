@@ -1135,3 +1135,44 @@ class TestEnrichmentSemaphore:
                 await client.search_collections("test")
 
         assert max_concurrent <= 5, f"Expected max 5 concurrent, got {max_concurrent}"
+
+
+class TestGalaxyClientCleanup:
+    @pytest.mark.asyncio
+    async def test_close_closes_owned_client(self):
+        mock_client = AsyncMock()
+        with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
+            gc = GalaxyClient()
+            gc._get_client()
+            assert gc._owned_client is not None
+            await gc.close()
+        mock_client.aclose.assert_called_once()
+        assert gc._owned_client is None
+
+    @pytest.mark.asyncio
+    async def test_close_noop_when_no_owned_client(self):
+        gc = GalaxyClient()
+        await gc.close()
+        assert gc._owned_client is None
+
+    @pytest.mark.asyncio
+    async def test_close_noop_with_injected_client(self):
+        injected = AsyncMock()
+        gc = GalaxyClient(http_client=injected)
+        await gc.close()
+        injected.aclose.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_async_context_manager_closes_owned(self):
+        mock_client = _mock_client_get(SAMPLE_VERSIONS_RESPONSE)
+        with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
+            async with GalaxyClient() as gc:
+                await gc.latest_version("netbox", "netbox")
+        mock_client.aclose.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_async_context_manager_noop_with_injected(self):
+        injected = _mock_client_get(SAMPLE_VERSIONS_RESPONSE)
+        async with GalaxyClient(http_client=injected) as gc:
+            await gc.latest_version("netbox", "netbox")
+        injected.aclose.assert_not_called()

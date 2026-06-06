@@ -42,10 +42,7 @@ def _run_ansible_doc(*args: str) -> str:
     env = None
     if collections_path:
         env = os.environ.copy()
-        existing = env.get("ANSIBLE_COLLECTIONS_PATH", "")
-        env["ANSIBLE_COLLECTIONS_PATH"] = (
-            f"{collections_path}{os.pathsep}{existing}" if existing else collections_path
-        )
+        env["ANSIBLE_COLLECTIONS_PATH"] = collections_path
 
     try:
         result = subprocess.run(

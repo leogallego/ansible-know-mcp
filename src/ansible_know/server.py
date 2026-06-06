@@ -105,8 +105,8 @@ async def _resolve_module_doc(
     if namespace and namespace in _missing_collections:
         try:
             from ansible_know.galaxy import GalaxyClient
-            client = GalaxyClient(http_client=http_client)
-            galaxy_doc, galaxy_meta = await client.fetch_module_doc(module_name)
+            async with GalaxyClient(http_client=http_client) as client:
+                galaxy_doc, galaxy_meta = await client.fetch_module_doc(module_name)
             return galaxy_doc, galaxy_meta
         except GalaxyError as galaxy_exc:
             raise CollectionNotFoundError(
@@ -123,8 +123,8 @@ async def _resolve_module_doc(
         try:
             from ansible_know.galaxy import GalaxyClient
 
-            client = GalaxyClient(http_client=http_client)
-            galaxy_doc, galaxy_meta = await client.fetch_module_doc(module_name)
+            async with GalaxyClient(http_client=http_client) as client:
+                galaxy_doc, galaxy_meta = await client.fetch_module_doc(module_name)
             return galaxy_doc, galaxy_meta
         except GalaxyError as galaxy_exc:
             logger.warning("Galaxy fallback also failed: %s", galaxy_exc)
@@ -265,8 +265,8 @@ async def search_collections(
         from ansible_know.galaxy import GalaxyClient
 
         http_client = ctx.lifespan_context.get("http_client") if ctx else None
-        client = GalaxyClient(http_client=http_client)
-        return await client.search_collections(query, tags=tags)
+        async with GalaxyClient(http_client=http_client) as client:
+            return await client.search_collections(query, tags=tags)
     except Exception as exc:
         logger.warning("search_collections failed: %s", exc)
         return {"error": sanitize_error(str(exc))}

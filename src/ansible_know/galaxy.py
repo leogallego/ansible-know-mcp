@@ -102,6 +102,18 @@ class GalaxyClient:
         self._http_client = http_client
         self._owned_client: httpx.AsyncClient | None = None
 
+    async def __aenter__(self) -> GalaxyClient:
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        await self.close()
+
+    async def close(self) -> None:
+        """Close the owned httpx client, if any."""
+        if self._owned_client is not None:
+            await self._owned_client.aclose()
+            self._owned_client = None
+
     def _get_client(self) -> httpx.AsyncClient:
         """Get the http client to use for requests."""
         if self._http_client is not None:
