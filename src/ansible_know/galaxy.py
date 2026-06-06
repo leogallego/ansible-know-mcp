@@ -129,7 +129,7 @@ class GalaxyClient:
         except httpx.HTTPStatusError as exc:
             raise GalaxyError(
                 f"Galaxy API error (HTTP {exc.response.status_code})"
-            )
+            ) from exc
         content_length = resp.headers.get("content-length")
         if content_length:
             try:
@@ -150,10 +150,10 @@ class GalaxyClient:
         """Wrap _api_get with network error handling."""
         try:
             return await self._api_get(path, params=params, timeout=timeout)
-        except httpx.TimeoutException:
-            raise GalaxyError("Galaxy connection timed out")
+        except httpx.TimeoutException as exc:
+            raise GalaxyError("Galaxy connection timed out") from exc
         except httpx.RequestError as exc:
-            raise GalaxyError(f"Galaxy connection error: {type(exc).__name__}")
+            raise GalaxyError(f"Galaxy connection error: {type(exc).__name__}") from exc
 
     async def latest_version(self, namespace: str, name: str) -> str:
         """Resolve the latest version of a collection on Galaxy.

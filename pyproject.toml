@@ -41,7 +41,7 @@ Issues = "https://github.com/leogallego/ansible-know-mcp/issues"
 ansible-know-mcp = "ansible_know.server:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0", "pytest-asyncio>=0.23"]
+dev = ["pytest>=7.0", "pytest-asyncio>=0.23", "pytest-cov>=4.0", "ruff>=0.4"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ansible_know"]
@@ -49,3 +49,17 @@ packages = ["src/ansible_know"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "A", "C4", "T20"]
+
+[tool.coverage.run]
+source = ["ansible_know"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = ["if __name__", "pragma: no cover"]

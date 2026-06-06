@@ -1,7 +1,6 @@
 """Tests for ansible_know.parser."""
 
 from unittest.mock import MagicMock, patch
-import os
 
 import pytest
 

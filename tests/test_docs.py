@@ -1,12 +1,10 @@
 """Tests for ansible_know.docs."""
 
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ansible_know.docs import clear_cache, search_docs
-
+from ansible_know.docs import MAX_MANIFEST_SIZE, clear_cache, search_docs
 
 MOCK_MANIFEST = [
     {
@@ -115,4 +113,39 @@ class TestSearchDocs:
     @pytest.mark.asyncio
     async def test_no_results(self, mock_httpx):
         results = await search_docs("nonexistent_xyz_query")
+        assert results == []
+
+
+class TestManifestSizeLimit:
+    @pytest.mark.asyncio
+    async def test_rejects_large_content_length(self):
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.headers = {"content-length": str(MAX_MANIFEST_SIZE + 1)}
+        mock_resp.content = b"{}"
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_resp
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("ansible_know.docs.httpx.AsyncClient", return_value=mock_client):
+            results = await search_docs("test")
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_rejects_large_body(self):
+        large_body = b"x" * (MAX_MANIFEST_SIZE + 1)
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.headers = {}
+        mock_resp.content = large_body
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_resp
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("ansible_know.docs.httpx.AsyncClient", return_value=mock_client):
+            results = await search_docs("test")
         assert results == []

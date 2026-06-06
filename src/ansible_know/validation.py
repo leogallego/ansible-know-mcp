@@ -85,8 +85,8 @@ def validate_install_path(path_str: str) -> Path:
 def validate_path_containment(child: Path, parent: Path) -> None:
     try:
         child.resolve().relative_to(parent.resolve())
-    except ValueError:
-        raise ValidationError("Path escapes the allowed directory.")
+    except ValueError as exc:
+        raise ValidationError("Path escapes the allowed directory.") from exc
 
 
 def sanitize_error(msg: str) -> str:

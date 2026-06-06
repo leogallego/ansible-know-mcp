@@ -12,6 +12,7 @@ import httpx
 
 from ansible_know.config import SEARCH_DOCS_LIMIT, get_doc_sources
 
+MAX_MANIFEST_SIZE = 5_000_000  # 5MB
 
 _manifest_cache: dict[str, list[dict[str, Any]]] = {}
 
@@ -21,9 +22,14 @@ async def _fetch_manifest(source_name: str, url: str) -> list[dict[str, Any]]:
     if source_name in _manifest_cache:
         return _manifest_cache[source_name]
 
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=30.0)) as client:
         resp = await client.get(url)
         resp.raise_for_status()
+        content_length = resp.headers.get("content-length")
+        if content_length and int(content_length) > MAX_MANIFEST_SIZE:
+            raise ValueError(f"Manifest too large: {content_length} bytes (max {MAX_MANIFEST_SIZE})")
+        if len(resp.content) > MAX_MANIFEST_SIZE:
+            raise ValueError(f"Manifest too large: {len(resp.content)} bytes (max {MAX_MANIFEST_SIZE})")
         data = resp.json()
 
     base_url = data.get("base_url", "") if isinstance(data, dict) else ""
@@ -67,7 +73,7 @@ async def search_docs(
 
         try:
             entries = await _fetch_manifest(src_name, src_config["url"])
-        except (httpx.HTTPError, KeyError):
+        except (httpx.HTTPError, KeyError, ValueError):
             continue
 
         for entry in entries:

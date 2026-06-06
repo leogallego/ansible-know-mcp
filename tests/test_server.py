@@ -1,12 +1,11 @@
 """Tests for ansible_know.server MCP tools."""
 
 import json
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ansible_know.server import mcp
-from tests.conftest import SAMPLE_MODULE_DOC, SAMPLE_MODULE_LIST, SAMPLE_API_MODULE_DOC
+from tests.conftest import SAMPLE_MODULE_DOC, SAMPLE_MODULE_LIST
 
 
 @pytest.fixture(autouse=True)
@@ -278,7 +277,7 @@ class TestErrorSanitization:
 class TestOutputTruncation:
     @pytest.mark.asyncio
     async def test_truncates_large_response(self):
-        from ansible_know.validation import truncate_response, MAX_RESPONSE_SIZE
+        from ansible_know.validation import MAX_RESPONSE_SIZE, truncate_response
         large = "x" * (MAX_RESPONSE_SIZE + 100)
         result = truncate_response(large)
         assert len(result) < len(large)
@@ -749,7 +748,6 @@ class TestLifespanHttpClient:
 class TestNegativeCache:
     @pytest.mark.asyncio
     async def test_skips_ansible_doc_on_cache_hit(self, mock_ansible_doc):
-        from ansible_know.errors import GalaxyError
         from ansible_know import server
         server._missing_collections.add("netbox.netbox")
 
@@ -777,8 +775,8 @@ class TestNegativeCache:
 
     @pytest.mark.asyncio
     async def test_populates_cache_on_collection_not_found(self, mock_ansible_doc):
-        from ansible_know.errors import CollectionNotFoundError, GalaxyError
         from ansible_know import server
+        from ansible_know.errors import CollectionNotFoundError, GalaxyError
 
         mock_ansible_doc.side_effect = CollectionNotFoundError(
             "netbox.netbox has no attribute"
@@ -815,8 +813,8 @@ class TestNegativeCache:
 
     @pytest.mark.asyncio
     async def test_does_not_cache_non_collection_errors(self, mock_ansible_doc):
-        from ansible_know.errors import AnsibleDocError
         from ansible_know import server
+        from ansible_know.errors import AnsibleDocError
 
         mock_ansible_doc.side_effect = AnsibleDocError("ansible-doc timed out")
 

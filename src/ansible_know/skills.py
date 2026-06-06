@@ -6,7 +6,6 @@ from Ansible module metadata.
 
 from __future__ import annotations
 
-import os
 import stat
 from pathlib import Path
 from typing import Any

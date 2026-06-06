@@ -1,6 +1,5 @@
 """Tests for ansible_know.skills."""
 
-import pytest
 
 from ansible_know.parser import extract_module_metadata
 from ansible_know.skills import (
