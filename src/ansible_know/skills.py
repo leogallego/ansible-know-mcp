@@ -78,7 +78,7 @@ def write_skill_package(output_dir: Path, metadata: dict[str, Any]) -> None:
         template = env.get_template(f"{script_name}.j2")
         script_path = scripts_dir / script_name
         script_path.write_text(template.render(**ctx))
-        script_path.chmod(script_path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+        script_path.chmod(script_path.stat().st_mode | stat.S_IXUSR)
 
     assets_dir = output_dir / "assets"
     assets_dir.mkdir(exist_ok=True)

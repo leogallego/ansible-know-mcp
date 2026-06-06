@@ -140,6 +140,7 @@ uvx ansible-know-mcp
 |-----|-------------|
 | `skills://list` | List all generated skill packages |
 | `skills://{skill_name}` | Read a skill's SKILL.md content by FQCN |
+| `galaxy://installed` | List collections installed in this session |
 | `docs://sources` | List configured documentation manifest sources |
 
 ## Prompts
@@ -149,6 +150,7 @@ uvx ansible-know-mcp
 | `review_playbook(playbook_yaml)` | Review a playbook against module docs and best practices |
 | `explain_module(module_name)` | Get a detailed module explanation with usage examples |
 | `generate_role(role_purpose, modules)` | Generate a role skeleton using specified modules |
+| `find_collection(platform_or_use_case)` | Guide through search, install, and explore workflow |
 
 ## Development
 
