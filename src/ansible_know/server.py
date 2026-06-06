@@ -316,7 +316,7 @@ async def get_collection_manifest(
         return {"error": _maybe_add_hint(sanitize_error(str(exc)), collection_namespace)}
 
 
-@mcp.tool(annotations=ToolAnnotations(idempotentHint=True, readOnlyHint=False))
+@mcp.tool(annotations=ToolAnnotations(idempotentHint=True, readOnlyHint=False, destructiveHint=False))
 async def ensure_collection(
     collection_namespace: Annotated[str, "Collection namespace (e.g. 'netbox.netbox')"],
     version: Annotated[str | None, "Optional version (e.g. '4.1.0'). If omitted, installs latest and pins the resolved version."] = None,
