@@ -116,7 +116,8 @@ class TestGetSkillTool:
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
         from ansible_know.server import get_skill
         result = await get_skill("ansible.builtin.nonexistent")
-        assert "not found" in result.lower()
+        assert "error" in result
+        assert "not found" in result["error"].lower()
 
 
 class TestGenerateSkillTool:
@@ -234,8 +235,7 @@ class TestQueryValidation:
     async def test_rejects_long_query(self):
         from ansible_know.server import search_docs
         result = await search_docs("a" * 501)
-        assert len(result) == 1
-        assert "error" in result[0]
+        assert "error" in result
 
 
 class TestPathTraversal:
@@ -244,19 +244,19 @@ class TestPathTraversal:
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
         from ansible_know.server import get_skill
         result = await get_skill("../../etc/passwd")
-        assert "invalid" in result.lower() or "error" in result.lower()
+        assert "error" in result
 
     @pytest.mark.asyncio
     async def test_generate_skill_blocks_etc(self):
         from ansible_know.server import generate_skill
         result = await generate_skill("ansible.builtin.copy", install_to="/etc/evil")
-        assert "not allowed" in result.lower() or "error" in result.lower()
+        assert "error" in result
 
     @pytest.mark.asyncio
     async def test_generate_skill_blocks_usr(self):
         from ansible_know.server import generate_skill
         result = await generate_skill("ansible.builtin.copy", install_to="/usr/local/evil")
-        assert "not allowed" in result.lower() or "error" in result.lower()
+        assert "error" in result
 
 
 class TestErrorSanitization:
@@ -341,7 +341,7 @@ class TestEnsureCollectionTool:
 
 class TestMissingCollectionHints:
     @pytest.mark.asyncio
-    async def test_get_module_doc_hint(self, mock_ansible_doc):
+    async def test_get_module_doc_hint_suppressed_on_double_failure(self, mock_ansible_doc):
         from ansible_know.errors import CollectionNotFoundError, GalaxyError
         mock_ansible_doc.side_effect = CollectionNotFoundError(
             "ansible-doc failed (exit 1): netbox.netbox.netbox_device has no attribute"
@@ -352,8 +352,18 @@ class TestMissingCollectionHints:
         ):
             from ansible_know.server import get_module_doc
             result = await get_module_doc("netbox.netbox.netbox_device")
+        assert "error" in result
+        assert "ensure_collection" not in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_get_module_doc_hint_on_local_only_failure(self, mock_ansible_doc):
+        from ansible_know.errors import AnsibleDocError
+        mock_ansible_doc.side_effect = AnsibleDocError(
+            "ansible-doc failed (exit 1): netbox.netbox was not found"
+        )
+        from ansible_know.server import get_module_doc
+        result = await get_module_doc("netbox.netbox.netbox_device")
         assert "ensure_collection" in result["error"]
-        assert "netbox.netbox" in result["error"]
 
     @pytest.mark.asyncio
     async def test_search_modules_hint(self, mock_ansible_doc):
@@ -366,7 +376,7 @@ class TestMissingCollectionHints:
         assert "ensure_collection" in result["error"]
 
     @pytest.mark.asyncio
-    async def test_generate_skill_hint(self, mock_ansible_doc):
+    async def test_generate_skill_hint_suppressed_on_double_failure(self, mock_ansible_doc):
         from ansible_know.errors import CollectionNotFoundError, GalaxyError
         mock_ansible_doc.side_effect = CollectionNotFoundError(
             "ansible-doc failed (exit 1): netbox.netbox.netbox_device could not be found"
@@ -377,7 +387,8 @@ class TestMissingCollectionHints:
         ):
             from ansible_know.server import generate_skill
             result = await generate_skill("netbox.netbox.netbox_device")
-        assert "ensure_collection" in result
+        assert "error" in result
+        assert "ensure_collection" not in result["error"]
 
     @pytest.mark.asyncio
     async def test_no_hint_for_unrelated_errors(self, mock_ansible_doc):
@@ -582,6 +593,19 @@ class TestResourceFunctions:
         result = resource_skill_content("../../etc/passwd")
         assert "invalid" in result.lower() or "expected" in result.lower()
 
+    def test_resource_installed_collections_empty(self):
+        with patch("ansible_know.collections.list_installed", return_value={}):
+            from ansible_know.server import resource_installed_collections
+            result = json.loads(resource_installed_collections())
+        assert result == {}
+
+    def test_resource_installed_collections_with_data(self):
+        installed = {"netbox.netbox": "4.1.0", "ansible.utils": "5.0.0"}
+        with patch("ansible_know.collections.list_installed", return_value=installed):
+            from ansible_know.server import resource_installed_collections
+            result = json.loads(resource_installed_collections())
+        assert result == installed
+
     def test_resource_doc_sources(self):
         from ansible_know.server import resource_doc_sources
         result = json.loads(resource_doc_sources())
@@ -607,6 +631,13 @@ class TestPromptFunctions:
         result = generate_role("Install nginx", "ansible.builtin.package, ansible.builtin.service")
         assert "Install nginx" in result
         assert "ansible.builtin.package" in result
+
+    def test_find_collection_prompt(self):
+        from ansible_know.server import find_collection
+        result = find_collection("NetBox DCIM")
+        assert "NetBox DCIM" in result
+        assert "search_collections" in result
+        assert "ensure_collection" in result
 
 
 class TestSearchCollectionsTool:
