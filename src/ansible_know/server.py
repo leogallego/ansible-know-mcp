@@ -1,7 +1,8 @@
 """Ansible Know MCP Server.
 
-Provides 10 tools for module discovery, documentation search,
-Galaxy collection discovery, and skill generation via the Model Context Protocol.
+Provides 10 tools, 4 resources, and 4 prompts for module discovery,
+documentation search, Galaxy collection discovery, and skill generation
+via the Model Context Protocol.
 """
 
 from __future__ import annotations
@@ -136,7 +137,10 @@ async def search_modules(
     keyword: Annotated[str, "Search term to match against module names and descriptions"],
     namespace: Annotated[str | None, "Optional collection namespace filter (e.g. 'community.docker')"] = None,
 ) -> dict[str, str]:
-    """Find Ansible modules by keyword in name or description. Returns up to 50 matches as {fqcn: short_description}."""
+    """Find Ansible modules by keyword in name or description. Returns up to 50 matches as {fqcn: short_description}.
+
+    Returns: {"module.fqcn": "short description", ...} or {"error": str} on failure.
+    """
     logger.info("search_modules keyword=%r namespace=%r", keyword, namespace)
     try:
         validate_keyword(keyword)
@@ -190,6 +194,9 @@ async def get_module_doc(
     except Exception as exc:
         logger.warning("get_module_doc failed: %s", exc)
         ns = ".".join(module_name.split(".")[:2]) if "." in module_name else None
+        from ansible_know.errors import GalaxyError
+        if isinstance(exc.__cause__, GalaxyError):
+            return {"error": sanitize_error(str(exc))}
         return {"error": _maybe_add_hint(sanitize_error(str(exc)), ns)}
 
 
@@ -209,7 +216,7 @@ async def search_docs(
     try:
         validate_query(query)
     except ValidationError as exc:
-        return [{"error": str(exc)}]
+        return {"error": str(exc)}
 
     try:
         from ansible_know import docs
@@ -219,7 +226,7 @@ async def search_docs(
         )
     except Exception as exc:
         logger.warning("search_docs failed: %s", exc)
-        return [{"error": sanitize_error(str(exc))}]
+        return {"error": sanitize_error(str(exc))}
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -352,7 +359,10 @@ async def ensure_collection(
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def list_skills() -> list[dict[str, str]]:
-    """List all available generated skills. Returns name, description, path for each."""
+    """List all available generated skills. Returns name, description, path for each.
+
+    Returns: [{"name": str, "description": str, "path": str}, ...] or {"error": str} on failure.
+    """
     logger.info("list_skills")
     try:
         from ansible_know.config import SKILLS_DIR
@@ -379,19 +389,22 @@ async def list_skills() -> list[dict[str, str]]:
         return results
     except Exception as exc:
         logger.warning("list_skills failed: %s", exc)
-        return [{"error": sanitize_error(str(exc))}]
+        return {"error": sanitize_error(str(exc))}
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_skill(
     skill_name: Annotated[str, "Skill name (usually the module FQCN)"],
 ) -> str:
-    """Read a specific skill's SKILL.md content by name."""
+    """Read a specific skill's SKILL.md content by name.
+
+    Returns: SKILL.md content as str, or {"error": str} on failure/not found.
+    """
     logger.info("get_skill name=%r", skill_name)
     try:
         validate_fqcn(skill_name)
     except ValidationError as exc:
-        return str(exc)
+        return {"error": str(exc)}
 
     try:
         from ansible_know.config import SKILLS_DIR
@@ -399,16 +412,16 @@ async def get_skill(
         skill_path = (SKILLS_DIR / skill_name / "SKILL.md").resolve()
         validate_path_containment(skill_path, SKILLS_DIR)
         if not skill_path.exists():
-            return f"Skill '{skill_name}' not found."
+            return {"error": f"Skill '{skill_name}' not found."}
         return truncate_response(skill_path.read_text())
     except ValidationError as exc:
-        return str(exc)
+        return {"error": str(exc)}
     except Exception as exc:
         logger.warning("get_skill failed: %s", exc)
-        return sanitize_error(str(exc))
+        return {"error": sanitize_error(str(exc))}
 
 
-@mcp.tool
+@mcp.tool(annotations=ToolAnnotations(idempotentHint=True))
 async def generate_skill(
     module_name: Annotated[str, "Fully-qualified module name (e.g. 'ansible.builtin.copy')"],
     install_to: Annotated[str | None, "Optional absolute path to install the skill to"] = None,
@@ -417,7 +430,7 @@ async def generate_skill(
     """Generate a skill package for one module.
 
     Writes SKILL.md + scripts + playbook to disk.
-    Returns the SKILL.md content inline so the agent can use it immediately.
+    Returns the SKILL.md content as str, or {"error": str} on failure.
     """
     logger.info("generate_skill module=%r install_to=%r", module_name, install_to)
     try:
@@ -425,7 +438,7 @@ async def generate_skill(
         if install_to:
             validate_install_path(install_to)
     except ValidationError as exc:
-        return str(exc)
+        return {"error": str(exc)}
 
     try:
         from ansible_know import parser, skills
@@ -455,14 +468,17 @@ async def generate_skill(
 
         return truncate_response(skills.render_skill(metadata))
     except ValidationError as exc:
-        return str(exc)
+        return {"error": str(exc)}
     except Exception as exc:
         logger.warning("generate_skill failed: %s", exc)
         ns = ".".join(module_name.split(".")[:2]) if "." in module_name else None
-        return _maybe_add_hint(sanitize_error(str(exc)), ns)
+        from ansible_know.errors import GalaxyError
+        if isinstance(exc.__cause__, GalaxyError):
+            return {"error": sanitize_error(str(exc))}
+        return {"error": _maybe_add_hint(sanitize_error(str(exc)), ns)}
 
 
-@mcp.tool
+@mcp.tool(annotations=ToolAnnotations(idempotentHint=True))
 async def generate_collection_skills(
     collection_namespace: Annotated[str, "Collection namespace (e.g. 'netbox.netbox')"],
     install_to: Annotated[str | None, "Optional absolute path to install skills to"] = None,
@@ -577,6 +593,17 @@ def resource_skill_content(skill_name: str) -> str:
 
 
 @mcp.resource(
+    "galaxy://installed",
+    name="Installed Collections",
+    description="List collections installed in this session via ensure_collection",
+)
+def resource_installed_collections() -> str:
+    from ansible_know import collections
+
+    return json.dumps(collections.list_installed(), indent=2)
+
+
+@mcp.resource(
     "docs://sources",
     name="Documentation Sources",
     description="List configured documentation manifest sources",
@@ -634,6 +661,20 @@ def generate_role(role_purpose: str, modules: str) -> str:
         "- Include meta/argument_specs.yml for validation\n"
         "- Ensure idempotency with changed_when on command/shell tasks\n"
         "- Add a README.md with example playbooks"
+    )
+
+
+@mcp.prompt
+def find_collection(platform_or_use_case: str) -> str:
+    """Guide the agent through discovering, installing, and exploring a collection."""
+    return (
+        f"Find an Ansible collection for: {platform_or_use_case}\n\n"
+        "Follow these steps:\n"
+        "1. Use search_collections to find relevant collections on Galaxy\n"
+        "2. Pick the best match (prefer high download count, non-deprecated)\n"
+        "3. Use ensure_collection to install it for this session\n"
+        "4. Use get_collection_manifest to see all available modules\n"
+        "5. Use get_module_doc on the most relevant modules to understand their usage"
     )
 
 

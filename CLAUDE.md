@@ -18,7 +18,7 @@ Runtime requirement: `ansible-core` must be installed in the same environment (f
 
 ```
 src/ansible_know/
-├── server.py              # FastMCP server: 10 tools, 3 resources, 3 prompts (entrypoint)
+├── server.py              # FastMCP server: 10 tools, 4 resources, 4 prompts (entrypoint)
 ├── parser.py              # ansible-doc wrapper — module discovery and metadata extraction
 ├── skills.py              # skill rendering + package writing (Jinja2)
 ├── config.py              # paths, constants, doc source registry
@@ -40,8 +40,8 @@ src/ansible_know/
 | `ensure_collection` | idempotent write | Install a collection for this session |
 | `list_skills` | read-only | List generated skills |
 | `get_skill` | read-only | Read a skill's content |
-| `generate_skill` | write | Generate a skill package for one module |
-| `generate_collection_skills` | write | Batch generate skills for a collection |
+| `generate_skill` | idempotent write | Generate a skill package for one module |
+| `generate_collection_skills` | idempotent write | Batch generate skills for a collection |
 
 ## MCP Resources
 
@@ -49,6 +49,7 @@ src/ansible_know/
 |-----|-------------|
 | `skills://list` | List all generated skill packages |
 | `skills://{skill_name}` | Read a skill's SKILL.md by FQCN |
+| `galaxy://installed` | List collections installed in this session |
 | `docs://sources` | List configured doc manifest sources |
 
 ## MCP Prompts
@@ -58,6 +59,7 @@ src/ansible_know/
 | `review_playbook` | Review a playbook against module docs |
 | `explain_module` | Detailed module explanation with examples |
 | `generate_role` | Generate a role skeleton using specified modules |
+| `find_collection` | Guide through search, install, and explore workflow |
 
 ## Key Patterns
 
