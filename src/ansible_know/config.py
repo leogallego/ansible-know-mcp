@@ -26,10 +26,25 @@ def get_doc_sources() -> dict[str, dict[str, str]]:
     """Return configured documentation manifest sources.
 
     Override defaults via ANSIBLE_KNOWLEDGE_DOC_SOURCES env var (JSON).
+    Falls back to defaults on invalid JSON or malformed structure.
     """
     env_val = os.environ.get("ANSIBLE_KNOWLEDGE_DOC_SOURCES")
     if env_val:
-        return json.loads(env_val)
+        try:
+            parsed = json.loads(env_val)
+        except (json.JSONDecodeError, ValueError):
+            import logging
+            logging.getLogger("ansible_know").warning(
+                "Invalid JSON in ANSIBLE_KNOWLEDGE_DOC_SOURCES, using defaults"
+            )
+            return DEFAULT_DOC_SOURCES
+        if not isinstance(parsed, dict):
+            import logging
+            logging.getLogger("ansible_know").warning(
+                "ANSIBLE_KNOWLEDGE_DOC_SOURCES must be a JSON object, using defaults"
+            )
+            return DEFAULT_DOC_SOURCES
+        return parsed
     return DEFAULT_DOC_SOURCES
 
 SEARCH_MODULES_LIMIT = 50

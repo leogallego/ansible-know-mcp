@@ -2,8 +2,6 @@
 
 import json
 
-import pytest
-
 from ansible_know.collection_manifest import (
     _derive_tags,
     generate_manifest,

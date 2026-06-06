@@ -116,10 +116,10 @@ def ensure_collection(namespace: str, version: str | None = None) -> dict:
                     text=True,
                     timeout=120,
                 )
-            except subprocess.TimeoutExpired:
+            except subprocess.TimeoutExpired as exc:
                 raise CollectionInstallError(
                     f"ansible-galaxy timed out installing {namespace}"
-                )
+                ) from exc
 
             if result.returncode != 0:
                 raise CollectionInstallError(

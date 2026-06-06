@@ -1,7 +1,6 @@
 """Tests for ansible_know.parser."""
 
 from unittest.mock import MagicMock, patch
-import os
 
 import pytest
 
@@ -136,7 +135,7 @@ class TestRunAnsibleDocEnvInjection:
                     env = mock_run.call_args[1]["env"]
                     assert "/tmp/ansible_know_abc123" in env["ANSIBLE_COLLECTIONS_PATH"]
 
-    def test_preserves_existing_collections_path(self):
+    def test_prepends_to_existing_collections_path(self):
         with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):
             with patch("ansible_know.collections.get_collections_path", return_value="/tmp/ansible_know_abc123"):
                 with patch.dict("os.environ", {"ANSIBLE_COLLECTIONS_PATH": "/existing/path"}):

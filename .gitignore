@@ -4,6 +4,8 @@ tmp/
 __pycache__/
 *.pyc
 .claude/settings.local.json
+.claude/worktrees/
+.coverage
 dist/
 build/
 .pytest_cache/

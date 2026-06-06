@@ -25,5 +25,8 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev
 
-      - name: Run tests
-        run: uv run pytest tests/ -v
+      - name: Lint with ruff
+        run: uv run ruff check src/ tests/
+
+      - name: Run tests with coverage
+        run: uv run pytest tests/ -v --cov=ansible_know --cov-report=term-missing

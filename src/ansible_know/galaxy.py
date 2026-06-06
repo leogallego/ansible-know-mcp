@@ -102,6 +102,18 @@ class GalaxyClient:
         self._http_client = http_client
         self._owned_client: httpx.AsyncClient | None = None
 
+    async def __aenter__(self) -> GalaxyClient:
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        await self.close()
+
+    async def close(self) -> None:
+        """Close the owned httpx client, if any."""
+        if self._owned_client is not None:
+            await self._owned_client.aclose()
+            self._owned_client = None
+
     def _get_client(self) -> httpx.AsyncClient:
         """Get the http client to use for requests."""
         if self._http_client is not None:
@@ -129,7 +141,7 @@ class GalaxyClient:
         except httpx.HTTPStatusError as exc:
             raise GalaxyError(
                 f"Galaxy API error (HTTP {exc.response.status_code})"
-            )
+            ) from exc
         content_length = resp.headers.get("content-length")
         if content_length:
             try:
@@ -150,10 +162,10 @@ class GalaxyClient:
         """Wrap _api_get with network error handling."""
         try:
             return await self._api_get(path, params=params, timeout=timeout)
-        except httpx.TimeoutException:
-            raise GalaxyError("Galaxy connection timed out")
+        except httpx.TimeoutException as exc:
+            raise GalaxyError("Galaxy connection timed out") from exc
         except httpx.RequestError as exc:
-            raise GalaxyError(f"Galaxy connection error: {type(exc).__name__}")
+            raise GalaxyError(f"Galaxy connection error: {type(exc).__name__}") from exc
 
     async def latest_version(self, namespace: str, name: str) -> str:
         """Resolve the latest version of a collection on Galaxy.

@@ -1,7 +1,7 @@
 """Tests for ansible_know.galaxy."""
 
 import time
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from unittest.mock import patch as stdlib_patch
 
 import httpx
@@ -9,19 +9,19 @@ import pytest
 
 from ansible_know.errors import GalaxyError
 from ansible_know.galaxy import (
-    GalaxyClient,
-    clear_cache,
-    _get_version_cache,
-    _put_version_cache,
-    _get_blob_cache,
-    _put_blob_cache,
-    MAX_VERSION_CACHE_SIZE,
+    CACHE_TTL_SECONDS,
     MAX_BLOB_CACHE_SIZE,
     MAX_GALAXY_RESPONSE_SIZE,
-    CACHE_TTL_SECONDS,
-    TIMEOUT_FAST,
+    MAX_VERSION_CACHE_SIZE,
     TIMEOUT_DEFAULT,
+    TIMEOUT_FAST,
     TIMEOUT_SLOW,
+    GalaxyClient,
+    _get_blob_cache,
+    _get_version_cache,
+    _put_blob_cache,
+    _put_version_cache,
+    clear_cache,
 )
 
 
@@ -129,7 +129,9 @@ SAMPLE_SEARCH_RESPONSE = {
             "is_signed": False,
             "repository": {},
             "repository_version": "",
-            "namespace_metadata": {"pulp_href": "", "name": "netbox", "company": "", "description": "", "avatar_url": None},
+            "namespace_metadata": {
+                "pulp_href": "", "name": "netbox", "company": "", "description": "", "avatar_url": None,
+            },
         },
         {
             "collection_version": {
@@ -149,7 +151,9 @@ SAMPLE_SEARCH_RESPONSE = {
             "is_signed": False,
             "repository": {},
             "repository_version": "",
-            "namespace_metadata": {"pulp_href": "", "name": "deprecated_ns", "company": "", "description": "", "avatar_url": None},
+            "namespace_metadata": {
+                "pulp_href": "", "name": "deprecated_ns", "company": "", "description": "", "avatar_url": None,
+            },
         },
     ],
 }
@@ -236,7 +240,9 @@ class TestSearchCollections:
                     },
                     "is_highest": True, "is_deprecated": False, "is_signed": False,
                     "repository": {}, "repository_version": "",
-                    "namespace_metadata": {"pulp_href": "", "name": "", "company": "", "description": "", "avatar_url": None},
+                    "namespace_metadata": {
+                    "pulp_href": "", "name": "", "company": "", "description": "", "avatar_url": None,
+                },
                 },
                 {
                     "collection_version": {
@@ -247,7 +253,9 @@ class TestSearchCollections:
                     },
                     "is_highest": True, "is_deprecated": False, "is_signed": False,
                     "repository": {}, "repository_version": "",
-                    "namespace_metadata": {"pulp_href": "", "name": "", "company": "", "description": "", "avatar_url": None},
+                    "namespace_metadata": {
+                    "pulp_href": "", "name": "", "company": "", "description": "", "avatar_url": None,
+                },
                 },
             ],
         }
@@ -302,7 +310,9 @@ class TestDetailEnrichmentFailure:
                 },
                 "is_highest": True, "is_deprecated": False, "is_signed": False,
                 "repository": {}, "repository_version": "",
-                "namespace_metadata": {"pulp_href": "", "name": "", "company": "", "description": "", "avatar_url": None},
+                "namespace_metadata": {
+                    "pulp_href": "", "name": "", "company": "", "description": "", "avatar_url": None,
+                },
             }],
         }
 
@@ -332,7 +342,9 @@ class TestDetailEnrichmentFailure:
                     },
                     "is_highest": True, "is_deprecated": False, "is_signed": False,
                     "repository": {}, "repository_version": "",
-                    "namespace_metadata": {"pulp_href": "", "name": "", "company": "", "description": "", "avatar_url": None},
+                    "namespace_metadata": {
+                    "pulp_href": "", "name": "", "company": "", "description": "", "avatar_url": None,
+                },
                 },
                 {
                     "collection_version": {
@@ -343,7 +355,9 @@ class TestDetailEnrichmentFailure:
                     },
                     "is_highest": True, "is_deprecated": False, "is_signed": False,
                     "repository": {}, "repository_version": "",
-                    "namespace_metadata": {"pulp_href": "", "name": "", "company": "", "description": "", "avatar_url": None},
+                    "namespace_metadata": {
+                    "pulp_href": "", "name": "", "company": "", "description": "", "avatar_url": None,
+                },
                 },
             ],
         }
@@ -758,7 +772,9 @@ class TestSearchCollectionsEdgeCases:
                     },
                     "is_highest": True, "is_deprecated": False, "is_signed": False,
                     "repository": {}, "repository_version": "",
-                    "namespace_metadata": {"pulp_href": "", "name": "", "company": "", "description": "", "avatar_url": None},
+                    "namespace_metadata": {
+                    "pulp_href": "", "name": "", "company": "", "description": "", "avatar_url": None,
+                },
                 },
             ],
         }
@@ -789,7 +805,9 @@ class TestSearchCollectionsEdgeCases:
                 },
                 "is_highest": True, "is_deprecated": False, "is_signed": False,
                 "repository": {}, "repository_version": "",
-                "namespace_metadata": {"pulp_href": "", "name": "", "company": "", "description": "", "avatar_url": None},
+                "namespace_metadata": {
+                    "pulp_href": "", "name": "", "company": "", "description": "", "avatar_url": None,
+                },
             }],
         }
 
@@ -1072,7 +1090,7 @@ class TestEnrichmentSemaphore:
     @pytest.mark.asyncio
     async def test_limits_concurrent_enrichment(self):
         import asyncio
-        from ansible_know.galaxy import _enrichment_semaphore
+
 
         max_concurrent = 0
         current_concurrent = 0
@@ -1117,3 +1135,44 @@ class TestEnrichmentSemaphore:
                 await client.search_collections("test")
 
         assert max_concurrent <= 5, f"Expected max 5 concurrent, got {max_concurrent}"
+
+
+class TestGalaxyClientCleanup:
+    @pytest.mark.asyncio
+    async def test_close_closes_owned_client(self):
+        mock_client = AsyncMock()
+        with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
+            gc = GalaxyClient()
+            gc._get_client()
+            assert gc._owned_client is not None
+            await gc.close()
+        mock_client.aclose.assert_called_once()
+        assert gc._owned_client is None
+
+    @pytest.mark.asyncio
+    async def test_close_noop_when_no_owned_client(self):
+        gc = GalaxyClient()
+        await gc.close()
+        assert gc._owned_client is None
+
+    @pytest.mark.asyncio
+    async def test_close_noop_with_injected_client(self):
+        injected = AsyncMock()
+        gc = GalaxyClient(http_client=injected)
+        await gc.close()
+        injected.aclose.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_async_context_manager_closes_owned(self):
+        mock_client = _mock_client_get(SAMPLE_VERSIONS_RESPONSE)
+        with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
+            async with GalaxyClient() as gc:
+                await gc.latest_version("netbox", "netbox")
+        mock_client.aclose.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_async_context_manager_noop_with_injected(self):
+        injected = _mock_client_get(SAMPLE_VERSIONS_RESPONSE)
+        async with GalaxyClient(http_client=injected) as gc:
+            await gc.latest_version("netbox", "netbox")
+        injected.aclose.assert_not_called()

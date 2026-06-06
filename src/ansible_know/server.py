@@ -14,22 +14,22 @@ from functools import partial
 from typing import Annotated, Any
 
 import httpx
-from fastmcp import FastMCP, Context
+from fastmcp import Context, FastMCP
 from fastmcp.server.lifespan import lifespan
 from mcp.types import ToolAnnotations
 
 from ansible_know.errors import AnsibleDocError, ValidationError
 from ansible_know.validation import (
-    validate_fqcn,
-    validate_namespace,
-    validate_keyword,
-    validate_version,
-    validate_query,
-    validate_tags,
-    validate_install_path,
-    validate_path_containment,
     sanitize_error,
     truncate_response,
+    validate_fqcn,
+    validate_install_path,
+    validate_keyword,
+    validate_namespace,
+    validate_path_containment,
+    validate_query,
+    validate_tags,
+    validate_version,
 )
 
 logger = logging.getLogger("ansible_know")
@@ -89,7 +89,9 @@ def _maybe_add_hint(error_msg: str, namespace: str | None) -> str:
     return error_msg
 
 
-async def _resolve_module_doc(module_name: str, http_client: httpx.AsyncClient | None = None) -> tuple[dict, dict | None]:
+async def _resolve_module_doc(
+    module_name: str, http_client: httpx.AsyncClient | None = None,
+) -> tuple[dict, dict | None]:
     """Try local ansible-doc, fall back to Galaxy if the collection is missing.
 
     Returns (raw_doc, galaxy_meta_or_none). Raises on non-missing-collection
@@ -103,8 +105,8 @@ async def _resolve_module_doc(module_name: str, http_client: httpx.AsyncClient |
     if namespace and namespace in _missing_collections:
         try:
             from ansible_know.galaxy import GalaxyClient
-            client = GalaxyClient(http_client=http_client)
-            galaxy_doc, galaxy_meta = await client.fetch_module_doc(module_name)
+            async with GalaxyClient(http_client=http_client) as client:
+                galaxy_doc, galaxy_meta = await client.fetch_module_doc(module_name)
             return galaxy_doc, galaxy_meta
         except GalaxyError as galaxy_exc:
             raise CollectionNotFoundError(
@@ -121,8 +123,8 @@ async def _resolve_module_doc(module_name: str, http_client: httpx.AsyncClient |
         try:
             from ansible_know.galaxy import GalaxyClient
 
-            client = GalaxyClient(http_client=http_client)
-            galaxy_doc, galaxy_meta = await client.fetch_module_doc(module_name)
+            async with GalaxyClient(http_client=http_client) as client:
+                galaxy_doc, galaxy_meta = await client.fetch_module_doc(module_name)
             return galaxy_doc, galaxy_meta
         except GalaxyError as galaxy_exc:
             logger.warning("Galaxy fallback also failed: %s", galaxy_exc)
@@ -263,8 +265,8 @@ async def search_collections(
         from ansible_know.galaxy import GalaxyClient
 
         http_client = ctx.lifespan_context.get("http_client") if ctx else None
-        client = GalaxyClient(http_client=http_client)
-        return await client.search_collections(query, tags=tags)
+        async with GalaxyClient(http_client=http_client) as client:
+            return await client.search_collections(query, tags=tags)
     except Exception as exc:
         logger.warning("search_collections failed: %s", exc)
         return {"error": sanitize_error(str(exc))}
@@ -287,7 +289,7 @@ async def get_collection_manifest(
         return {"error": str(exc)}
 
     try:
-        from ansible_know import parser, collection_manifest
+        from ansible_know import collection_manifest, parser
 
         cached = collection_manifest.load_cached_manifest(collection_namespace)
         if cached:
@@ -319,7 +321,10 @@ async def get_collection_manifest(
 @mcp.tool(annotations=ToolAnnotations(idempotentHint=True, readOnlyHint=False, destructiveHint=False))
 async def ensure_collection(
     collection_namespace: Annotated[str, "Collection namespace (e.g. 'netbox.netbox')"],
-    version: Annotated[str | None, "Optional version (e.g. '4.1.0'). If omitted, installs latest and pins the resolved version."] = None,
+    version: Annotated[
+        str | None,
+        "Optional version (e.g. '4.1.0'). If omitted, installs latest and pins the resolved version.",
+    ] = None,
 ) -> dict[str, Any]:
     """Install a collection to a temporary directory for this session.
 
@@ -504,7 +509,7 @@ async def generate_collection_skills(
         return {"error": str(exc)}
 
     try:
-        from ansible_know import parser, skills, collection_manifest
+        from ansible_know import collection_manifest, parser, skills
         from ansible_know.config import SKILLS_DIR
 
         modules = await _run_in_executor(parser.search_modules, "", collection_namespace)
@@ -562,8 +567,9 @@ async def generate_collection_skills(
 
 @mcp.resource("skills://list", name="Available Skills", description="List all generated skill packages")
 def resource_skills_list() -> str:
-    from ansible_know.config import SKILLS_DIR
     import json
+
+    from ansible_know.config import SKILLS_DIR
 
     skills = []
     if SKILLS_DIR.exists():
@@ -615,8 +621,9 @@ def resource_installed_collections() -> str:
     description="List configured documentation manifest sources",
 )
 def resource_doc_sources() -> str:
-    from ansible_know.config import get_doc_sources
     import json
+
+    from ansible_know.config import get_doc_sources
 
     sources = get_doc_sources()
     return json.dumps(

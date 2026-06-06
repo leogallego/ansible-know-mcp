@@ -55,12 +55,12 @@ def _run_ansible_doc(*args: str) -> str:
             timeout=60,
             env=env,
         )
-    except FileNotFoundError:
+    except FileNotFoundError as exc:
         raise AnsibleDocError(
             "ansible-doc not found. Install ansible-core: pip install ansible-core"
-        )
-    except subprocess.TimeoutExpired:
-        raise AnsibleDocError(f"ansible-doc timed out: {' '.join(cmd)}")
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise AnsibleDocError(f"ansible-doc timed out: {' '.join(cmd)}") from exc
 
     if result.returncode != 0:
         msg = f"ansible-doc failed (exit {result.returncode}): {result.stderr.strip()}"
@@ -81,7 +81,7 @@ def get_module_doc(module_name: str) -> dict[str, Any]:
     try:
         doc = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise AnsibleDocError(f"Failed to parse ansible-doc JSON: {exc}")
+        raise AnsibleDocError(f"Failed to parse ansible-doc JSON: {exc}") from exc
     return doc
 
 
@@ -102,7 +102,7 @@ def list_modules(namespace: str | None = None) -> dict[str, str]:
     try:
         modules = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise AnsibleDocError(f"Failed to parse module list JSON: {exc}")
+        raise AnsibleDocError(f"Failed to parse module list JSON: {exc}") from exc
     return modules
 
 

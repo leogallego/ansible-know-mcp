@@ -2,16 +2,16 @@
 
 import json
 import threading
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ansible_know.errors import CollectionInstallError
 from ansible_know.collections import (
     ensure_collection,
     get_collections_path,
     list_installed,
 )
+from ansible_know.errors import CollectionInstallError
 
 
 @pytest.fixture(autouse=True)
@@ -178,8 +178,9 @@ class TestVersionParsing:
         manifest_data = {"collection_info": {"version": "3.5.0"}}
         with patch("ansible_know.collections._find_ansible_galaxy", return_value="/usr/bin/ansible-galaxy"):
             with patch("subprocess.run", return_value=_make_subprocess_result(stdout=galaxy_stdout)):
-                import ansible_know.collections as col
                 import tempfile
+
+                import ansible_know.collections as col
                 col._tmp_dir = tempfile.TemporaryDirectory()
                 from pathlib import Path
                 manifest_dir = Path(col._tmp_dir.name) / "ansible_collections" / "netbox" / "netbox"
