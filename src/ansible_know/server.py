@@ -173,6 +173,7 @@ async def get_module_doc(
     examples (raw YAML), is_api_module, doc_source ('local' or 'galaxy').
     When doc_source is 'galaxy', also includes doc_version and optionally doc_warning.
     Falls back to Galaxy if collection is not installed locally.
+    On failure returns {"error": str}.
     """
     logger.info("get_module_doc module=%r", module_name)
     try:
@@ -207,10 +208,11 @@ async def search_docs(
     topic: Annotated[str | None, "Filter by topic tag"] = None,
     audience: Annotated[str | None, "Filter by audience tag"] = None,
     core_only: Annotated[bool, "If true, only return entries marked as core"] = False,
-) -> list[dict[str, Any]]:
+) -> list[dict[str, Any]] | dict[str, str]:
     """Search documentation manifests for conceptual guides.
 
     Returns up to 20 matching entries with title, summary, topic, audience, lines, source, and raw URL.
+    On failure returns {"error": str}.
     """
     logger.info("search_docs query=%r", query)
     try:
@@ -247,6 +249,7 @@ async def search_collections(
     Returns: {"query": str, "count": int, "collections": [{"namespace": str,
     "description": str, "tags": [str], "latest_version": str, "module_count": int,
     "download_count": int, "deprecated": bool, "signed": bool}, ...]}
+    On failure returns {"error": str}.
     """
     logger.info("search_collections query=%r tags=%r", query, tags)
     try:
@@ -275,6 +278,7 @@ async def get_collection_manifest(
 
     Returns cached MANIFEST.json if available, otherwise generates on-demand
     (metadata extraction only, no skill generation).
+    On failure returns {"error": str}.
     """
     logger.info("get_collection_manifest namespace=%r", collection_namespace)
     try:
@@ -330,6 +334,7 @@ async def ensure_collection(
     - status: 'installed' (freshly installed or upgraded) or
       'already_installed' (same version already present, no action taken)
     - message: str — human-readable summary including the active version
+    On failure returns {"error": str}.
     """
     logger.info("ensure_collection namespace=%r version=%r", collection_namespace, version)
     try:
@@ -358,7 +363,7 @@ async def ensure_collection(
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
-async def list_skills() -> list[dict[str, str]]:
+async def list_skills() -> list[dict[str, str]] | dict[str, str]:
     """List all available generated skills. Returns name, description, path for each.
 
     Returns: [{"name": str, "description": str, "path": str}, ...] or {"error": str} on failure.
@@ -395,7 +400,7 @@ async def list_skills() -> list[dict[str, str]]:
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_skill(
     skill_name: Annotated[str, "Skill name (usually the module FQCN)"],
-) -> str:
+) -> str | dict[str, str]:
     """Read a specific skill's SKILL.md content by name.
 
     Returns: SKILL.md content as str, or {"error": str} on failure/not found.
@@ -426,7 +431,7 @@ async def generate_skill(
     module_name: Annotated[str, "Fully-qualified module name (e.g. 'ansible.builtin.copy')"],
     install_to: Annotated[str | None, "Optional absolute path to install the skill to"] = None,
     ctx: Context = None,
-) -> str:
+) -> str | dict[str, str]:
     """Generate a skill package for one module.
 
     Writes SKILL.md + scripts + playbook to disk.
@@ -487,7 +492,8 @@ async def generate_collection_skills(
     """Batch generate skills for an entire collection.
 
     Generates/updates the collection MANIFEST.json as a byproduct.
-    Returns summary (succeeded/failed counts) + manifest content.
+    Returns {"succeeded": int, "failed": int, "total": int, "manifest": dict},
+    or {"error": str} on failure.
     """
     logger.info("generate_collection_skills namespace=%r install_to=%r", collection_namespace, install_to)
     try:
