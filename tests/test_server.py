@@ -210,7 +210,8 @@ class TestNamespaceValidation:
     async def test_accepts_valid_namespace(self, mock_ansible_doc):
         mock_ansible_doc.return_value = json.dumps({})
         from ansible_know.server import get_collection_manifest
-        result = await get_collection_manifest("ansible.builtin")
+        with patch("ansible_know.collection_manifest.load_cached_manifest", return_value=None):
+            result = await get_collection_manifest("ansible.builtin")
         assert "error" in result  # empty collection, but validation passed
 
 

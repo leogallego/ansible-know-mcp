@@ -68,6 +68,14 @@ def _run_ansible_doc(*args: str) -> str:
         if any(p in msg_lower for p in _MISSING_COLLECTION_PATTERNS):
             raise CollectionNotFoundError(msg)
         raise AnsibleDocError(msg)
+
+    if result.stdout.strip() in ("", "{}"):
+        stderr_lower = result.stderr.lower()
+        if any(p in stderr_lower for p in _MISSING_COLLECTION_PATTERNS):
+            raise CollectionNotFoundError(
+                f"ansible-doc returned empty output: {result.stderr.strip()}"
+            )
+
     return result.stdout
 
 

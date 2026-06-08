@@ -201,5 +201,35 @@ class TestCollectionNotFoundDetection:
                     with pytest.raises(AnsibleDocError, match="timed out"):
                         _run_ansible_doc("ansible.builtin.copy", "--json")
 
+    def test_raises_collection_not_found_on_exit_0_with_empty_json(self):
+        with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):
+            with patch("ansible_know.collections.get_collections_path", return_value=None):
+                with patch("subprocess.run", return_value=MagicMock(
+                    returncode=0, stdout='{}', stderr='[WARNING]: kubernetes.core.k8s was not found',
+                )):
+                    from ansible_know.parser import _run_ansible_doc
+                    with pytest.raises(CollectionNotFoundError, match="was not found"):
+                        _run_ansible_doc("kubernetes.core.k8s", "--json")
+
+    def test_raises_collection_not_found_on_exit_0_with_empty_stdout(self):
+        with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):
+            with patch("ansible_know.collections.get_collections_path", return_value=None):
+                with patch("subprocess.run", return_value=MagicMock(
+                    returncode=0, stdout='', stderr='[WARNING]: some.col.mod was not found',
+                )):
+                    from ansible_know.parser import _run_ansible_doc
+                    with pytest.raises(CollectionNotFoundError, match="was not found"):
+                        _run_ansible_doc("some.col.mod", "--json")
+
+    def test_returns_normally_on_exit_0_with_valid_json(self):
+        with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):
+            with patch("ansible_know.collections.get_collections_path", return_value=None):
+                with patch("subprocess.run", return_value=MagicMock(
+                    returncode=0, stdout='{"ansible.builtin.copy": {}}', stderr='',
+                )):
+                    from ansible_know.parser import _run_ansible_doc
+                    result = _run_ansible_doc("ansible.builtin.copy", "--json")
+                    assert "ansible.builtin.copy" in result
+
     def test_collection_not_found_is_subclass_of_ansible_doc_error(self):
         assert issubclass(CollectionNotFoundError, AnsibleDocError)
