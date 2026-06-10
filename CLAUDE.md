@@ -75,10 +75,13 @@ src/ansible_know/
 ## Testing
 
 ```bash
-pytest tests/ -v
+pytest tests/ -v                          # unit tests only (mocked, no ansible-core needed)
+pytest tests/ --run-integration           # include integration tests (needs ansible-core + network)
+ruff check src/ tests/                    # lint
+pytest --cov=ansible_know                 # coverage report
 ```
 
-All tests use `unittest.mock.patch` to mock `_run_ansible_doc`. No ansible-core installation is needed to run the test suite.
+Unit tests mock `_run_ansible_doc` — no ansible-core needed. Integration tests (`tests/integration/`) hit real ansible-doc and Galaxy API, skipped by default.
 
 ## Registration
 
