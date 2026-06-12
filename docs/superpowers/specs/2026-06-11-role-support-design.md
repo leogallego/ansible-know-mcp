@@ -82,6 +82,11 @@ Result shape adds one field:
 }
 ```
 
+**No extra API call needed:** The Galaxy search endpoint already includes
+`contents` in each result (see `collection_version.contents` in the search
+response). The existing code counts modules from this array — we add an
+identical count for roles.
+
 **Files:** `src/ansible_know/galaxy.py` (search_collections method),
 `tests/test_galaxy.py`, `tests/test_server.py`.
 
@@ -117,6 +122,15 @@ New manifest shape:
 
 The `has_argument_specs` flag tells the LLM whether `get_role_doc` will return
 structured options or README-parsed data.
+
+**Schema note:** Manifest `entry_points` is a list of entry point names
+(summary). `get_role_doc` returns full `entry_points` dict with nested
+options (detail). Collections with zero roles return `role_count: 0,
+roles: []`.
+
+**Backward compatibility:** New fields (`role_count`, `roles`) are additive.
+Consumers built for pre-v0.3.0 manifests ignore them — module-only
+functionality is unchanged.
 
 **Files:** `src/ansible_know/parser.py` (new functions),
 `src/ansible_know/collection_manifest.py` (generate_manifest),
@@ -157,6 +171,7 @@ async def get_role_doc(
 ```python
 {
     "role_name": "fedora.linux_system_roles.timesync",
+    "content_type": "role",
     "short_description": "Configure time synchronization",
     "doc_source": "local",  # "local" | "galaxy_readme" | "unavailable"
     "entry_points": {
@@ -182,7 +197,10 @@ async def get_role_doc(
 ```
 
 When `doc_source` is `"galaxy_readme"`, the `entry_points` will have a
-synthetic `"main"` entry with variables extracted from the README.
+synthetic `"main"` entry with variables extracted from the README. If
+README parsing yields no variables, entry_points is
+`{"main": {"description": "<from README>", "options": []}}`. Roles
+always have at least a synthetic `"main"` entry point.
 
 ### Validation
 
@@ -307,7 +325,9 @@ def parse_role_readme(html: str) -> dict[str, Any]:
 
 - Never raises on malformed HTML — returns empty/partial results
 - Uses `html.parser.HTMLParser` which handles malformed HTML gracefully
-- Size limit: truncate HTML input at 1MB to prevent memory issues
+- Size limit: hard truncate HTML input at 1MB (`html[:1_000_000]`).
+  Truncation may produce malformed HTML — the parser handles this
+  gracefully via best-effort extraction. No warning added to output.
 - Type annotations on all functions, `from __future__ import annotations`
 - Exception handling follows try-except skill: only catch specific exceptions
   from external state (HTML parsing), never catch broad `Exception`
@@ -354,6 +374,13 @@ def get_role_doc(role_name: str) -> dict[str, Any]:
     lacks argument_specs.yml (same as ansible-doc behavior).
     """
 ```
+
+**Empty `{}` handling:** `ansible-doc -t role` returns `{}` with exit 0 and
+empty stderr when the role exists but has no `argument_specs.yml`. This is
+distinct from a missing collection (exit 0, `{}`, stderr contains
+"was not found"). The existing `_run_ansible_doc` already handles missing
+collections. For the undocumented-role case (`{}` with clean stderr), the
+server layer treats this as "fall through to Galaxy" — not an error.
 
 ### `extract_role_metadata(role_doc)`
 
@@ -404,21 +431,26 @@ def _find_role(
 
 ### `fetch_role_doc(role_name, version=None)`
 
-Fetches docs-blob, finds the role entry, returns readme_html for parsing.
+Fetches docs-blob, finds the role entry, parses readme_html internally,
+and returns structured metadata matching the `extract_role_metadata()` shape.
+This mirrors `fetch_module_doc` which transforms docs-blob data to
+ansible-doc format internally via `_transform_to_ansible_doc_format`.
 
 ```python
 async def fetch_role_doc(
     self, role_name: str, version: str | None = None,
-) -> tuple[str, dict[str, str]]:
-    """Fetch role README HTML from Galaxy docs-blob.
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Fetch role documentation from Galaxy docs-blob.
 
-    Returns (readme_html, meta) where meta contains provenance fields.
+    Parses readme_html via readme_parser.parse_role_readme() and returns
+    structured metadata in the same shape as extract_role_metadata().
+    Returns (role_metadata, meta) where meta contains provenance fields.
     Raises GalaxyError if the role is not found in the blob.
     """
 ```
 
-Returns the raw HTML string + metadata dict. The caller (server.py) passes
-the HTML to `readme_parser.parse_role_readme()`.
+Returns structured role metadata + provenance dict. Transformation lives
+in `galaxy.py`, keeping `server.py` thin — same pattern as modules.
 
 ### `list_collection_roles(collection_fqcn, version=None)`
 
@@ -549,8 +581,12 @@ minimal implementation.
 **`tests/test_server.py`** — new tests:
 - `get_role_doc` tool — local resolution, Galaxy fallback, graceful
   degradation, validation errors
+- `get_role_doc` — cached missing collection skips ansible-doc
+- `get_role_doc` — Galaxy readme parsing returns empty fields
+- `get_role_doc` — role in docs-blob but readme_html is empty string
 - `generate_role_skill` tool — success path, install_to param
 - `get_collection_manifest` — roles section in manifest
+- `get_collection_manifest` — collection with zero roles returns empty list
 - `search_collections` — role_count in results
 
 **`tests/test_collection_manifest.py`** — new tests:
@@ -672,6 +708,11 @@ SAMPLE_ROLE_README_HTML = """
 - Full HTML-to-markdown conversion — we extract structured fields only
 - README.md from source repos (we use Galaxy readme_html)
 - Galaxy legacy roles (v1 API) — only collection roles
+- Name collision handling — a collection can have a module and role with
+  the same short name (e.g., `namespace.collection.timesync`). They appear
+  as separate entries in the manifest (`modules` vs `roles` sections) and
+  are accessed via separate tools (`get_module_doc` vs `get_role_doc`).
+  The `content_type` field in responses disambiguates.
 
 ---
 
