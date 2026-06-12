@@ -215,3 +215,84 @@ def extract_module_metadata(module_doc: dict[str, Any]) -> dict[str, Any]:
         "examples": extract_examples(module_doc),
         "is_api_module": is_api_module(module_doc),
     }
+
+
+def list_roles(namespace: str | None = None) -> dict[str, dict[str, Any]]:
+    """List available roles with descriptions and entry points.
+
+    Returns dict mapping FQCNs to {collection, description, entry_points}.
+    """
+    args = ["--list", "-t", "role", "--json"]
+    if namespace:
+        args.append(namespace)
+    raw = _run_ansible_doc(*args)
+    try:
+        roles = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise AnsibleDocError(f"Failed to parse role list JSON: {exc}") from exc
+    return roles
+
+
+def get_role_doc(role_name: str) -> dict[str, Any]:
+    """Fetch full documentation for a single role.
+
+    Returns parsed JSON from ansible-doc. Returns {} if the role
+    lacks argument_specs.yml (same as ansible-doc behavior).
+    """
+    raw = _run_ansible_doc("-t", "role", role_name, "--json")
+    try:
+        doc = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise AnsibleDocError(f"Failed to parse role doc JSON: {exc}") from exc
+    return doc
+
+
+def extract_role_metadata(role_doc: dict[str, Any]) -> dict[str, Any]:
+    """Extract metadata from ansible-doc -t role JSON output.
+
+    Returns dict with role_name, short_description, and entry_points.
+    Each entry point has description and options list matching the module
+    params schema (name, type, required, default, description).
+    """
+    if not role_doc:
+        return {"role_name": "", "short_description": "", "entry_points": {}}
+
+    role_name = next(iter(role_doc))
+    role_data = role_doc[role_name]
+    raw_entry_points = role_data.get("entry_points", {})
+
+    first_desc = ""
+    entry_points: dict[str, dict[str, Any]] = {}
+
+    for ep_name, ep_data in raw_entry_points.items():
+        desc = ep_data.get("description", "")
+        if isinstance(desc, list):
+            desc = " ".join(desc)
+        if not first_desc:
+            first_desc = desc
+
+        options_raw = ep_data.get("options", {})
+        options: list[dict[str, Any]] = []
+        for opt_name, opt_spec in options_raw.items():
+            opt_desc = opt_spec.get("description", "")
+            if isinstance(opt_desc, list):
+                opt_desc = " ".join(opt_desc)
+            options.append({
+                "name": opt_name,
+                "type": opt_spec.get("type", "str"),
+                "required": opt_spec.get("required", False),
+                "default": opt_spec.get("default"),
+                "description": opt_desc,
+            })
+        options.sort(key=lambda o: (not o["required"], o["name"]))
+
+        entry_points[ep_name] = {
+            "description": desc,
+            "options": options,
+        }
+
+    return {
+        "role_name": role_name,
+        "short_description": first_desc,
+        "entry_points": entry_points,
+    }
