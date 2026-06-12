@@ -128,6 +128,129 @@ SAMPLE_MODULE_LIST = {
     "community.general.redis": "Various redis commands, replica and flush",
 }
 
+SAMPLE_ROLE_DOC = {
+    "fedora.linux_system_roles.gfs2": {
+        "collection": "fedora.linux_system_roles",
+        "entry_points": {
+            "main": {
+                "description": "The gfs2 role.",
+                "options": {
+                    "gfs2_cluster_name": {
+                        "description": "The name of the cluster.",
+                        "required": True,
+                        "type": "str",
+                    },
+                    "gfs2_enable_repos": {
+                        "description": "Whether to enable required repos.",
+                        "required": False,
+                        "type": "bool",
+                    },
+                },
+            },
+        },
+    },
+}
+
+SAMPLE_ROLE_LIST = {
+    "fedora.linux_system_roles.timesync": {
+        "collection": "fedora.linux_system_roles",
+        "description": "UNDOCUMENTED",
+        "entry_points": {},
+    },
+    "fedora.linux_system_roles.gfs2": {
+        "collection": "fedora.linux_system_roles",
+        "description": "The gfs2 role.",
+        "entry_points": {"main": {}},
+    },
+}
+
+SAMPLE_ROLE_README_HTML = """
+<h1>Timesync Role</h1>
+<p>Configure time synchronization using NTP or PTP.</p>
+<h2>Role Variables</h2>
+<table>
+<thead><tr><th>Variable</th><th>Default</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td>timesync_ntp_servers</td><td>[]</td><td>List of NTP servers</td></tr>
+<tr><td>timesync_ptp_domains</td><td>[]</td><td>List of PTP domains</td></tr>
+</tbody>
+</table>
+<h2>Example Playbook</h2>
+<pre><code>---
+- hosts: all
+  roles:
+    - fedora.linux_system_roles.timesync
+</code></pre>
+<h2>Dependencies</h2>
+<p>None.</p>
+"""
+
+SAMPLE_ROLE_README_HTML_HEADING_VARS = """
+<h1>SAP Role</h1>
+<p>Manage SAP operations on target hosts.</p>
+<h2>Role Variables</h2>
+<h4>sap_state</h4>
+<p>Type: str</p>
+<p>Default: present</p>
+<p>Required: false</p>
+<p>The desired state of SAP.</p>
+<h4>sap_instance_number</h4>
+<p>Type: str</p>
+<p>Required: true</p>
+<p>The SAP instance number.</p>
+<h2>Example Playbook</h2>
+<pre><code>---
+- hosts: all
+  roles:
+    - sap.sap_operations.sap_role
+</code></pre>
+"""
+
+SAMPLE_ROLE_README_HTML_CODEBLOCK_VARS = """
+<h1>Docker Role</h1>
+<p>Install and configure Docker.</p>
+<h2>Role Variables</h2>
+<pre><code>docker_edition: ce</code></pre>
+<p>The edition of Docker to install (ce or ee).</p>
+<pre><code>docker_packages_state: present</code></pre>
+<p>State for Docker packages.</p>
+"""
+
+SAMPLE_DOCS_BLOB_WITH_ROLES = {
+    "docs_blob": {
+        "contents": [
+            {
+                "content_type": "module",
+                "content_name": "some_module",
+                "doc_strings": {
+                    "doc": {
+                        "short_description": "A module",
+                        "description": [],
+                        "options": [],
+                    },
+                    "examples": "",
+                    "return": [],
+                    "metadata": {},
+                },
+            },
+            {
+                "content_type": "role",
+                "content_name": "timesync",
+                "doc_strings": {},
+                "readme_file": "README.md",
+                "readme_html": SAMPLE_ROLE_README_HTML.strip(),
+            },
+            {
+                "content_type": "role",
+                "content_name": "network",
+                "doc_strings": {},
+                "readme_file": "README.md",
+                "readme_html": "<h1>Network</h1><p>Configure networking.</p>",
+            },
+        ],
+    },
+}
+
 
 @pytest.fixture
 def sample_module_doc():
@@ -157,3 +280,33 @@ def sample_module_list():
 @pytest.fixture
 def sample_module_list_json():
     return json.dumps(SAMPLE_MODULE_LIST)
+
+
+@pytest.fixture
+def sample_role_doc():
+    return SAMPLE_ROLE_DOC
+
+
+@pytest.fixture
+def sample_role_doc_json():
+    return json.dumps(SAMPLE_ROLE_DOC)
+
+
+@pytest.fixture
+def sample_role_list():
+    return SAMPLE_ROLE_LIST
+
+
+@pytest.fixture
+def sample_role_list_json():
+    return json.dumps(SAMPLE_ROLE_LIST)
+
+
+@pytest.fixture
+def sample_role_readme_html():
+    return SAMPLE_ROLE_README_HTML
+
+
+@pytest.fixture
+def sample_docs_blob_with_roles():
+    return SAMPLE_DOCS_BLOB_WITH_ROLES
