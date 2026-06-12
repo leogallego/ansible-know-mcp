@@ -6,7 +6,10 @@ from ansible_know.skills import (
     _build_example_args,
     _extract_example_values,
     _module_to_skill_name,
+    _role_template_context,
+    render_role_skill,
     render_skill,
+    write_role_skill_package,
     write_skill_package,
 )
 
@@ -100,3 +103,83 @@ class TestWriteSkillPackage:
         import os
         run_sh = output_dir / "scripts" / "run.sh"
         assert os.access(run_sh, os.X_OK)
+
+
+class TestRoleTemplateContext:
+    def test_builds_context_from_role_metadata(self):
+        metadata = {
+            "role_name": "fedora.linux_system_roles.timesync",
+            "short_description": "Configure time synchronization",
+            "entry_points": {
+                "main": {
+                    "description": "Configure time synchronization",
+                    "options": [
+                        {"name": "timesync_ntp_servers", "type": "list", "required": False, "default": "[]", "description": "List of NTP servers"},
+                    ],
+                },
+            },
+            "dependencies": [],
+            "examples": "- hosts: all\n  roles:\n    - fedora.linux_system_roles.timesync",
+            "doc_source": "galaxy_readme",
+        }
+        ctx = _role_template_context(metadata)
+        assert ctx["role_name"] == "fedora.linux_system_roles.timesync"
+        assert ctx["short_description"] == "Configure time synchronization"
+        assert len(ctx["entry_points"]) == 1
+        assert ctx["dependencies"] == []
+        assert "hosts: all" in ctx["examples"]
+
+
+class TestRenderRoleSkill:
+    def test_renders_role_skill(self):
+        metadata = {
+            "role_name": "fedora.linux_system_roles.timesync",
+            "short_description": "Configure time synchronization",
+            "entry_points": {
+                "main": {
+                    "description": "Configure time synchronization",
+                    "options": [
+                        {"name": "timesync_ntp_servers", "type": "list", "required": False, "default": "[]", "description": "List of NTP servers"},
+                    ],
+                },
+            },
+            "dependencies": [],
+            "examples": "- hosts: all\n  roles:\n    - fedora.linux_system_roles.timesync",
+            "doc_source": "local",
+        }
+        content = render_role_skill(metadata)
+        assert "fedora.linux_system_roles.timesync" in content
+        assert "Configure time synchronization" in content
+        assert "timesync_ntp_servers" in content
+        assert "## Variables" in content or "## Entry Points" in content
+
+
+class TestWriteRoleSkillPackage:
+    def test_writes_skill_and_playbook(self, tmp_path):
+        metadata = {
+            "role_name": "fedora.linux_system_roles.timesync",
+            "short_description": "Configure time synchronization",
+            "entry_points": {
+                "main": {
+                    "description": "Configure time synchronization",
+                    "options": [
+                        {"name": "timesync_ntp_servers", "type": "list", "required": False, "default": "[]", "description": "List of NTP servers"},
+                    ],
+                },
+            },
+            "dependencies": [],
+            "examples": "",
+            "doc_source": "galaxy_readme",
+        }
+        output_dir = tmp_path / "fedora.linux_system_roles.timesync"
+        write_role_skill_package(output_dir, metadata)
+
+        assert (output_dir / "SKILL.md").exists()
+        assert (output_dir / "assets" / "playbook.yml").exists()
+        assert not (output_dir / "scripts").exists()
+
+        skill_content = (output_dir / "SKILL.md").read_text()
+        assert "fedora.linux_system_roles.timesync" in skill_content
+
+        playbook_content = (output_dir / "assets" / "playbook.yml").read_text()
+        assert "fedora.linux_system_roles.timesync" in playbook_content
