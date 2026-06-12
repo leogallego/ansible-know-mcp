@@ -58,3 +58,31 @@ class TestRealGalaxyAPI:
         async with GalaxyClient() as client:
             with pytest.raises(GalaxyError):
                 await client.latest_version("nonexistent_ns_12345", "fake_col_67890")
+
+
+class TestRealGalaxyAPIRoles:
+    @pytest.mark.asyncio
+    async def test_list_collection_roles_real(self):
+        async with GalaxyClient() as client:
+            roles, meta = await client.list_collection_roles("fedora.linux_system_roles")
+        assert len(roles) > 0
+        assert meta["source"] == "galaxy"
+        assert any("timesync" in fqcn for fqcn in roles)
+
+    @pytest.mark.asyncio
+    async def test_fetch_role_doc_real(self):
+        async with GalaxyClient() as client:
+            role_meta, meta = await client.fetch_role_doc(
+                "fedora.linux_system_roles.timesync",
+            )
+        assert role_meta["role_name"] == "fedora.linux_system_roles.timesync"
+        assert meta["doc_source"] == "galaxy"
+        assert "main" in role_meta["entry_points"]
+
+    @pytest.mark.asyncio
+    async def test_search_collections_includes_role_count(self):
+        async with GalaxyClient() as client:
+            result = await client.search_collections("linux system roles")
+        if result["count"] > 0:
+            first = result["collections"][0]
+            assert "role_count" in first
