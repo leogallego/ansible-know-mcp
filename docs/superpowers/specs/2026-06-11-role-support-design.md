@@ -306,13 +306,46 @@ def parse_role_readme(html: str) -> dict[str, Any]:
 
 ### Parsing strategy
 
+Validated against the top downloaded role collections on Galaxy:
+
+| Collection (downloads) | Variables format |
+|---|---|
+| fedora.linux_system_roles (2.6M) | Tables (some roles) |
+| community.sops (1.8M) | Minimal README (~138 chars) |
+| sap.sap_operations (1.6M) | Heading-per-variable (`<h4>name</h4><p>Type/Default</p>`) |
+| infra.controller_configuration (706K) | Tables (`Variable Name / Default / Required / Description`) |
+| middleware_automation.keycloak (232K) | Tables (`Variable / Description / Default`) |
+| geerlingguy.mac (768K) | Code-block-per-variable (`<pre><code>var: default</code></pre><p>desc</p>`) |
+| debops.debops (518K) | Minimal README (~430 chars) |
+
+Four variable documentation patterns exist in the wild. The parser handles
+all four:
+
 1. **Description:** Text content between `<h1>` and the first `<h2>`/`<h3>`.
    Strip HTML tags, join paragraphs.
 
-2. **Variables:** From `<table>` elements. Role READMEs commonly use tables
-   with columns like Name, Default, Description. Parse `<th>` for column
-   headers, `<td>` for values. Map columns to the variable dict schema
-   (name, type, required, default, description) by header text matching.
+2. **Variables:** Three extraction strategies, tried in order:
+
+   a. **Tables** (`<table>` elements) — used by infra.controller_configuration,
+   middleware_automation.*, fedora.linux_system_roles. Parse `<th>` for column
+   headers, `<td>` for values. Map columns to the variable dict schema by
+   header text matching (Variable/Name → name, Default → default,
+   Required → required, Description → description, Type → type).
+
+   b. **Heading-per-variable** — used by sap.sap_operations (1.6M downloads).
+   Pattern: `<h3>` or `<h4>` containing a variable name (matches
+   `snake_case` pattern), followed by `<p>` elements with `Type:`, `Default:`,
+   `Required:` metadata. Extract variable name from heading text, metadata
+   from following paragraphs.
+
+   c. **Code-block-per-variable** — used by geerlingguy.mac (768K downloads)
+   and the geerlingguy standalone role pattern. Under a "Role Variables"
+   heading, `<pre><code>var_name: default_value</code></pre>` blocks
+   alternate with `<p>description</p>` paragraphs. Extract variable name
+   and default from the code block, description from the following `<p>`.
+
+   d. **None found** — return empty variables list. The description field
+   still provides useful context for the LLM.
 
 3. **Examples:** `<pre><code>` blocks containing YAML. Detect by presence of
    `---`, `hosts:`, `roles:`, or `tasks:` keywords. Concatenate with `\n\n`
