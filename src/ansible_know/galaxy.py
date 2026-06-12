@@ -235,6 +235,9 @@ class GalaxyClient:
             module_count = sum(
                 1 for c in contents if c.get("content_type") == "module"
             )
+            role_count = sum(
+                1 for c in contents if c.get("content_type") == "role"
+            )
             tags_list = [t["name"] for t in cv.get("tags", []) if isinstance(t, dict)]
             candidates.append({
                 "namespace": f"{ns}.{name}",
@@ -242,6 +245,7 @@ class GalaxyClient:
                 "tags": tags_list,
                 "latest_version": cv.get("version", ""),
                 "module_count": module_count,
+                "role_count": role_count,
                 "deprecated": False,
                 "signed": item.get("is_signed", False),
                 "_ns": ns,
@@ -301,6 +305,18 @@ class GalaxyClient:
         for item in blob.get("contents", []):
             if (
                 item.get("content_type") == "module"
+                and item.get("content_name") == short_name
+            ):
+                return item
+        return None
+
+    @staticmethod
+    def _find_role(
+        blob: dict[str, Any], short_name: str,
+    ) -> dict[str, Any] | None:
+        for item in blob.get("contents", []):
+            if (
+                item.get("content_type") == "role"
                 and item.get("content_name") == short_name
             ):
                 return item
@@ -379,6 +395,65 @@ class GalaxyClient:
             )
         return doc, meta
 
+    async def fetch_role_doc(
+        self, role_name: str, version: str | None = None,
+    ) -> tuple[dict[str, Any], dict[str, str]]:
+        """Fetch role documentation from Galaxy docs-blob.
+
+        Parses readme_html via readme_parser.parse_role_readme() and returns
+        structured metadata. Returns (role_metadata, meta) where meta
+        contains provenance fields.
+        """
+        from ansible_know.readme_parser import parse_role_readme
+
+        namespace, name, short_role = _parse_fqcn(role_name)
+        resolved_version = version or await self.latest_version(namespace, name)
+        is_latest = version is None
+
+        blob = await self._fetch_docs_blob(namespace, name, resolved_version)
+        role_entry = self._find_role(blob, short_role)
+        if role_entry is None:
+            raise GalaxyError(
+                f"Role '{short_role}' not found in "
+                f"{namespace}.{name} {resolved_version} docs-blob."
+            )
+
+        readme_html = role_entry.get("readme_html", "")
+        parsed = parse_role_readme(readme_html)
+
+        options: list[dict[str, Any]] = []
+        for var in parsed.get("variables", []):
+            options.append({
+                "name": var["name"],
+                "type": var.get("type"),
+                "required": var.get("required"),
+                "default": var.get("default"),
+                "description": var.get("description", ""),
+            })
+
+        role_metadata: dict[str, Any] = {
+            "role_name": role_name,
+            "short_description": parsed.get("description", ""),
+            "entry_points": {
+                "main": {
+                    "description": parsed.get("description", ""),
+                    "options": options,
+                },
+            },
+            "dependencies": parsed.get("dependencies", []),
+            "examples": parsed.get("examples", ""),
+        }
+
+        meta: dict[str, str] = {
+            "doc_source": "galaxy",
+            "doc_version": resolved_version,
+        }
+        if is_latest:
+            meta["doc_warning"] = (
+                "Documentation parsed from Galaxy README (best-effort)."
+            )
+        return role_metadata, meta
+
     async def list_collection_modules(
         self, collection_fqcn: str, version: str | None = None,
     ) -> tuple[dict[str, str], dict[str, str]]:
@@ -408,3 +483,37 @@ class GalaxyClient:
 
         meta = {"source": "galaxy", "version": resolved_version}
         return modules, meta
+
+    async def list_collection_roles(
+        self, collection_fqcn: str, version: str | None = None,
+    ) -> tuple[dict[str, str], dict[str, str]]:
+        """List roles in a collection from the Galaxy docs-blob.
+
+        Returns (roles, meta) where roles is {fqcn: description} and
+        meta is {"source": "galaxy", "version": str}.
+        """
+        parts = collection_fqcn.split(".")
+        if len(parts) != 2:
+            raise GalaxyError(
+                f"'{collection_fqcn}' is not a valid collection FQCN "
+                f"(expected namespace.name)."
+            )
+        namespace, name = parts
+        resolved_version = version or await self.latest_version(namespace, name)
+
+        blob = await self._fetch_docs_blob(namespace, name, resolved_version)
+        roles: dict[str, str] = {}
+        for item in blob.get("contents", []):
+            if item.get("content_type") == "role":
+                short = item.get("content_name", "")
+                fqcn = f"{collection_fqcn}.{short}"
+                readme_html = item.get("readme_html", "")
+                desc = ""
+                if readme_html:
+                    from ansible_know.readme_parser import parse_role_readme
+                    parsed = parse_role_readme(readme_html)
+                    desc = parsed.get("description", "")
+                roles[fqcn] = desc
+
+        meta = {"source": "galaxy", "version": resolved_version}
+        return roles, meta
