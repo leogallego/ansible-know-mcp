@@ -76,6 +76,76 @@ class TestGenerateManifest:
         assert manifest["modules"][0]["is_api_module"] is True
 
 
+class TestGenerateManifestWithRoles:
+    def test_includes_roles_section(self, tmp_path, sample_module_doc):
+        from ansible_know.parser import extract_module_metadata
+
+        module_meta = extract_module_metadata(sample_module_doc)
+        roles_metadata = [
+            {
+                "fqcn": "ansible.builtin.test_role",
+                "description": "A test role",
+                "has_argument_specs": False,
+                "entry_points": ["main"],
+            },
+        ]
+        manifest = generate_manifest(
+            "ansible.builtin", [module_meta],
+            roles_metadata=roles_metadata, skills_dir=tmp_path,
+        )
+
+        assert "roles" in manifest
+        assert "role_count" in manifest
+        assert manifest["role_count"] == 1
+        assert manifest["roles"][0]["fqcn"] == "ansible.builtin.test_role"
+        assert manifest["roles"][0]["has_argument_specs"] is False
+
+    def test_empty_roles_list(self, tmp_path, sample_module_doc):
+        from ansible_know.parser import extract_module_metadata
+
+        module_meta = extract_module_metadata(sample_module_doc)
+        manifest = generate_manifest(
+            "ansible.builtin", [module_meta],
+            roles_metadata=[], skills_dir=tmp_path,
+        )
+
+        assert manifest["role_count"] == 0
+        assert manifest["roles"] == []
+
+    def test_no_roles_metadata_defaults_empty(self, tmp_path, sample_module_doc):
+        from ansible_know.parser import extract_module_metadata
+
+        module_meta = extract_module_metadata(sample_module_doc)
+        manifest = generate_manifest(
+            "ansible.builtin", [module_meta], skills_dir=tmp_path,
+        )
+
+        assert manifest["role_count"] == 0
+        assert manifest["roles"] == []
+
+    def test_role_has_skill_detection(self, tmp_path):
+        skill_dir = tmp_path / "ansible.builtin.test_role"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("test")
+
+        roles_metadata = [
+            {
+                "fqcn": "ansible.builtin.test_role",
+                "description": "A test role",
+                "has_argument_specs": True,
+                "entry_points": ["main", "configure"],
+            },
+        ]
+        manifest = generate_manifest(
+            "ansible.builtin", [],
+            roles_metadata=roles_metadata, skills_dir=tmp_path,
+        )
+
+        assert manifest["roles"][0]["has_skill"] is True
+        assert manifest["roles"][0]["has_argument_specs"] is True
+        assert manifest["roles"][0]["entry_points"] == ["main", "configure"]
+
+
 class TestLoadCachedManifest:
     def test_returns_none_when_not_cached(self, tmp_path):
         assert load_cached_manifest("nonexistent.collection", skills_dir=tmp_path) is None

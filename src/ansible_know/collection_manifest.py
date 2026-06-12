@@ -46,13 +46,15 @@ def _derive_tags(fqcn: str, params: list[dict[str, Any]]) -> list[str]:
 def generate_manifest(
     collection_namespace: str,
     modules_metadata: list[dict[str, Any]],
+    roles_metadata: list[dict[str, Any]] | None = None,
     skills_dir: Path | None = None,
 ) -> dict[str, Any]:
-    """Generate a collection manifest from module metadata.
+    """Generate a collection manifest from module and role metadata.
 
     Args:
         collection_namespace: e.g. "netbox.netbox"
         modules_metadata: list of extract_module_metadata() results
+        roles_metadata: list of role metadata dicts (optional)
         skills_dir: where to check for existing skills and write manifest
 
     Returns:
@@ -79,11 +81,27 @@ def generate_manifest(
             "tags": _derive_tags(fqcn, params),
         })
 
+    roles_list = []
+    for role_meta in (roles_metadata or []):
+        fqcn = role_meta["fqcn"]
+        skill_dir = skills_dir / fqcn
+        has_skill = (skill_dir / "SKILL.md").exists()
+
+        roles_list.append({
+            "fqcn": fqcn,
+            "description": role_meta.get("description", ""),
+            "has_argument_specs": role_meta.get("has_argument_specs", False),
+            "entry_points": role_meta.get("entry_points", ["main"]),
+            "has_skill": has_skill,
+        })
+
     manifest = {
         "collection": collection_namespace,
         "generated": datetime.now(timezone.utc).isoformat(),
         "module_count": len(modules_list),
+        "role_count": len(roles_list),
         "modules": modules_list,
+        "roles": roles_list,
     }
 
     manifest_dir = skills_dir / collection_namespace.replace(".", "/")
