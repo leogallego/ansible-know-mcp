@@ -152,7 +152,8 @@ async def _resolve_role_doc(
             if namespace:
                 _missing_collections.add(namespace)
             local_doc = {}
-        except Exception:
+        except AnsibleDocError as exc:
+            logger.warning("Local role doc failed for %s: %s", role_name, exc)
             local_doc = {}
 
     if local_doc:
@@ -383,8 +384,8 @@ async def get_collection_manifest(
         roles_raw = {}
         try:
             roles_raw = await _run_in_executor(parser.list_roles, collection_namespace)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("list_roles failed for %s: %s", collection_namespace, exc)
 
         if not modules and not roles_raw:
             return {"error": (
