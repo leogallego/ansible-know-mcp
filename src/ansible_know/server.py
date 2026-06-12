@@ -131,6 +131,61 @@ async def _resolve_module_doc(
             raise local_exc from galaxy_exc
 
 
+async def _resolve_role_doc(
+    role_name: str, http_client: httpx.AsyncClient | None = None,
+) -> dict[str, Any]:
+    """Try local ansible-doc -t role, fall back to Galaxy readme_html.
+
+    Returns the complete tool response dict including doc_source and content_type.
+    """
+    from ansible_know import parser
+    from ansible_know.errors import CollectionNotFoundError, GalaxyError
+
+    namespace = ".".join(role_name.split(".")[:2]) if "." in role_name else None
+
+    local_doc: dict[str, Any] = {}
+    tried_local = False
+
+    if not (namespace and namespace in _missing_collections):
+        tried_local = True
+        try:
+            local_doc = await _run_in_executor(parser.get_role_doc, role_name)
+        except CollectionNotFoundError:
+            if namespace:
+                _missing_collections.add(namespace)
+            local_doc = {}
+        except Exception:
+            local_doc = {}
+
+    if local_doc:
+        metadata = parser.extract_role_metadata(local_doc)
+        metadata["content_type"] = "role"
+        metadata["doc_source"] = "local"
+        return metadata
+
+    try:
+        from ansible_know.galaxy import GalaxyClient
+
+        async with GalaxyClient(http_client=http_client) as client:
+            galaxy_role_meta, galaxy_meta = await client.fetch_role_doc(role_name)
+
+        result = dict(galaxy_role_meta)
+        result["content_type"] = "role"
+        result["doc_source"] = "galaxy_readme"
+        result["doc_version"] = galaxy_meta.get("doc_version", "")
+        if "doc_warning" in galaxy_meta:
+            result["doc_warning"] = galaxy_meta["doc_warning"]
+        return result
+    except GalaxyError as galaxy_exc:
+        return {
+            "role_name": role_name,
+            "content_type": "role",
+            "doc_source": "unavailable",
+            "error": sanitize_error(str(galaxy_exc)),
+            "entry_points": {},
+        }
+
+
 # --- Discovery tools (read-only) ---
 
 
@@ -200,6 +255,36 @@ async def get_module_doc(
         from ansible_know.errors import GalaxyError
         if isinstance(exc.__cause__, GalaxyError):
             return {"error": sanitize_error(str(exc))}
+        return {"error": _maybe_add_hint(sanitize_error(str(exc)), ns)}
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+async def get_role_doc(
+    role_name: Annotated[str, "Fully-qualified role name (e.g. 'fedora.linux_system_roles.timesync')"],
+    ctx: Context = None,
+) -> dict[str, Any]:
+    """Get full structured documentation for one role.
+
+    Returns: role_name, content_type ('role'), short_description,
+    doc_source ('local', 'galaxy_readme', or 'unavailable'),
+    entry_points (dict of entry point names to {description, options}),
+    dependencies (list), examples (str).
+    When doc_source is 'galaxy_readme', also includes doc_version and doc_warning.
+    Falls back to Galaxy README parsing if local ansible-doc returns empty.
+    On validation failure returns {"error": str}.
+    """
+    logger.info("get_role_doc role=%r", role_name)
+    try:
+        validate_fqcn(role_name)
+    except ValidationError as exc:
+        return {"error": str(exc)}
+
+    try:
+        http_client = ctx.lifespan_context.get("http_client") if ctx else None
+        return await _resolve_role_doc(role_name, http_client=http_client)
+    except Exception as exc:
+        logger.warning("get_role_doc failed: %s", exc)
+        ns = ".".join(role_name.split(".")[:2]) if "." in role_name else None
         return {"error": _maybe_add_hint(sanitize_error(str(exc)), ns)}
 
 
