@@ -29,7 +29,17 @@ TIMEOUT_FAST = httpx.Timeout(10.0)
 TIMEOUT_DEFAULT = httpx.Timeout(10.0, read=30.0)
 TIMEOUT_SLOW = httpx.Timeout(10.0, read=60.0)
 
-_enrichment_semaphore = asyncio.Semaphore(5)
+_enrichment_semaphore: asyncio.Semaphore | None = None
+_enrichment_semaphore_loop: asyncio.AbstractEventLoop | None = None
+
+
+def _get_enrichment_semaphore() -> asyncio.Semaphore:
+    global _enrichment_semaphore, _enrichment_semaphore_loop
+    loop = asyncio.get_running_loop()
+    if _enrichment_semaphore is None or _enrichment_semaphore_loop is not loop:
+        _enrichment_semaphore = asyncio.Semaphore(5)
+        _enrichment_semaphore_loop = loop
+    return _enrichment_semaphore
 
 _version_cache: OrderedDict[tuple[str, str], tuple[str, float]] = OrderedDict()
 _version_lock = threading.Lock()
@@ -253,7 +263,7 @@ class GalaxyClient:
             })
 
         async def _enrich(cand: dict) -> None:
-            async with _enrichment_semaphore:
+            async with _get_enrichment_semaphore():
                 try:
                     detail = await self._get_collection_detail(
                         cand["_ns"], cand["_name"],

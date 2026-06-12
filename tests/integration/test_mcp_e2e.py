@@ -133,7 +133,6 @@ class TestGalaxyTools:
         assert "deprecated" in first
         assert isinstance(first["deprecated"], bool)
 
-    @pytest.mark.xfail(reason="module-level Semaphore bound to wrong event loop (#39)")
     async def test_search_collections_has_role_count(self, client):
         result = await client.call_tool(
             "search_collections", {"query": "linux system roles"},
@@ -145,7 +144,6 @@ class TestGalaxyTools:
                 "search_collections should include role_count field"
             )
 
-    @pytest.mark.xfail(reason="module-level Semaphore bound to wrong event loop (#39)")
     async def test_search_collections_with_tags(self, client):
         result = await client.call_tool(
             "search_collections", {"query": "network", "tags": "networking"},
