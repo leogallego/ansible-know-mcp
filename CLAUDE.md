@@ -2,7 +2,7 @@
 
 ## Project
 
-Ansible Know MCP Server — module discovery, documentation search, and skill generation for AI agents via the Model Context Protocol.
+Ansible Know MCP Server — module and role discovery, documentation search, and skill generation for AI agents via the Model Context Protocol.
 
 ## Quick Start
 
@@ -18,8 +18,9 @@ Runtime requirement: `ansible-core` must be installed in the same environment (f
 
 ```
 src/ansible_know/
-├── server.py              # FastMCP server: 10 tools, 4 resources, 4 prompts (entrypoint)
+├── server.py              # FastMCP server: 12 tools, 4 resources, 4 prompts (entrypoint)
 ├── parser.py              # ansible-doc wrapper — module discovery and metadata extraction
+├── readme_parser.py       # Parse Galaxy role README HTML into structured data
 ├── skills.py              # skill rendering + package writing (Jinja2)
 ├── config.py              # paths, constants, doc source registry
 ├── collection_manifest.py # collection-level MANIFEST.json generation/caching
@@ -34,13 +35,15 @@ src/ansible_know/
 |------|------|-------------|
 | `search_modules` | read-only | Find modules by keyword |
 | `get_module_doc` | read-only | Get full module documentation |
+| `get_role_doc` | read-only | Get full role documentation (local or Galaxy README) |
 | `search_docs` | read-only | Search conceptual doc manifests |
 | `search_collections` | read-only | Search Galaxy for collections by keyword |
-| `get_collection_manifest` | read-only | Get collection-level module summary |
+| `get_collection_manifest` | read-only | Get collection-level module and role summary |
 | `ensure_collection` | idempotent write | Install a collection for this session |
 | `list_skills` | read-only | List generated skills |
 | `get_skill` | read-only | Read a skill's content |
 | `generate_skill` | idempotent write | Generate a skill package for one module |
+| `generate_role_skill` | idempotent write | Generate a skill package for one role |
 | `generate_collection_skills` | idempotent write | Batch generate skills for a collection |
 
 ## MCP Resources
@@ -71,6 +74,8 @@ src/ansible_know/
 - `galaxy.py` provides async Galaxy v3 API client with version/docs-blob caching and format conversion.
 - `get_module_doc` falls back to Galaxy docs-blob when local collection is missing.
 - Tests mock `_run_ansible_doc` — no real `ansible-doc` needed.
+- `readme_parser.py` parses Galaxy role README HTML using stdlib `html.parser`. Handles four variable documentation patterns: tables, heading-per-variable, code-block-per-variable, and graceful degradation.
+- `get_role_doc` uses three-tier resolution: local ansible-doc → Galaxy readme_html → graceful degradation.
 
 ## Testing
 

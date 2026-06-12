@@ -114,7 +114,13 @@ class TestRoleTemplateContext:
                 "main": {
                     "description": "Configure time synchronization",
                     "options": [
-                        {"name": "timesync_ntp_servers", "type": "list", "required": False, "default": "[]", "description": "List of NTP servers"},
+                        {
+                            "name": "timesync_ntp_servers",
+                            "type": "list",
+                            "required": False,
+                            "default": "[]",
+                            "description": "List of NTP servers",
+                        },
                     ],
                 },
             },
@@ -139,7 +145,13 @@ class TestRenderRoleSkill:
                 "main": {
                     "description": "Configure time synchronization",
                     "options": [
-                        {"name": "timesync_ntp_servers", "type": "list", "required": False, "default": "[]", "description": "List of NTP servers"},
+                        {
+                            "name": "timesync_ntp_servers",
+                            "type": "list",
+                            "required": False,
+                            "default": "[]",
+                            "description": "List of NTP servers",
+                        },
                     ],
                 },
             },
@@ -163,7 +175,13 @@ class TestWriteRoleSkillPackage:
                 "main": {
                     "description": "Configure time synchronization",
                     "options": [
-                        {"name": "timesync_ntp_servers", "type": "list", "required": False, "default": "[]", "description": "List of NTP servers"},
+                        {
+                            "name": "timesync_ntp_servers",
+                            "type": "list",
+                            "required": False,
+                            "default": "[]",
+                            "description": "List of NTP servers",
+                        },
                     ],
                 },
             },

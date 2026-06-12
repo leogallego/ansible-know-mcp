@@ -144,10 +144,8 @@ async def _resolve_role_doc(
     namespace = ".".join(role_name.split(".")[:2]) if "." in role_name else None
 
     local_doc: dict[str, Any] = {}
-    tried_local = False
 
     if not (namespace and namespace in _missing_collections):
-        tried_local = True
         try:
             local_doc = await _run_in_executor(parser.get_role_doc, role_name)
         except CollectionNotFoundError:

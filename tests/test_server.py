@@ -819,7 +819,6 @@ class TestNegativeCache:
 
     @pytest.mark.asyncio
     async def test_does_not_cache_non_collection_errors(self, mock_ansible_doc):
-        from ansible_know import server
         from ansible_know.errors import AnsibleDocError
 
         mock_ansible_doc.side_effect = AnsibleDocError("ansible-doc timed out")
@@ -940,7 +939,15 @@ class TestGenerateRoleSkillTool:
             "entry_points": {
                 "main": {
                     "description": "Configure time sync",
-                    "options": [{"name": "timesync_ntp_servers", "type": "list", "required": False, "default": "[]", "description": "NTP servers"}],
+                    "options": [
+                        {
+                            "name": "timesync_ntp_servers",
+                            "type": "list",
+                            "required": False,
+                            "default": "[]",
+                            "description": "NTP servers",
+                        }
+                    ],
                 },
             },
             "dependencies": [],

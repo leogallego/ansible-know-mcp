@@ -23,7 +23,7 @@ from ansible_know.galaxy import (
     _put_version_cache,
     clear_cache,
 )
-from tests.conftest import SAMPLE_DOCS_BLOB_WITH_ROLES, SAMPLE_ROLE_README_HTML
+from tests.conftest import SAMPLE_DOCS_BLOB_WITH_ROLES
 
 
 @pytest.fixture(autouse=True)

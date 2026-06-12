@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from tests.conftest import (
     SAMPLE_ROLE_README_HTML,
     SAMPLE_ROLE_README_HTML_CODEBLOCK_VARS,
