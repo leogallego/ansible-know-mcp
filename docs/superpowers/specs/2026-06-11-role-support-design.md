@@ -498,9 +498,14 @@ async def list_collection_roles(
 ) -> tuple[dict[str, str], dict[str, str]]:
     """List roles in a collection from the Galaxy docs-blob.
 
-    Returns (roles, meta) where roles is {fqcn: description}.
+    Returns (roles, meta) where roles is {fqcn: description} and
+    meta is {"source": "galaxy", "version": str}.
     """
 ```
+
+Used by `get_collection_manifest` when the collection is not installed
+locally — provides role listings from Galaxy as a fallback for manifest
+generation.
 
 **Files:** `src/ansible_know/galaxy.py`, `tests/test_galaxy.py`.
 
@@ -556,8 +561,7 @@ get_role_doc("fedora.linux_system_roles.timesync")
 │
 ├── Galaxy: fetch_role_doc("fedora.linux_system_roles.timesync")
 │   ├── _fetch_docs_blob() → _find_role(blob, "timesync")
-│   ├── Found → return readme_html
-│   │   └── parse_role_readme(html) → synthetic metadata → done (doc_source: "galaxy_readme")
+│   ├── Found → parse readme_html internally → structured metadata → done (doc_source: "galaxy_readme")
 │   └── Not found → raise GalaxyError
 │
 └── Both failed → return {"role_name": ..., "doc_source": "unavailable", "error": ...}
@@ -600,6 +604,10 @@ minimal implementation.
 - `TestParseReadmeMultipleTables` — merge and deduplicate
 - `TestParseReadmeMalformedHtml` — graceful degradation, never raises
 - `TestParseReadmeCodeBlocks` — YAML detection in pre/code blocks
+- `TestParseReadmeHeadingPerVariable` — sap.sap_operations pattern:
+  `<h4>var_name</h4><p>Type: str</p><p>Default: present</p>`
+- `TestParseReadmeCodeBlockPerVariable` — geerlingguy pattern:
+  `<pre><code>var: default</code></pre><p>description</p>`
 - `TestParseReadmeDependencies` — extract from Dependencies heading
 - `TestParseReadmeSizeLimit` — input truncation at 1MB
 
@@ -752,11 +760,16 @@ SAMPLE_ROLE_README_HTML = """
   collection roles (v3 API) — a different ecosystem with different top
   collections (fedora.linux_system_roles=2.6M, sap.sap_operations=1.6M,
   infra.controller_configuration=706K).
-- Name collision handling — a collection can have a module and role with
-  the same short name (e.g., `namespace.collection.timesync`). They appear
-  as separate entries in the manifest (`modules` vs `roles` sections) and
-  are accessed via separate tools (`get_module_doc` vs `get_role_doc`).
-  The `content_type` field in responses disambiguates.
+
+---
+
+## Edge Cases
+
+- **Name collision** — a collection can have a module and role with the
+  same short name (e.g., `namespace.collection.timesync`). They appear as
+  separate entries in the manifest (`modules` vs `roles` sections) and are
+  accessed via separate tools (`get_module_doc` vs `get_role_doc`). The
+  `content_type` field in responses disambiguates.
 
 ---
 
