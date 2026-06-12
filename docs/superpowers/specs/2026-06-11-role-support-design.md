@@ -306,17 +306,20 @@ def parse_role_readme(html: str) -> dict[str, Any]:
 
 ### Parsing strategy
 
-Validated against the top downloaded role collections on Galaxy:
+Validated against the top downloaded collection roles on Galaxy (v3 API).
+Note: legacy standalone roles (geerlingguy.docker=28M downloads) use the
+v1 API and are out of scope — see Not in Scope section.
 
 | Collection (downloads) | Variables format |
 |---|---|
 | fedora.linux_system_roles (2.6M) | Tables (some roles) |
 | community.sops (1.8M) | Minimal README (~138 chars) |
 | sap.sap_operations (1.6M) | Heading-per-variable (`<h4>name</h4><p>Type/Default</p>`) |
-| infra.controller_configuration (706K) | Tables (`Variable Name / Default / Required / Description`) |
-| middleware_automation.keycloak (232K) | Tables (`Variable / Description / Default`) |
 | geerlingguy.mac (768K) | Code-block-per-variable (`<pre><code>var: default</code></pre><p>desc</p>`) |
+| infra.controller_configuration (706K) | Tables (`Variable Name / Default / Required / Description`) |
 | debops.debops (518K) | Minimal README (~430 chars) |
+| middleware_automation.keycloak (232K) | Tables (`Variable / Description / Default`) |
+| middleware_automation.wildfly (59K) | Tables (`Variable / Description / Default`) |
 
 Four variable documentation patterns exist in the wild. The parser handles
 all four:
@@ -740,7 +743,15 @@ SAMPLE_ROLE_README_HTML = """
 - Plugin types other than module and role (inventory, callback, filter, etc.)
 - Full HTML-to-markdown conversion — we extract structured fields only
 - README.md from source repos (we use Galaxy readme_html)
-- Galaxy legacy roles (v1 API) — only collection roles
+- Galaxy legacy standalone roles (v1 API). The most downloaded "roles" on
+  Galaxy are legacy standalone roles (geerlingguy.docker=28M,
+  geerlingguy.java=23M, geerlingguy.nginx=15M downloads), not collection
+  roles. These use the v1 API, have no docs-blob, and their READMEs are
+  only on GitHub. Supporting them would require a GitHub API integration
+  and is a candidate for a future extension. This spec covers only
+  collection roles (v3 API) — a different ecosystem with different top
+  collections (fedora.linux_system_roles=2.6M, sap.sap_operations=1.6M,
+  infra.controller_configuration=706K).
 - Name collision handling — a collection can have a module and role with
   the same short name (e.g., `namespace.collection.timesync`). They appear
   as separate entries in the manifest (`modules` vs `roles` sections) and
