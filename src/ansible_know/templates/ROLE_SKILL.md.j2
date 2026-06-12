@@ -1,0 +1,85 @@
+---
+name: {{ role_name }}
+description: >-
+  {{ short_description }}
+  Use when configuring {{ skill_name | replace('_', ' ') }} via Ansible role.
+---
+
+# {{ role_name }}
+
+{{ short_description }}
+
+## When to Use This Skill
+
+Use the `{{ role_name }}` Ansible role when you need to configure {{ skill_name | replace('_', ' ') }} on remote hosts. Roles provide a higher-level abstraction than individual modules:
+
+- Handles multiple tasks (install, configure, start) in one invocation
+- Manages all related files, services, and dependencies
+- Provides sensible defaults with full customization via variables
+- Supports `--check` dry-run mode
+
+{% if doc_source == "galaxy_readme" %}
+> **Note:** Documentation parsed from Galaxy README (best-effort). Some variable details may be incomplete.
+{% endif %}
+
+{% for ep_name, ep in entry_points.items() %}
+## Entry Point: {{ ep_name }}
+
+{{ ep.description }}
+
+{% if ep.options %}
+### Variables
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+{% for o in ep.options -%}
+| `{{ o.name }}` | {{ o.type if o.type else "-" }} | {{ "yes" if o.required else "no" }} | {{ o.default if o.default is not none else "-" }} | {{ o.description }} |
+{% endfor %}
+{% endif %}
+{% endfor %}
+
+{% if dependencies %}
+## Dependencies
+
+{% for dep in dependencies -%}
+- `{{ dep }}`
+{% endfor %}
+{% endif %}
+
+## Usage
+
+Include the role in a playbook:
+
+```yaml
+---
+- hosts: all
+  roles:
+    - role: {{ role_name }}
+{% if entry_points.get("main", {}).get("options", []) %}
+{% for o in entry_points["main"]["options"][:3] %}
+{% if o.default is not none %}
+      {{ o.name }}: {{ o.default }}
+{% endif %}
+{% endfor %}
+{% endif %}
+```
+
+Run with:
+
+```bash
+ansible-playbook playbook.yml -i inventory.yml --check --diff
+```
+
+{% if examples %}
+### Examples
+
+```yaml
+{{ examples }}
+```
+{% endif %}
+
+## Safety
+
+- **Always dry-run first**: Use `--check --diff` before applying changes
+- **Idempotency**: This role is designed to be idempotent — running it multiple times produces the same result
+- **Check mode**: Use `--check` to preview changes without applying them

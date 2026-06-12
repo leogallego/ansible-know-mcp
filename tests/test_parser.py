@@ -9,10 +9,13 @@ from ansible_know.parser import (
     extract_examples,
     extract_module_metadata,
     extract_params,
+    extract_role_metadata,
     extract_short_description,
     get_module_doc,
+    get_role_doc,
     is_api_module,
     list_modules,
+    list_roles,
     search_modules,
 )
 
@@ -233,3 +236,91 @@ class TestCollectionNotFoundDetection:
 
     def test_collection_not_found_is_subclass_of_ansible_doc_error(self):
         assert issubclass(CollectionNotFoundError, AnsibleDocError)
+
+
+class TestListRoles:
+    def test_returns_role_dict(self, sample_role_list_json):
+        with patch("ansible_know.parser._run_ansible_doc", return_value=sample_role_list_json) as mock:
+            result = list_roles()
+        assert "fedora.linux_system_roles.timesync" in result
+        assert "fedora.linux_system_roles.gfs2" in result
+        mock.assert_called_once_with("--list", "-t", "role", "--json")
+
+    def test_passes_namespace(self, sample_role_list_json):
+        with patch("ansible_know.parser._run_ansible_doc", return_value=sample_role_list_json) as mock:
+            list_roles(namespace="fedora.linux_system_roles")
+        mock.assert_called_once_with("--list", "-t", "role", "--json", "fedora.linux_system_roles")
+
+
+class TestGetRoleDoc:
+    def test_returns_parsed_json(self, sample_role_doc, sample_role_doc_json):
+        with patch("ansible_know.parser._run_ansible_doc", return_value=sample_role_doc_json):
+            result = get_role_doc("fedora.linux_system_roles.gfs2")
+        assert result == sample_role_doc
+
+    def test_returns_empty_dict_for_undocumented_role(self):
+        with patch("ansible_know.parser._run_ansible_doc", return_value="{}"):
+            result = get_role_doc("fedora.linux_system_roles.timesync")
+        assert result == {}
+
+    def test_passes_role_type_flag(self, sample_role_doc_json):
+        with patch("ansible_know.parser._run_ansible_doc", return_value=sample_role_doc_json) as mock:
+            get_role_doc("fedora.linux_system_roles.gfs2")
+        mock.assert_called_once_with("-t", "role", "fedora.linux_system_roles.gfs2", "--json")
+
+
+class TestExtractRoleMetadata:
+    def test_extracts_role_name(self, sample_role_doc):
+        meta = extract_role_metadata(sample_role_doc)
+        assert meta["role_name"] == "fedora.linux_system_roles.gfs2"
+
+    def test_extracts_short_description(self, sample_role_doc):
+        meta = extract_role_metadata(sample_role_doc)
+        assert meta["short_description"] == "The gfs2 role."
+
+    def test_extracts_entry_points(self, sample_role_doc):
+        meta = extract_role_metadata(sample_role_doc)
+        assert "main" in meta["entry_points"]
+        main_ep = meta["entry_points"]["main"]
+        assert main_ep["description"] == "The gfs2 role."
+        assert len(main_ep["options"]) == 2
+
+    def test_options_have_correct_fields(self, sample_role_doc):
+        meta = extract_role_metadata(sample_role_doc)
+        options = meta["entry_points"]["main"]["options"]
+        cluster = next(o for o in options if o["name"] == "gfs2_cluster_name")
+        assert cluster["type"] == "str"
+        assert cluster["required"] is True
+
+    def test_empty_doc_returns_empty(self):
+        meta = extract_role_metadata({})
+        assert meta["role_name"] == ""
+        assert meta["short_description"] == ""
+        assert meta["entry_points"] == {}
+
+    def test_multiple_entry_points(self):
+        doc = {
+            "some.collection.role": {
+                "collection": "some.collection",
+                "entry_points": {
+                    "main": {
+                        "description": "Main entry.",
+                        "options": {},
+                    },
+                    "configure": {
+                        "description": "Configure only.",
+                        "options": {
+                            "config_path": {
+                                "description": "Path to config.",
+                                "type": "str",
+                                "required": True,
+                            },
+                        },
+                    },
+                },
+            },
+        }
+        meta = extract_role_metadata(doc)
+        assert "main" in meta["entry_points"]
+        assert "configure" in meta["entry_points"]
+        assert len(meta["entry_points"]["configure"]["options"]) == 1

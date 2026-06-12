@@ -132,3 +132,41 @@ def _extract_example_values(examples_yaml: str) -> dict[str, str]:
             if key and val and not val.startswith("{") and not val.startswith("["):
                 values.setdefault(key, val)
     return values
+
+
+def _role_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
+    """Build template context from role metadata."""
+    role_name = metadata["role_name"]
+    return {
+        "role_name": role_name,
+        "skill_name": role_name.rsplit(".", 1)[-1],
+        "short_description": metadata.get("short_description", ""),
+        "entry_points": metadata.get("entry_points", {}),
+        "dependencies": metadata.get("dependencies", []),
+        "examples": metadata.get("examples", "").strip(),
+        "doc_source": metadata.get("doc_source", ""),
+    }
+
+
+def render_role_skill(metadata: dict[str, Any]) -> str:
+    """Render the ROLE_SKILL.md.j2 template with role metadata."""
+    env = _get_template_env()
+    template = env.get_template("ROLE_SKILL.md.j2")
+    return template.render(**_role_template_context(metadata))
+
+
+def write_role_skill_package(output_dir: Path, metadata: dict[str, Any]) -> None:
+    """Write the role skill package: SKILL.md + assets/playbook.yml (no scripts/)."""
+    env = _get_template_env()
+    ctx = _role_template_context(metadata)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    skill_template = env.get_template("ROLE_SKILL.md.j2")
+    (output_dir / "SKILL.md").write_text(skill_template.render(**ctx))
+
+    assets_dir = output_dir / "assets"
+    assets_dir.mkdir(exist_ok=True)
+
+    playbook_template = env.get_template("role_playbook.yml.j2")
+    (assets_dir / "playbook.yml").write_text(playbook_template.render(**ctx))

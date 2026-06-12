@@ -23,6 +23,7 @@ from ansible_know.galaxy import (
     _put_version_cache,
     clear_cache,
 )
+from tests.conftest import SAMPLE_DOCS_BLOB_WITH_ROLES
 
 
 @pytest.fixture(autouse=True)
@@ -1176,3 +1177,161 @@ class TestGalaxyClientCleanup:
         async with GalaxyClient(http_client=injected) as gc:
             await gc.latest_version("netbox", "netbox")
         injected.aclose.assert_not_called()
+
+
+class TestFindRole:
+    def test_finds_role_by_name(self):
+        blob = SAMPLE_DOCS_BLOB_WITH_ROLES["docs_blob"]
+        result = GalaxyClient._find_role(blob, "timesync")
+        assert result is not None
+        assert result["content_name"] == "timesync"
+        assert result["content_type"] == "role"
+
+    def test_returns_none_for_missing_role(self):
+        blob = SAMPLE_DOCS_BLOB_WITH_ROLES["docs_blob"]
+        result = GalaxyClient._find_role(blob, "nonexistent")
+        assert result is None
+
+    def test_does_not_match_modules(self):
+        blob = SAMPLE_DOCS_BLOB_WITH_ROLES["docs_blob"]
+        result = GalaxyClient._find_role(blob, "some_module")
+        assert result is None
+
+
+class TestListCollectionRoles:
+    @pytest.mark.asyncio
+    async def test_lists_roles_only(self):
+        async def mock_api_get(self_client, path, params=None, timeout=None):
+            if "versions/" in path and "docs-blob" not in path:
+                return SAMPLE_VERSIONS_RESPONSE
+            if "docs-blob" in path:
+                return SAMPLE_DOCS_BLOB_WITH_ROLES
+            return {}
+
+        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+            client = GalaxyClient()
+            roles, meta = await client.list_collection_roles("fedora.linux_system_roles")
+
+        assert "fedora.linux_system_roles.timesync" in roles
+        assert "fedora.linux_system_roles.network" in roles
+        assert "fedora.linux_system_roles.some_module" not in roles
+        assert len(roles) == 2
+        assert meta["source"] == "galaxy"
+
+    @pytest.mark.asyncio
+    async def test_raises_for_invalid_namespace(self):
+        client = GalaxyClient()
+        with pytest.raises(GalaxyError, match="not a valid collection"):
+            await client.list_collection_roles("just_one_part")
+
+
+class TestFetchRoleDoc:
+    @pytest.mark.asyncio
+    async def test_returns_structured_metadata(self):
+        async def mock_api_get(self_client, path, params=None, timeout=None):
+            if "versions/" in path and "docs-blob" not in path:
+                return SAMPLE_VERSIONS_RESPONSE
+            if "docs-blob" in path:
+                return SAMPLE_DOCS_BLOB_WITH_ROLES
+            return {}
+
+        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+            client = GalaxyClient()
+            role_meta, meta = await client.fetch_role_doc(
+                "fedora.linux_system_roles.timesync",
+            )
+
+        assert role_meta["role_name"] == "fedora.linux_system_roles.timesync"
+        assert "Configure time synchronization" in role_meta["short_description"]
+        assert "main" in role_meta["entry_points"]
+        options = role_meta["entry_points"]["main"]["options"]
+        names = [o["name"] for o in options]
+        assert "timesync_ntp_servers" in names
+
+        assert meta["doc_source"] == "galaxy"
+        assert meta["doc_version"] == "3.23.0"
+
+    @pytest.mark.asyncio
+    async def test_raises_for_missing_role(self):
+        async def mock_api_get(self_client, path, params=None, timeout=None):
+            if "versions/" in path and "docs-blob" not in path:
+                return SAMPLE_VERSIONS_RESPONSE
+            if "docs-blob" in path:
+                return SAMPLE_DOCS_BLOB_WITH_ROLES
+            return {}
+
+        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+            client = GalaxyClient()
+            with pytest.raises(GalaxyError, match="not found"):
+                await client.fetch_role_doc("fedora.linux_system_roles.nonexistent")
+
+    @pytest.mark.asyncio
+    async def test_handles_empty_readme_html(self):
+        blob = {
+            "docs_blob": {
+                "contents": [
+                    {
+                        "content_type": "role",
+                        "content_name": "empty_role",
+                        "doc_strings": {},
+                        "readme_html": "",
+                    },
+                ],
+            },
+        }
+
+        async def mock_api_get(self_client, path, params=None, timeout=None):
+            if "versions/" in path and "docs-blob" not in path:
+                return SAMPLE_VERSIONS_RESPONSE
+            if "docs-blob" in path:
+                return blob
+            return {}
+
+        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+            client = GalaxyClient()
+            role_meta, meta = await client.fetch_role_doc("some.col.empty_role")
+
+        assert role_meta["role_name"] == "some.col.empty_role"
+        assert role_meta["entry_points"]["main"]["options"] == []
+
+
+class TestSearchCollectionsRoleCount:
+    @pytest.mark.asyncio
+    async def test_includes_role_count(self):
+        search_with_roles = {
+            "meta": {"count": 1}, "links": {},
+            "data": [{
+                "collection_version": {
+                    "namespace": "fedora", "name": "linux_system_roles",
+                    "version": "1.121.0",
+                    "contents": [
+                        {"content_name": "timesync", "content_type": "role"},
+                        {"content_name": "network", "content_type": "role"},
+                        {"content_name": "some_module", "content_type": "module"},
+                    ],
+                    "dependencies": {},
+                    "description": "Linux system roles",
+                    "tags": [],
+                    "pulp_href": "", "requires_ansible": "", "pulp_created": "",
+                },
+                "is_highest": True, "is_deprecated": False, "is_signed": False,
+                "repository": {}, "repository_version": "",
+                "namespace_metadata": {
+                    "pulp_href": "", "name": "", "company": "",
+                    "description": "", "avatar_url": None,
+                },
+            }],
+        }
+
+        async def mock_api_get(self_client, path, params=None, timeout=None):
+            if "search/collection-versions" in path:
+                return search_with_roles
+            return {"download_count": 2600000, "highest_version": {"version": "1.121.0"}}
+
+        with _mock_search_context(mock_api_get):
+            client = GalaxyClient()
+            result = await client.search_collections("linux system roles")
+
+        col = result["collections"][0]
+        assert col["role_count"] == 2
+        assert col["module_count"] == 1

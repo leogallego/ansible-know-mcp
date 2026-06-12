@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ansible-know-mcp"
-version = "0.2.0"
-description = "Ansible Knowledge MCP Server — module discovery, documentation, and skill generation for AI agents"
+version = "0.3.0"
+description = "Ansible Knowledge MCP Server — module and role discovery, documentation, and skill generation for AI agents"
 requires-python = ">=3.10"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]

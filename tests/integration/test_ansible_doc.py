@@ -62,3 +62,24 @@ class TestRealAnsibleDoc:
             return
         with pytest.raises(AnsibleDocError, match="not found"):
             extract_module_metadata(doc)
+
+
+class TestRealAnsibleDocRoles:
+    def test_list_roles_returns_dict(self):
+        from ansible_know.parser import list_roles
+
+        roles = list_roles(namespace="ansible.builtin")
+        assert isinstance(roles, dict)
+
+    def test_get_role_doc_without_argument_specs_returns_empty(self):
+        from ansible_know.parser import list_roles
+
+        roles = list_roles()
+        if not roles:
+            pytest.skip("No roles available")
+
+        from ansible_know.parser import get_role_doc
+
+        role_name = next(iter(roles))
+        doc = get_role_doc(role_name)
+        assert isinstance(doc, dict)

@@ -1,6 +1,6 @@
 """Ansible Know MCP Server.
 
-Provides 10 tools, 4 resources, and 4 prompts for module discovery,
+Provides 12 tools, 4 resources, and 4 prompts for module and role discovery,
 documentation search, Galaxy collection discovery, and skill generation
 via the Model Context Protocol.
 """
@@ -47,13 +47,13 @@ async def app_lifespan(server):
 mcp = FastMCP(
     name="Ansible Know",
     instructions=(
-        "Ansible module discovery, documentation, and skill generation. "
+        "Ansible module and role discovery, documentation, and skill generation. "
         "Workflow: (1) search_collections to discover collections on Galaxy, "
         "(2) ensure_collection to install one for this session, "
-        "(3) search_modules to find modules in installed collections, "
-        "(4) get_module_doc for structured docs (falls back to Galaxy if not installed), "
+        "(3) search_modules/get_collection_manifest to find modules and roles, "
+        "(4) get_module_doc or get_role_doc for structured docs, "
         "(5) search_docs for conceptual guides, "
-        "(6) generate_skill to create ready-to-use skill packages."
+        "(6) generate_skill or generate_role_skill to create skill packages."
     ),
     lifespan=app_lifespan,
 )
@@ -131,6 +131,60 @@ async def _resolve_module_doc(
             raise local_exc from galaxy_exc
 
 
+async def _resolve_role_doc(
+    role_name: str, http_client: httpx.AsyncClient | None = None,
+) -> dict[str, Any]:
+    """Try local ansible-doc -t role, fall back to Galaxy readme_html.
+
+    Returns the complete tool response dict including doc_source and content_type.
+    """
+    from ansible_know import parser
+    from ansible_know.errors import CollectionNotFoundError, GalaxyError
+
+    namespace = ".".join(role_name.split(".")[:2]) if "." in role_name else None
+
+    local_doc: dict[str, Any] = {}
+
+    if not (namespace and namespace in _missing_collections):
+        try:
+            local_doc = await _run_in_executor(parser.get_role_doc, role_name)
+        except CollectionNotFoundError:
+            if namespace:
+                _missing_collections.add(namespace)
+            local_doc = {}
+        except AnsibleDocError as exc:
+            logger.warning("Local role doc failed for %s: %s", role_name, exc)
+            local_doc = {}
+
+    if local_doc:
+        metadata = parser.extract_role_metadata(local_doc)
+        metadata["content_type"] = "role"
+        metadata["doc_source"] = "local"
+        return metadata
+
+    try:
+        from ansible_know.galaxy import GalaxyClient
+
+        async with GalaxyClient(http_client=http_client) as client:
+            galaxy_role_meta, galaxy_meta = await client.fetch_role_doc(role_name)
+
+        result = dict(galaxy_role_meta)
+        result["content_type"] = "role"
+        result["doc_source"] = "galaxy_readme"
+        result["doc_version"] = galaxy_meta.get("doc_version", "")
+        if "doc_warning" in galaxy_meta:
+            result["doc_warning"] = galaxy_meta["doc_warning"]
+        return result
+    except GalaxyError as galaxy_exc:
+        return {
+            "role_name": role_name,
+            "content_type": "role",
+            "doc_source": "unavailable",
+            "error": sanitize_error(str(galaxy_exc)),
+            "entry_points": {},
+        }
+
+
 # --- Discovery tools (read-only) ---
 
 
@@ -200,6 +254,36 @@ async def get_module_doc(
         from ansible_know.errors import GalaxyError
         if isinstance(exc.__cause__, GalaxyError):
             return {"error": sanitize_error(str(exc))}
+        return {"error": _maybe_add_hint(sanitize_error(str(exc)), ns)}
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+async def get_role_doc(
+    role_name: Annotated[str, "Fully-qualified role name (e.g. 'fedora.linux_system_roles.timesync')"],
+    ctx: Context = None,
+) -> dict[str, Any]:
+    """Get full structured documentation for one role.
+
+    Returns: role_name, content_type ('role'), short_description,
+    doc_source ('local', 'galaxy_readme', or 'unavailable'),
+    entry_points (dict of entry point names to {description, options}),
+    dependencies (list), examples (str).
+    When doc_source is 'galaxy_readme', also includes doc_version and doc_warning.
+    Falls back to Galaxy README parsing if local ansible-doc returns empty.
+    On validation failure returns {"error": str}.
+    """
+    logger.info("get_role_doc role=%r", role_name)
+    try:
+        validate_fqcn(role_name)
+    except ValidationError as exc:
+        return {"error": str(exc)}
+
+    try:
+        http_client = ctx.lifespan_context.get("http_client") if ctx else None
+        return await _resolve_role_doc(role_name, http_client=http_client)
+    except Exception as exc:
+        logger.warning("get_role_doc failed: %s", exc)
+        ns = ".".join(role_name.split(".")[:2]) if "." in role_name else None
         return {"error": _maybe_add_hint(sanitize_error(str(exc)), ns)}
 
 
@@ -289,16 +373,26 @@ async def get_collection_manifest(
         return {"error": str(exc)}
 
     try:
-        from ansible_know import collection_manifest, parser
+        from ansible_know import collection_manifest, collections, parser
 
-        cached = collection_manifest.load_cached_manifest(collection_namespace)
+        installed_version = collections.list_installed().get(collection_namespace)
+        cached = collection_manifest.load_cached_manifest(
+            collection_namespace, installed_version=installed_version,
+        )
         if cached:
             return cached
 
         modules = await _run_in_executor(parser.search_modules, "", collection_namespace)
-        if not modules:
+
+        roles_raw = {}
+        try:
+            roles_raw = await _run_in_executor(parser.list_roles, collection_namespace)
+        except Exception as exc:
+            logger.warning("list_roles failed for %s: %s", collection_namespace, exc)
+
+        if not modules and not roles_raw:
             return {"error": (
-                f"No modules found in collection '{collection_namespace}'."
+                f"No modules or roles found in collection '{collection_namespace}'."
                 + _collection_hint(collection_namespace)
             )}
 
@@ -310,7 +404,22 @@ async def get_collection_manifest(
             except AnsibleDocError:
                 continue
 
-        return collection_manifest.generate_manifest(collection_namespace, metadata_list)
+        roles_metadata = []
+        for role_fqcn, role_data in sorted(roles_raw.items()):
+            entry_points = list(role_data.get("entry_points", {}).keys()) or ["main"]
+            has_specs = bool(role_data.get("entry_points", {}))
+            roles_metadata.append({
+                "fqcn": role_fqcn,
+                "description": role_data.get("description", ""),
+                "has_argument_specs": has_specs,
+                "entry_points": entry_points,
+            })
+
+        return collection_manifest.generate_manifest(
+            collection_namespace, metadata_list,
+            roles_metadata=roles_metadata,
+            collection_version=installed_version,
+        )
     except ValidationError:
         raise
     except Exception as exc:
@@ -485,6 +594,59 @@ async def generate_skill(
         from ansible_know.errors import GalaxyError
         if isinstance(exc.__cause__, GalaxyError):
             return {"error": sanitize_error(str(exc))}
+        return {"error": _maybe_add_hint(sanitize_error(str(exc)), ns)}
+
+
+@mcp.tool(annotations=ToolAnnotations(idempotentHint=True))
+async def generate_role_skill(
+    role_name: Annotated[str, "Fully-qualified role name (e.g. 'fedora.linux_system_roles.timesync')"],
+    install_to: Annotated[str | None, "Optional absolute path to install the skill to"] = None,
+    ctx: Context = None,
+) -> str | dict[str, str]:
+    """Generate a skill package for one role.
+
+    Writes SKILL.md + assets/playbook.yml to disk (no scripts/).
+    Returns the SKILL.md content as str, or {"error": str} on failure.
+    """
+    logger.info("generate_role_skill role=%r install_to=%r", role_name, install_to)
+    try:
+        validate_fqcn(role_name)
+        if install_to:
+            validate_install_path(install_to)
+    except ValidationError as exc:
+        return {"error": str(exc)}
+
+    try:
+        from ansible_know import skills
+        from ansible_know.config import SKILLS_DIR
+
+        if ctx:
+            await ctx.report_progress(progress=0, total=100)
+
+        http_client = ctx.lifespan_context.get("http_client") if ctx else None
+        metadata = await _resolve_role_doc(role_name, http_client=http_client)
+
+        if metadata.get("doc_source") == "unavailable":
+            return {"error": metadata.get("error", f"No documentation found for role '{role_name}'.")}
+
+        if ctx:
+            await ctx.report_progress(progress=50, total=100)
+
+        base_dir = validate_install_path(install_to) if install_to else SKILLS_DIR
+        output_dir = base_dir / role_name
+
+        await _run_in_executor(skills.write_role_skill_package, output_dir, metadata)
+        logger.info("generate_role_skill wrote to %s", output_dir)
+
+        if ctx:
+            await ctx.report_progress(progress=100, total=100)
+
+        return truncate_response(skills.render_role_skill(metadata))
+    except ValidationError as exc:
+        return {"error": str(exc)}
+    except Exception as exc:
+        logger.warning("generate_role_skill failed: %s", exc)
+        ns = ".".join(role_name.split(".")[:2]) if "." in role_name else None
         return {"error": _maybe_add_hint(sanitize_error(str(exc)), ns)}
 
 
@@ -686,8 +848,8 @@ def find_collection(platform_or_use_case: str) -> str:
         "1. Use search_collections to find relevant collections on Galaxy\n"
         "2. Pick the best match (prefer high download count, non-deprecated)\n"
         "3. Use ensure_collection to install it for this session\n"
-        "4. Use get_collection_manifest to see all available modules\n"
-        "5. Use get_module_doc on the most relevant modules to understand their usage"
+        "4. Use get_collection_manifest to see all available modules and roles\n"
+        "5. Use get_module_doc or get_role_doc on relevant content to understand usage"
     )
 
 
