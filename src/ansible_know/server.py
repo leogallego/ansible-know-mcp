@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 from functools import partial
+from importlib.metadata import version as pkg_version
 from typing import Annotated, Any
 
 import httpx
@@ -44,8 +45,11 @@ async def app_lifespan(server):
         yield {"http_client": client}
 
 
+_VERSION = pkg_version("ansible-know-mcp")
+
 mcp = FastMCP(
     name="Ansible Know",
+    version=_VERSION,
     instructions=(
         "Ansible module and role discovery, documentation, and skill generation. "
         "Workflow: (1) search_collections to discover collections on Galaxy, "
