@@ -909,3 +909,99 @@ class TestGetRoleDocTool:
         assert result["doc_source"] == "galaxy_readme"
 
         assert "ansible.builtin" not in server._missing_collections
+
+
+class TestGenerateRoleSkillTool:
+    @pytest.mark.asyncio
+    async def test_generates_role_skill(self, tmp_path, mock_ansible_doc, monkeypatch):
+        mock_ansible_doc.return_value = json.dumps(SAMPLE_ROLE_DOC)
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+        from ansible_know.server import generate_role_skill
+        result = await generate_role_skill("fedora.linux_system_roles.gfs2")
+        assert "fedora.linux_system_roles.gfs2" in result
+        assert (tmp_path / "fedora.linux_system_roles.gfs2" / "SKILL.md").exists()
+        assert (tmp_path / "fedora.linux_system_roles.gfs2" / "assets" / "playbook.yml").exists()
+        assert not (tmp_path / "fedora.linux_system_roles.gfs2" / "scripts").exists()
+
+    @pytest.mark.asyncio
+    async def test_validation_error(self):
+        from ansible_know.server import generate_role_skill
+        result = await generate_role_skill("invalid")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_galaxy_fallback(self, tmp_path, mock_ansible_doc, monkeypatch):
+        mock_ansible_doc.return_value = "{}"
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+
+        galaxy_role_meta = {
+            "role_name": "fedora.linux_system_roles.timesync",
+            "short_description": "Configure time synchronization",
+            "entry_points": {
+                "main": {
+                    "description": "Configure time sync",
+                    "options": [{"name": "timesync_ntp_servers", "type": "list", "required": False, "default": "[]", "description": "NTP servers"}],
+                },
+            },
+            "dependencies": [],
+            "examples": "",
+        }
+        galaxy_meta = {"doc_source": "galaxy", "doc_version": "1.121.0", "doc_warning": "parsed from README"}
+
+        with patch(
+            "ansible_know.galaxy.GalaxyClient.fetch_role_doc",
+            return_value=(galaxy_role_meta, galaxy_meta),
+        ):
+            from ansible_know.server import generate_role_skill
+            result = await generate_role_skill("fedora.linux_system_roles.timesync")
+
+        assert "fedora.linux_system_roles.timesync" in result
+        assert (tmp_path / "fedora.linux_system_roles.timesync" / "SKILL.md").exists()
+
+
+class TestGetCollectionManifestWithRoles:
+    @pytest.mark.asyncio
+    async def test_manifest_includes_roles(self, mock_ansible_doc):
+        call_count = 0
+
+        def side_effect(*args):
+            nonlocal call_count
+            call_count += 1
+            if "-t" in args and "role" in args and "--list" in args:
+                return json.dumps(SAMPLE_ROLE_LIST)
+            if "--list" in args:
+                return json.dumps(SAMPLE_MODULE_LIST)
+            return json.dumps(SAMPLE_MODULE_DOC)
+
+        mock_ansible_doc.side_effect = side_effect
+
+        with patch("ansible_know.collection_manifest.load_cached_manifest", return_value=None):
+            from ansible_know.server import get_collection_manifest
+            result = await get_collection_manifest("fedora.linux_system_roles")
+
+        assert "roles" in result
+        assert "role_count" in result
+
+    @pytest.mark.asyncio
+    async def test_search_collections_has_role_count(self):
+        mock_result = {
+            "query": "linux",
+            "count": 1,
+            "collections": [
+                {
+                    "namespace": "fedora.linux_system_roles",
+                    "description": "Linux system roles",
+                    "tags": [],
+                    "download_count": 2600000,
+                    "latest_version": "1.121.0",
+                    "module_count": 27,
+                    "role_count": 43,
+                    "deprecated": False,
+                    "signed": False,
+                }
+            ],
+        }
+        with patch("ansible_know.galaxy.GalaxyClient.search_collections", return_value=mock_result):
+            from ansible_know.server import search_collections
+            result = await search_collections("linux")
+        assert result["collections"][0]["role_count"] == 43
