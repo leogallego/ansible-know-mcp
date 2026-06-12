@@ -373,9 +373,12 @@ async def get_collection_manifest(
         return {"error": str(exc)}
 
     try:
-        from ansible_know import collection_manifest, parser
+        from ansible_know import collection_manifest, collections, parser
 
-        cached = collection_manifest.load_cached_manifest(collection_namespace)
+        installed_version = collections.list_installed().get(collection_namespace)
+        cached = collection_manifest.load_cached_manifest(
+            collection_namespace, installed_version=installed_version,
+        )
         if cached:
             return cached
 
@@ -412,7 +415,11 @@ async def get_collection_manifest(
                 "entry_points": entry_points,
             })
 
-        return collection_manifest.generate_manifest(collection_namespace, metadata_list, roles_metadata=roles_metadata)
+        return collection_manifest.generate_manifest(
+            collection_namespace, metadata_list,
+            roles_metadata=roles_metadata,
+            collection_version=installed_version,
+        )
     except ValidationError:
         raise
     except Exception as exc:

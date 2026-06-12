@@ -9,7 +9,7 @@
 {% if examples and examples_contain_play %}
 {{ examples }}
 {% elif examples %}
-- name: "{{ short_description }}"
+- name: {{ short_description | tojson }}
   hosts: all
 {% if not is_api_module %}
   become: true
@@ -20,7 +20,7 @@
   tasks:
 {{ examples | indent(4, first=true) }}
 {% else %}
-- name: "{{ short_description }}"
+- name: {{ short_description | tojson }}
   hosts: all
 {% if not is_api_module %}
   become: true

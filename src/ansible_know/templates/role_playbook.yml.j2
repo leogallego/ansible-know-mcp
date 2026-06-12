@@ -6,7 +6,7 @@
 #   ansible-playbook assets/playbook.yml -i /path/to/inventory.yml --check --diff
 #   ansible-playbook assets/playbook.yml -i /path/to/inventory.yml --diff
 #
-- name: "{{ short_description }}"
+- name: {{ short_description | tojson }}
   hosts: all
   roles:
     - role: {{ role_name }}

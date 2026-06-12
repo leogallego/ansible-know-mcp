@@ -48,6 +48,7 @@ def generate_manifest(
     modules_metadata: list[dict[str, Any]],
     roles_metadata: list[dict[str, Any]] | None = None,
     skills_dir: Path | None = None,
+    collection_version: str | None = None,
 ) -> dict[str, Any]:
     """Generate a collection manifest from module and role metadata.
 
@@ -56,6 +57,7 @@ def generate_manifest(
         modules_metadata: list of extract_module_metadata() results
         roles_metadata: list of role metadata dicts (optional)
         skills_dir: where to check for existing skills and write manifest
+        collection_version: installed version to store for cache invalidation
 
     Returns:
         The manifest dict.
@@ -97,6 +99,7 @@ def generate_manifest(
 
     manifest = {
         "collection": collection_namespace,
+        "collection_version": collection_version,
         "generated": datetime.now(timezone.utc).isoformat(),
         "module_count": len(modules_list),
         "role_count": len(roles_list),
@@ -115,12 +118,21 @@ def generate_manifest(
 def load_cached_manifest(
     collection_namespace: str,
     skills_dir: Path | None = None,
+    installed_version: str | None = None,
 ) -> dict[str, Any] | None:
-    """Load a cached MANIFEST.json if it exists."""
+    """Load a cached MANIFEST.json if it exists and is still valid.
+
+    When installed_version is provided, the cache is invalidated if the
+    stored collection_version doesn't match.
+    """
     if skills_dir is None:
         skills_dir = SKILLS_DIR
 
     manifest_path = skills_dir / collection_namespace.replace(".", "/") / "MANIFEST.json"
-    if manifest_path.exists():
-        return json.loads(manifest_path.read_text())
-    return None
+    if not manifest_path.exists():
+        return None
+
+    manifest = json.loads(manifest_path.read_text())
+    if installed_version and manifest.get("collection_version") != installed_version:
+        return None
+    return manifest
