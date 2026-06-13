@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from functools import partial
 from importlib.metadata import version as pkg_version
 from typing import Annotated, Any
@@ -35,17 +36,51 @@ from ansible_know.validation import (
 
 logger = logging.getLogger("ansible_know")
 
+_VERSION = pkg_version("ansible-know-mcp")
+_version_info: dict[str, Any] | None = None
+
+
+def _parse_version(v: str) -> tuple[int, ...]:
+    try:
+        return tuple(int(x) for x in v.strip().split("."))
+    except (ValueError, AttributeError):
+        return (0,)
+
+
+async def _check_pypi_version(client: httpx.AsyncClient) -> dict[str, Any] | None:
+    if os.environ.get("ANSIBLE_KNOW_SKIP_UPDATE_CHECK", "").strip() in ("1", "true", "yes"):
+        return None
+    try:
+        resp = await client.get(
+            "https://pypi.org/pypi/ansible-know-mcp/json",
+            timeout=httpx.Timeout(3.0),
+            headers={"Accept": "application/json"},
+        )
+        resp.raise_for_status()
+        latest = resp.json().get("info", {}).get("version", "")
+        if not latest:
+            return None
+        outdated = _parse_version(latest) > _parse_version(_VERSION)
+        return {
+            "installed": _VERSION,
+            "latest": latest,
+            "outdated": outdated,
+            "upgrade_command": "uvx --upgrade ansible-know-mcp",
+        }
+    except Exception:
+        logger.debug("PyPI version check failed (non-blocking)")
+        return None
+
 
 @lifespan
 async def app_lifespan(server):
+    global _version_info
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(10.0, read=120.0),
         verify=True,
     ) as client:
-        yield {"http_client": client}
-
-
-_VERSION = pkg_version("ansible-know-mcp")
+        _version_info = await _check_pypi_version(client)
+        yield {"http_client": client, "version_info": _version_info, "upgrade_warned": False}
 
 mcp = FastMCP(
     name="Ansible Know",
@@ -67,6 +102,21 @@ def _run_in_executor(func, *args, **kwargs):
     """Run a blocking function in the default executor."""
     loop = asyncio.get_event_loop()
     return loop.run_in_executor(None, partial(func, *args, **kwargs))
+
+
+async def _maybe_warn_upgrade(ctx: Context | None) -> None:
+    if ctx is None:
+        return
+    lc = ctx.lifespan_context
+    info = lc.get("version_info")
+    if lc.get("upgrade_warned") or not info or not info.get("outdated"):
+        return
+    await ctx.warning(
+        f"ansible-know-mcp {info['installed']} is outdated; "
+        f"latest is {info['latest']}. "
+        f"Upgrade: {info['upgrade_command']}"
+    )
+    lc["upgrade_warned"] = True
 
 
 _MISSING_COLLECTION_PATTERNS = ("has no attribute", "was not found", "could not be found")
@@ -236,6 +286,7 @@ async def get_module_doc(
     On failure returns {"error": str}.
     """
     logger.info("get_module_doc module=%r", module_name)
+    await _maybe_warn_upgrade(ctx)
     try:
         validate_fqcn(module_name)
     except ValidationError as exc:
@@ -277,6 +328,7 @@ async def get_role_doc(
     On validation failure returns {"error": str}.
     """
     logger.info("get_role_doc role=%r", role_name)
+    await _maybe_warn_upgrade(ctx)
     try:
         validate_fqcn(role_name)
     except ValidationError as exc:
@@ -342,6 +394,7 @@ async def search_collections(
     On failure returns {"error": str}.
     """
     logger.info("search_collections query=%r tags=%r", query, tags)
+    await _maybe_warn_upgrade(ctx)
     try:
         validate_query(query)
         if tags:
@@ -556,6 +609,7 @@ async def generate_skill(
     Returns the SKILL.md content as str, or {"error": str} on failure.
     """
     logger.info("generate_skill module=%r install_to=%r", module_name, install_to)
+    await _maybe_warn_upgrade(ctx)
     try:
         validate_fqcn(module_name)
         if install_to:
@@ -613,6 +667,7 @@ async def generate_role_skill(
     Returns the SKILL.md content as str, or {"error": str} on failure.
     """
     logger.info("generate_role_skill role=%r install_to=%r", role_name, install_to)
+    await _maybe_warn_upgrade(ctx)
     try:
         validate_fqcn(role_name)
         if install_to:
@@ -667,6 +722,7 @@ async def generate_collection_skills(
     or {"error": str} on failure.
     """
     logger.info("generate_collection_skills namespace=%r install_to=%r", collection_namespace, install_to)
+    await _maybe_warn_upgrade(ctx)
     try:
         validate_namespace(collection_namespace)
         if install_to:
@@ -779,6 +835,25 @@ def resource_installed_collections() -> str:
     from ansible_know import collections
 
     return json.dumps(collections.list_installed(), indent=2)
+
+
+@mcp.resource(
+    "server://version",
+    name="Server Version",
+    description="Installed and latest version info with upgrade status",
+)
+def resource_server_version() -> str:
+    if _version_info:
+        return json.dumps(_version_info, indent=2)
+    return json.dumps(
+        {
+            "installed": _VERSION,
+            "latest": None,
+            "outdated": None,
+            "upgrade_command": "uvx --upgrade ansible-know-mcp",
+        },
+        indent=2,
+    )
 
 
 @mcp.resource(

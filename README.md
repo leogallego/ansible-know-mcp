@@ -145,6 +145,7 @@ uvx ansible-know-mcp
 | `skills://list` | List all generated skill packages |
 | `skills://{skill_name}` | Read a skill's SKILL.md content by FQCN |
 | `galaxy://installed` | List collections installed in this session |
+| `server://version` | Installed and latest version info with upgrade status |
 | `docs://sources` | List configured documentation manifest sources |
 
 ## Prompts
@@ -189,6 +190,7 @@ pytest
 | `ANSIBLE_KNOWLEDGE_SKILLS_DIR` | Where to write generated skills | `./skills/` |
 | `ANSIBLE_KNOWLEDGE_DOC_SOURCES` | JSON dict of doc manifest sources | Built-in ansible-core source |
 | `ANSIBLE_KNOWLEDGE_GALAXY_URL` | Galaxy API base URL | `https://galaxy.ansible.com` |
+| `ANSIBLE_KNOW_SKIP_UPDATE_CHECK` | Set to `1` to disable PyPI version check at startup | *(not set)* |
 
 ## License
 
