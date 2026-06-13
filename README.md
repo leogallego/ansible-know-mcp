@@ -187,9 +187,9 @@ pytest
 
 | Environment Variable | Description | Default |
 |---------------------|-------------|---------|
-| `ANSIBLE_KNOWLEDGE_SKILLS_DIR` | Where to write generated skills | `./skills/` |
-| `ANSIBLE_KNOWLEDGE_DOC_SOURCES` | JSON dict of doc manifest sources | Built-in ansible-core source |
-| `ANSIBLE_KNOWLEDGE_GALAXY_URL` | Galaxy API base URL | `https://galaxy.ansible.com` |
+| `ANSIBLE_KNOW_SKILLS_DIR` | Where to write generated skills | `./skills/` |
+| `ANSIBLE_KNOW_DOC_SOURCES` | JSON dict of doc manifest sources | Built-in ansible-core source |
+| `ANSIBLE_KNOW_GALAXY_URL` | Galaxy API base URL | `https://galaxy.ansible.com` |
 | `ANSIBLE_KNOW_SKIP_UPDATE_CHECK` | Set to `1` to disable PyPI version check at startup | *(not set)* |
 
 ## License

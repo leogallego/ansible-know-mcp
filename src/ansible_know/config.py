@@ -11,7 +11,7 @@ _PKG_DIR = Path(__file__).resolve().parent
 TEMPLATE_DIR = _PKG_DIR / "templates"
 
 SKILLS_DIR = Path(os.environ.get(
-    "ANSIBLE_KNOWLEDGE_SKILLS_DIR",
+    "ANSIBLE_KNOW_SKILLS_DIR",
     Path.cwd() / "skills",
 ))
 
@@ -25,23 +25,23 @@ DEFAULT_DOC_SOURCES: dict[str, dict[str, str]] = {
 def get_doc_sources() -> dict[str, dict[str, str]]:
     """Return configured documentation manifest sources.
 
-    Override defaults via ANSIBLE_KNOWLEDGE_DOC_SOURCES env var (JSON).
+    Override defaults via ANSIBLE_KNOW_DOC_SOURCES env var (JSON).
     Falls back to defaults on invalid JSON or malformed structure.
     """
-    env_val = os.environ.get("ANSIBLE_KNOWLEDGE_DOC_SOURCES")
+    env_val = os.environ.get("ANSIBLE_KNOW_DOC_SOURCES")
     if env_val:
         try:
             parsed = json.loads(env_val)
         except (json.JSONDecodeError, ValueError):
             import logging
             logging.getLogger("ansible_know").warning(
-                "Invalid JSON in ANSIBLE_KNOWLEDGE_DOC_SOURCES, using defaults"
+                "Invalid JSON in ANSIBLE_KNOW_DOC_SOURCES, using defaults"
             )
             return DEFAULT_DOC_SOURCES
         if not isinstance(parsed, dict):
             import logging
             logging.getLogger("ansible_know").warning(
-                "ANSIBLE_KNOWLEDGE_DOC_SOURCES must be a JSON object, using defaults"
+                "ANSIBLE_KNOW_DOC_SOURCES must be a JSON object, using defaults"
             )
             return DEFAULT_DOC_SOURCES
         return parsed
@@ -51,6 +51,6 @@ SEARCH_MODULES_LIMIT = 50
 SEARCH_DOCS_LIMIT = 20
 
 GALAXY_BASE_URL = os.environ.get(
-    "ANSIBLE_KNOWLEDGE_GALAXY_URL",
+    "ANSIBLE_KNOW_GALAXY_URL",
     "https://galaxy.ansible.com",
 )
