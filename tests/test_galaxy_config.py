@@ -244,7 +244,6 @@ class TestLoadGalaxyServers:
 
         assert servers[0].timeout == 120
 
-
     def test_validate_certs_off(self, tmp_path):
         cfg = tmp_path / "ansible.cfg"
         cfg.write_text(textwrap.dedent("""\
