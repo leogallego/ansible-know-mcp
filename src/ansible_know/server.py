@@ -1,6 +1,6 @@
 """Ansible Know MCP Server.
 
-Provides 12 tools, 4 resources, and 4 prompts for module and role discovery,
+Provides 12 tools, 5 resources, and 4 prompts for module and role discovery,
 documentation search, Galaxy collection discovery, and skill generation
 via the Model Context Protocol.
 """
