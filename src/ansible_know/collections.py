@@ -50,12 +50,12 @@ def _get_or_create_tmpdir() -> str:
         return _tmp_dir.name
 
 
-def _parse_version(stdout: str, namespace: str, tmpdir: str) -> str:
+def _parse_version(stdout: str, collection_fqcn: str, tmpdir: str) -> str:
     for match in _VERSION_PARSE_RE.finditer(stdout):
-        if match.group(1) == namespace:
+        if match.group(1) == collection_fqcn:
             return match.group(2)
 
-    parts = namespace.split(".")
+    parts = collection_fqcn.split(".")
     manifest_path = Path(tmpdir) / "ansible_collections" / parts[0] / parts[1] / "MANIFEST.json"
     if manifest_path.exists():
         try:
@@ -66,15 +66,19 @@ def _parse_version(stdout: str, namespace: str, tmpdir: str) -> str:
         except json.JSONDecodeError:
             pass
 
-    logger.warning("Could not parse installed version for %s", namespace)
+    logger.warning("Could not parse installed version for %s", collection_fqcn)
     return "unknown"
 
 
 MAX_TRACKED_COLLECTIONS = 100
 
 
-def ensure_collection(namespace: str, version: str | None = None) -> dict:
+def ensure_collection(collection_fqcn: str, version: str | None = None) -> dict:
     """Install a collection to the temp directory (thread-safe).
+
+    Args:
+        collection_fqcn: Two-part collection identifier (e.g., "netbox.netbox").
+        version: Optional version constraint (e.g., "4.1.0").
 
     Installs once and pins the resolved version. Subsequent calls skip
     unless a different version is explicitly requested.
@@ -82,30 +86,30 @@ def ensure_collection(namespace: str, version: str | None = None) -> dict:
     Returns dict with keys: namespace, version, status, message.
     """
     with _locks_lock:
-        if len(_install_locks) >= MAX_TRACKED_COLLECTIONS and namespace not in _install_locks:
+        if len(_install_locks) >= MAX_TRACKED_COLLECTIONS and collection_fqcn not in _install_locks:
             raise CollectionInstallError(
                 f"Too many collections tracked ({MAX_TRACKED_COLLECTIONS}). "
                 "Restart the server to reset."
             )
-        if namespace not in _install_locks:
-            _install_locks[namespace] = threading.Lock()
-        lock = _install_locks[namespace]
+        if collection_fqcn not in _install_locks:
+            _install_locks[collection_fqcn] = threading.Lock()
+        lock = _install_locks[collection_fqcn]
 
     with lock:
-        current = _installed.get(namespace)
+        current = _installed.get(collection_fqcn)
         if current and (not version or current == version):
             return {
-                "namespace": namespace,
+                "namespace": collection_fqcn,
                 "version": current,
                 "status": "already_installed",
-                "message": f"Collection {namespace} v{current} is already available.",
+                "message": f"Collection {collection_fqcn} v{current} is already available.",
             }
 
         previous_version = current
         tmpdir = _get_or_create_tmpdir()
         galaxy = _find_ansible_galaxy()
 
-        collection_spec = f"{namespace}:=={version}" if version else namespace
+        collection_spec = f"{collection_fqcn}:=={version}" if version else collection_fqcn
         cmd = [galaxy, "collection", "install", collection_spec, "-p", tmpdir, "--force"]
 
         with _install_gate:
@@ -118,7 +122,7 @@ def ensure_collection(namespace: str, version: str | None = None) -> dict:
                 )
             except subprocess.TimeoutExpired as exc:
                 raise CollectionInstallError(
-                    f"ansible-galaxy timed out installing {namespace}"
+                    f"ansible-galaxy timed out installing {collection_fqcn}"
                 ) from exc
 
             if result.returncode != 0:
@@ -126,21 +130,21 @@ def ensure_collection(namespace: str, version: str | None = None) -> dict:
                     sanitize_error(result.stderr.strip())
                 )
 
-        installed_version = _parse_version(result.stdout, namespace, tmpdir)
-        _installed[namespace] = installed_version
+        installed_version = _parse_version(result.stdout, collection_fqcn, tmpdir)
+        _installed[collection_fqcn] = installed_version
 
         if previous_version and previous_version != installed_version:
             message = (
-                f"Installed {namespace} v{installed_version}, "
+                f"Installed {collection_fqcn} v{installed_version}, "
                 f"replacing previously installed v{previous_version}."
             )
         elif version:
-            message = f"Installed {namespace} v{installed_version}."
+            message = f"Installed {collection_fqcn} v{installed_version}."
         else:
-            message = f"Installed {namespace} v{installed_version} (latest)."
+            message = f"Installed {collection_fqcn} v{installed_version} (latest)."
 
         return {
-            "namespace": namespace,
+            "namespace": collection_fqcn,
             "version": installed_version,
             "status": "installed",
             "message": message,

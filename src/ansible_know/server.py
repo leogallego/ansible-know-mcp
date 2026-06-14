@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 if TYPE_CHECKING:
     from ansible_know.galaxy_config import GalaxyServerConfig
+    from ansible_know.types import DocProvenance
 
 import httpx
 from fastmcp import Context, FastMCP
@@ -203,7 +204,7 @@ async def _resolve_module_doc(
     module_name: str,
     http_client: httpx.AsyncClient | None = None,
     galaxy_servers: list[GalaxyServerConfig] | None = None,
-) -> tuple[dict, dict | None]:
+) -> tuple[dict[str, Any], DocProvenance | None]:
     """Try local ansible-doc, fall back to Galaxy if the collection is missing.
 
     Returns (raw_doc, galaxy_meta_or_none). Raises on non-missing-collection
@@ -333,7 +334,9 @@ async def search_modules(
         from ansible_know import parser
         from ansible_know.config import SEARCH_MODULES_LIMIT
 
-        results = await _run_in_executor(parser.search_modules, keyword, namespace)
+        results = await _run_in_executor(
+            parser.search_modules, keyword, collection_filter=namespace,
+        )
         if len(results) > SEARCH_MODULES_LIMIT:
             results = dict(list(results.items())[:SEARCH_MODULES_LIMIT])
         return results
@@ -556,11 +559,15 @@ async def get_collection_manifest(
         if cached:
             return cached
 
-        modules = await _run_in_executor(parser.search_modules, "", collection_namespace)
+        modules = await _run_in_executor(
+            parser.search_modules, "", collection_filter=collection_namespace,
+        )
 
         roles_raw = {}
         try:
-            roles_raw = await _run_in_executor(parser.list_roles, collection_namespace)
+            roles_raw = await _run_in_executor(
+                parser.list_roles, collection_filter=collection_namespace,
+            )
         except Exception as exc:
             logger.warning("list_roles failed for %s: %s", collection_namespace, exc)
 
@@ -635,7 +642,9 @@ async def ensure_collection(
     try:
         from ansible_know import collections
 
-        result = await _run_in_executor(collections.ensure_collection, collection_namespace, version)
+        result = await _run_in_executor(
+            collections.ensure_collection, collection_fqcn=collection_namespace, version=version,
+        )
         _missing_collections.discard(collection_namespace)
         logger.info(
             "ensure_collection result: namespace=%s version=%s status=%s",
@@ -857,7 +866,9 @@ async def generate_collection_skills(
         from ansible_know import collection_manifest, parser, skills
         from ansible_know.config import SKILLS_DIR
 
-        modules = await _run_in_executor(parser.search_modules, "", collection_namespace)
+        modules = await _run_in_executor(
+            parser.search_modules, "", collection_filter=collection_namespace,
+        )
         if not modules:
             return {"error": (
                 f"No modules found in collection '{collection_namespace}'."

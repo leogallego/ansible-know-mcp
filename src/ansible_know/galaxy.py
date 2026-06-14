@@ -20,6 +20,7 @@ from ansible_know.errors import GalaxyError
 
 if TYPE_CHECKING:
     from ansible_know.galaxy_config import GalaxyServerConfig
+    from ansible_know.types import DocProvenance
 
 logger = logging.getLogger("ansible_know")
 
@@ -417,7 +418,7 @@ class GalaxyClient:
 
     async def fetch_module_doc(
         self, module_name: str, version: str | None = None,
-    ) -> tuple[dict[str, Any], dict[str, str]]:
+    ) -> tuple[dict[str, Any], DocProvenance]:
         """Fetch module documentation from Galaxy.
 
         Returns (module_doc, meta) where module_doc mimics ansible-doc --json
@@ -437,7 +438,7 @@ class GalaxyClient:
 
         doc = self._transform_to_ansible_doc_format(module_name, module_entry)
 
-        meta: dict[str, str] = {
+        meta: DocProvenance = {
             "doc_source": "galaxy",
             "doc_version": resolved_version,
         }
@@ -451,7 +452,7 @@ class GalaxyClient:
 
     async def fetch_role_doc(
         self, role_name: str, version: str | None = None,
-    ) -> tuple[dict[str, Any], dict[str, str]]:
+    ) -> tuple[dict[str, Any], DocProvenance]:
         """Fetch role documentation from Galaxy docs-blob.
 
         Parses readme_html via readme_parser.parse_role_readme() and returns
@@ -498,7 +499,7 @@ class GalaxyClient:
             "examples": parsed.get("examples", ""),
         }
 
-        meta: dict[str, str] = {
+        meta: DocProvenance = {
             "doc_source": "galaxy",
             "doc_version": resolved_version,
         }

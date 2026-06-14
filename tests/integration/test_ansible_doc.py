@@ -23,7 +23,7 @@ class TestRealAnsibleDoc:
     def test_list_builtin_modules(self):
         from ansible_know.parser import list_modules
 
-        modules = list_modules(namespace="ansible.builtin")
+        modules = list_modules(collection_filter="ansible.builtin")
         assert len(modules) > 10
         assert "ansible.builtin.copy" in modules
         assert "ansible.builtin.file" in modules
@@ -40,7 +40,7 @@ class TestRealAnsibleDoc:
     def test_search_builtin_modules(self):
         from ansible_know.parser import search_modules
 
-        results = search_modules("copy", namespace="ansible.builtin")
+        results = search_modules("copy", collection_filter="ansible.builtin")
         assert "ansible.builtin.copy" in results
 
     def test_extract_metadata_from_real_doc(self):
@@ -68,7 +68,7 @@ class TestRealAnsibleDocRoles:
     def test_list_roles_returns_dict(self):
         from ansible_know.parser import list_roles
 
-        roles = list_roles(namespace="ansible.builtin")
+        roles = list_roles(collection_filter="ansible.builtin")
         assert isinstance(roles, dict)
 
     def test_get_role_doc_without_argument_specs_returns_empty(self):
