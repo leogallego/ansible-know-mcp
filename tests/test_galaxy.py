@@ -1380,6 +1380,20 @@ class TestGalaxyClientAuth:
         gc = GalaxyClient(server_name="my_hub")
         assert gc.server_name == "my_hub"
 
+    @pytest.mark.asyncio
+    async def test_token_takes_precedence_over_basic_auth(self):
+        mock_client = _mock_client_get(SAMPLE_VERSIONS_RESPONSE)
+        gc = GalaxyClient(
+            http_client=mock_client,
+            token="my_token",
+            username="admin",
+            password="secret",
+        )
+        await gc.latest_version("netbox", "netbox")
+        call_kwargs = mock_client.get.call_args[1]
+        assert call_kwargs["headers"]["Authorization"] == "Token my_token"
+        assert "auth" not in call_kwargs
+
     def test_from_config(self):
         from ansible_know.galaxy_config import GalaxyServerConfig
         config = GalaxyServerConfig(

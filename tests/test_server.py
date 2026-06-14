@@ -994,6 +994,63 @@ class TestLifespanHttpClient:
         assert result["count"] == 0
 
     @pytest.mark.asyncio
+    async def test_validate_certs_false_skips_shared_client(self):
+        from ansible_know.galaxy_config import GalaxyServerConfig
+
+        mock_client = AsyncMock()
+        mock_ctx = MagicMock()
+        server = GalaxyServerConfig(
+            name="private_hub",
+            url="https://hub.internal.com/api/galaxy",
+            token="secret",
+            validate_certs=False,
+        )
+        mock_ctx.lifespan_context = {
+            "http_client": mock_client,
+            "galaxy_servers": [server],
+        }
+
+        mock_result = {"query": "test", "count": 0, "collections": []}
+        with patch("ansible_know.galaxy.GalaxyClient.from_config") as mock_from_config:
+            mock_gc = AsyncMock()
+            mock_gc.search_collections.return_value = mock_result
+            mock_gc.__aenter__ = AsyncMock(return_value=mock_gc)
+            mock_gc.__aexit__ = AsyncMock(return_value=False)
+            mock_from_config.return_value = mock_gc
+            from ansible_know.server import search_collections
+            await search_collections("test", ctx=mock_ctx)
+
+        mock_from_config.assert_called_once_with(server, http_client=None)
+
+    @pytest.mark.asyncio
+    async def test_validate_certs_true_uses_shared_client(self):
+        from ansible_know.galaxy_config import GalaxyServerConfig
+
+        mock_client = AsyncMock()
+        mock_ctx = MagicMock()
+        server = GalaxyServerConfig(
+            name="public_galaxy",
+            url="https://galaxy.ansible.com",
+            validate_certs=True,
+        )
+        mock_ctx.lifespan_context = {
+            "http_client": mock_client,
+            "galaxy_servers": [server],
+        }
+
+        mock_result = {"query": "test", "count": 0, "collections": []}
+        with patch("ansible_know.galaxy.GalaxyClient.from_config") as mock_from_config:
+            mock_gc = AsyncMock()
+            mock_gc.search_collections.return_value = mock_result
+            mock_gc.__aenter__ = AsyncMock(return_value=mock_gc)
+            mock_gc.__aexit__ = AsyncMock(return_value=False)
+            mock_from_config.return_value = mock_gc
+            from ansible_know.server import search_collections
+            await search_collections("test", ctx=mock_ctx)
+
+        mock_from_config.assert_called_once_with(server, http_client=mock_client)
+
+    @pytest.mark.asyncio
     async def test_tools_work_without_ctx(self, mock_ansible_doc):
         mock_ansible_doc.return_value = json.dumps(SAMPLE_MODULE_DOC)
         from ansible_know.server import get_module_doc

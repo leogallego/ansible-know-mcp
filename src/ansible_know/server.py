@@ -181,7 +181,8 @@ async def _try_galaxy_servers(
     last_exc: GalaxyError | None = None
     for server in servers:
         try:
-            async with GalaxyClient.from_config(server, http_client=http_client) as client:
+            client_kwarg = http_client if server.validate_certs else None
+            async with GalaxyClient.from_config(server, http_client=client_kwarg) as client:
                 result = await operation(client)
             return result, server.name
         except GalaxyError as exc:
@@ -487,7 +488,8 @@ async def search_collections(
 
         for server in servers:
             try:
-                async with GalaxyClient.from_config(server, http_client=http_client) as client:
+                client_kwarg = http_client if server.validate_certs else None
+                async with GalaxyClient.from_config(server, http_client=client_kwarg) as client:
                     result = await client.search_collections(query, tags=tags)
                 for coll in result.get("collections", []):
                     ns = coll.get("namespace", "")

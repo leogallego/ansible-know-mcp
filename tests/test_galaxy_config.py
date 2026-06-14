@@ -9,6 +9,7 @@ import pytest
 
 from ansible_know.galaxy_config import (
     GalaxyServerConfig,
+    _sanitize_credential,
     find_ansible_cfg,
     load_galaxy_servers,
 )
@@ -206,6 +207,96 @@ class TestLoadGalaxyServers:
             servers = load_galaxy_servers()
 
         assert servers[0].timeout == 120
+
+
+    def test_validate_certs_off(self, tmp_path):
+        cfg = tmp_path / "ansible.cfg"
+        cfg.write_text(textwrap.dedent("""\
+            [galaxy]
+            server_list = my_hub
+
+            [galaxy_server.my_hub]
+            url = https://hub.example.com/api/galaxy/
+            validate_certs = off
+        """))
+        with patch.dict(os.environ, {"ANSIBLE_CONFIG": str(cfg)}):
+            servers = load_galaxy_servers()
+
+        assert servers[0].validate_certs is False
+
+    def test_validate_certs_on(self, tmp_path):
+        cfg = tmp_path / "ansible.cfg"
+        cfg.write_text(textwrap.dedent("""\
+            [galaxy]
+            server_list = my_hub
+
+            [galaxy_server.my_hub]
+            url = https://hub.example.com/api/galaxy/
+            validate_certs = on
+        """))
+        with patch.dict(os.environ, {"ANSIBLE_CONFIG": str(cfg)}):
+            servers = load_galaxy_servers()
+
+        assert servers[0].validate_certs is True
+
+    def test_crlf_stripped_from_token(self, tmp_path):
+        cfg = tmp_path / "ansible.cfg"
+        cfg.write_text(textwrap.dedent("""\
+            [galaxy]
+            server_list = my_hub
+
+            [galaxy_server.my_hub]
+            url = https://hub.example.com/api/galaxy/
+        """))
+        with patch.dict(os.environ, {
+            "ANSIBLE_CONFIG": str(cfg),
+            "ANSIBLE_GALAXY_SERVER_MY_HUB_TOKEN": "secret\r\nX-Evil: true",
+        }):
+            servers = load_galaxy_servers()
+
+        assert servers[0].token == "secretX-Evil: true"
+        assert "\r" not in servers[0].token
+        assert "\n" not in servers[0].token
+
+    def test_crlf_stripped_from_username(self, tmp_path):
+        cfg = tmp_path / "ansible.cfg"
+        cfg.write_text(textwrap.dedent("""\
+            [galaxy]
+            server_list = my_hub
+
+            [galaxy_server.my_hub]
+            url = https://hub.example.com/api/galaxy/
+        """))
+        with patch.dict(os.environ, {
+            "ANSIBLE_CONFIG": str(cfg),
+            "ANSIBLE_GALAXY_SERVER_MY_HUB_USERNAME": "admin\r\n",
+        }):
+            servers = load_galaxy_servers()
+
+        assert servers[0].username == "admin"
+
+
+class TestSanitizeCredential:
+    def test_none_returns_none(self):
+        assert _sanitize_credential(None) is None
+
+    def test_clean_value_unchanged(self):
+        assert _sanitize_credential("my_token_123") == "my_token_123"
+
+    def test_strips_crlf(self):
+        assert _sanitize_credential("secret\r\nX-Evil: true") == "secretX-Evil: true"
+
+    def test_strips_lone_cr(self):
+        assert _sanitize_credential("secret\rvalue") == "secretvalue"
+
+    def test_strips_lone_lf(self):
+        assert _sanitize_credential("secret\nvalue") == "secretvalue"
+
+    def test_empty_after_strip_returns_none(self):
+        assert _sanitize_credential("\r\n") is None
+
+    def test_whitespace_stripped(self):
+        assert _sanitize_credential("  token  ") == "token"
 
 
 class TestGalaxyServerConfig:

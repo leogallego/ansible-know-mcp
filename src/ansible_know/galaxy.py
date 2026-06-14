@@ -187,7 +187,7 @@ class GalaxyClient:
             "headers": self._auth_headers(),
             "timeout": timeout,
         }
-        if self._username and self._password:
+        if not self._token and self._username and self._password:
             kwargs["auth"] = httpx.BasicAuth(self._username, self._password)
         resp = await client.get(url, **kwargs)
         try:
