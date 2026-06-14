@@ -792,7 +792,10 @@ class TestMaybeWarnUpgrade:
 
         mock_ctx = MagicMock()
         mock_ctx.lifespan_context = {
-            "version_info": {"installed": "0.3.2", "latest": "0.4.0", "outdated": True, "upgrade_command": "uvx --upgrade ansible-know-mcp"},
+            "version_info": {
+                "installed": "0.3.2", "latest": "0.4.0",
+                "outdated": True, "upgrade_command": "uvx --upgrade ansible-know-mcp",
+            },
             "upgrade_warned": False,
         }
         mock_ctx.warning = AsyncMock()
@@ -808,7 +811,10 @@ class TestMaybeWarnUpgrade:
 
         mock_ctx = MagicMock()
         mock_ctx.lifespan_context = {
-            "version_info": {"installed": "0.3.2", "latest": "0.4.0", "outdated": True, "upgrade_command": "uvx --upgrade ansible-know-mcp"},
+            "version_info": {
+                "installed": "0.3.2", "latest": "0.4.0",
+                "outdated": True, "upgrade_command": "uvx --upgrade ansible-know-mcp",
+            },
             "upgrade_warned": False,
         }
         mock_ctx.warning = AsyncMock()
@@ -823,7 +829,10 @@ class TestMaybeWarnUpgrade:
 
         mock_ctx = MagicMock()
         mock_ctx.lifespan_context = {
-            "version_info": {"installed": "0.3.2", "latest": "0.3.2", "outdated": False, "upgrade_command": "uvx --upgrade ansible-know-mcp"},
+            "version_info": {
+                "installed": "0.3.2", "latest": "0.3.2",
+                "outdated": False, "upgrade_command": "uvx --upgrade ansible-know-mcp",
+            },
             "upgrade_warned": False,
         }
         mock_ctx.warning = AsyncMock()
@@ -955,7 +964,7 @@ class TestLifespanHttpClient:
         mock_ansible_doc.return_value = json.dumps(SAMPLE_MODULE_DOC)
         mock_client = AsyncMock()
         mock_ctx = MagicMock()
-        mock_ctx.lifespan_context = {"http_client": mock_client}
+        mock_ctx.lifespan_context = {"http_client": mock_client, "galaxy_servers": None}
 
         with patch("ansible_know.server._resolve_module_doc") as mock_resolve:
             mock_resolve.return_value = (SAMPLE_MODULE_DOC, None)
@@ -963,22 +972,26 @@ class TestLifespanHttpClient:
             await get_module_doc("ansible.builtin.package", ctx=mock_ctx)
 
         mock_resolve.assert_called_once_with(
-            "ansible.builtin.package", http_client=mock_client,
+            "ansible.builtin.package", http_client=mock_client, galaxy_servers=None,
         )
 
     @pytest.mark.asyncio
     async def test_search_collections_passes_lifespan_http_client(self):
         mock_client = AsyncMock()
         mock_ctx = MagicMock()
-        mock_ctx.lifespan_context = {"http_client": mock_client}
+        mock_ctx.lifespan_context = {"http_client": mock_client, "galaxy_servers": None}
 
         mock_result = {"query": "test", "count": 0, "collections": []}
-        with patch("ansible_know.galaxy.GalaxyClient.__init__", return_value=None) as mock_init:
-            with patch("ansible_know.galaxy.GalaxyClient.search_collections", return_value=mock_result):
-                from ansible_know.server import search_collections
-                await search_collections("test", ctx=mock_ctx)
+        with patch("ansible_know.galaxy.GalaxyClient.from_config") as mock_from_config:
+            mock_gc = AsyncMock()
+            mock_gc.search_collections.return_value = mock_result
+            mock_gc.__aenter__ = AsyncMock(return_value=mock_gc)
+            mock_gc.__aexit__ = AsyncMock(return_value=False)
+            mock_from_config.return_value = mock_gc
+            from ansible_know.server import search_collections
+            result = await search_collections("test", ctx=mock_ctx)
 
-        mock_init.assert_called_once_with(http_client=mock_client)
+        assert result["count"] == 0
 
     @pytest.mark.asyncio
     async def test_tools_work_without_ctx(self, mock_ansible_doc):

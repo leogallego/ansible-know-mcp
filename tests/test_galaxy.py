@@ -1335,3 +1335,61 @@ class TestSearchCollectionsRoleCount:
         col = result["collections"][0]
         assert col["role_count"] == 2
         assert col["module_count"] == 1
+
+
+class TestGalaxyClientAuth:
+    def test_token_auth_headers(self):
+        gc = GalaxyClient(token="my_secret_token")
+        headers = gc._auth_headers()
+        assert headers["Authorization"] == "Token my_secret_token"
+        assert headers["Accept"] == "application/json"
+
+    def test_no_auth_headers(self):
+        gc = GalaxyClient()
+        headers = gc._auth_headers()
+        assert "Authorization" not in headers
+        assert headers["Accept"] == "application/json"
+
+    @pytest.mark.asyncio
+    async def test_token_sent_in_request(self):
+        mock_client = _mock_client_get(SAMPLE_VERSIONS_RESPONSE)
+        gc = GalaxyClient(http_client=mock_client, token="test_token")
+        await gc.latest_version("netbox", "netbox")
+        call_kwargs = mock_client.get.call_args[1]
+        assert call_kwargs["headers"]["Authorization"] == "Token test_token"
+
+    @pytest.mark.asyncio
+    async def test_basic_auth_sent_in_request(self):
+        mock_client = _mock_client_get(SAMPLE_VERSIONS_RESPONSE)
+        gc = GalaxyClient(http_client=mock_client, username="admin", password="secret")
+        await gc.latest_version("netbox", "netbox")
+        call_kwargs = mock_client.get.call_args[1]
+        auth = call_kwargs.get("auth")
+        assert auth is not None
+        assert isinstance(auth, httpx.BasicAuth)
+
+    def test_verify_false_on_owned_client(self):
+        mock_client = AsyncMock()
+        with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client) as mock_ctor:
+            gc = GalaxyClient(verify=False)
+            gc._get_client()
+        mock_ctor.assert_called_once()
+        assert mock_ctor.call_args[1]["verify"] is False
+
+    def test_server_name_stored(self):
+        gc = GalaxyClient(server_name="my_hub")
+        assert gc.server_name == "my_hub"
+
+    def test_from_config(self):
+        from ansible_know.galaxy_config import GalaxyServerConfig
+        config = GalaxyServerConfig(
+            name="test_hub",
+            url="https://hub.example.com/api/galaxy",
+            token="tok123",
+            validate_certs=False,
+        )
+        gc = GalaxyClient.from_config(config)
+        assert gc._base == "https://hub.example.com/api/galaxy"
+        assert gc._token == "tok123"
+        assert gc._verify is False
+        assert gc.server_name == "test_hub"
