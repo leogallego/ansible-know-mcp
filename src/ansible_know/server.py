@@ -41,10 +41,11 @@ _version_info: dict[str, Any] | None = None
 
 
 def _parse_version(v: str) -> tuple[int, ...]:
-    try:
-        return tuple(int(x) for x in v.strip().split("."))
-    except (ValueError, AttributeError):
+    import re
+    match = re.match(r"^(\d+(?:\.\d+)*)", v.strip())
+    if not match:
         return (0,)
+    return tuple(int(x) for x in match.group(1).split("."))
 
 
 async def _check_pypi_version(client: httpx.AsyncClient) -> dict[str, Any] | None:

@@ -663,11 +663,25 @@ class TestParseVersion:
         from ansible_know.server import _parse_version
         assert _parse_version("") == (0,)
 
+    def test_dev_version(self):
+        from ansible_know.server import _parse_version
+        assert _parse_version("0.4.0.dev0") == (0, 4, 0)
+
+    def test_prerelease_versions(self):
+        from ansible_know.server import _parse_version
+        assert _parse_version("0.4.0a1") == (0, 4, 0)
+        assert _parse_version("0.4.0rc1") == (0, 4, 0)
+        assert _parse_version("0.4.0.post1") == (0, 4, 0)
+
     def test_comparison(self):
         from ansible_know.server import _parse_version
         assert _parse_version("0.4.0") > _parse_version("0.3.2")
         assert _parse_version("0.3.2") == _parse_version("0.3.2")
         assert not (_parse_version("0.3.2") > _parse_version("0.4.0"))
+
+    def test_dev_not_outdated_by_older_stable(self):
+        from ansible_know.server import _parse_version
+        assert not (_parse_version("0.3.2") > _parse_version("0.4.0.dev0"))
 
 
 class TestCheckPypiVersion:
