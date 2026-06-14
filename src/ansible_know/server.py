@@ -14,7 +14,10 @@ import os
 from collections.abc import Awaitable, Callable
 from functools import partial
 from importlib.metadata import version as pkg_version
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
+
+if TYPE_CHECKING:
+    from ansible_know.galaxy_config import GalaxyServerConfig
 
 import httpx
 from fastmcp import Context, FastMCP
@@ -39,7 +42,7 @@ logger = logging.getLogger("ansible_know")
 
 _VERSION = pkg_version("ansible-know-mcp")
 _version_info: dict[str, Any] | None = None
-_galaxy_servers: list[Any] | None = None
+_galaxy_servers: list[GalaxyServerConfig] | None = None
 
 
 def _is_stable(v: str) -> bool:
@@ -75,7 +78,7 @@ async def _check_pypi_version(client: httpx.AsyncClient) -> dict[str, Any] | Non
             "outdated": outdated,
             "upgrade_command": "uvx --upgrade ansible-know-mcp",
         }
-    except Exception:
+    except (httpx.HTTPError, ValueError):
         logger.debug("PyPI version check failed (non-blocking)")
         return None
 
@@ -165,7 +168,7 @@ def _maybe_add_hint(error_msg: str, namespace: str | None) -> str:
 
 
 async def _try_galaxy_servers(
-    servers: list[Any],
+    servers: list[GalaxyServerConfig],
     operation: Callable[..., Awaitable[Any]],
     http_client: httpx.AsyncClient | None = None,
 ) -> tuple[Any, str]:
@@ -199,7 +202,7 @@ async def _try_galaxy_servers(
 async def _resolve_module_doc(
     module_name: str,
     http_client: httpx.AsyncClient | None = None,
-    galaxy_servers: list[Any] | None = None,
+    galaxy_servers: list[GalaxyServerConfig] | None = None,
 ) -> tuple[dict, dict | None]:
     """Try local ansible-doc, fall back to Galaxy if the collection is missing.
 
@@ -249,7 +252,7 @@ async def _resolve_module_doc(
 async def _resolve_role_doc(
     role_name: str,
     http_client: httpx.AsyncClient | None = None,
-    galaxy_servers: list[Any] | None = None,
+    galaxy_servers: list[GalaxyServerConfig] | None = None,
 ) -> dict[str, Any]:
     """Try local ansible-doc -t role, fall back to Galaxy readme_html.
 
@@ -342,7 +345,7 @@ async def search_modules(
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_module_doc(
     module_name: Annotated[str, "Fully-qualified collection name (e.g. 'ansible.builtin.copy')"],
-    ctx: Context = None,
+    ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Get full structured documentation for one module.
 
@@ -385,7 +388,7 @@ async def get_module_doc(
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_role_doc(
     role_name: Annotated[str, "Fully-qualified role name (e.g. 'fedora.linux_system_roles.timesync')"],
-    ctx: Context = None,
+    ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Get full structured documentation for one role.
 
@@ -450,7 +453,7 @@ async def search_docs(
 async def search_collections(
     query: Annotated[str, "Search keyword (e.g., 'netbox', 'cisco ios', 'vmware')"],
     tags: Annotated[str | None, "Optional comma-separated Galaxy tags to filter (e.g., 'networking,cloud')"] = None,
-    ctx: Context = None,
+    ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Search Ansible Galaxy for collections by keyword.
 
@@ -715,7 +718,7 @@ async def get_skill(
 async def generate_skill(
     module_name: Annotated[str, "Fully-qualified module name (e.g. 'ansible.builtin.copy')"],
     install_to: Annotated[str | None, "Optional absolute path to install the skill to"] = None,
-    ctx: Context = None,
+    ctx: Context | None = None,
 ) -> str | dict[str, str]:
     """Generate a skill package for one module.
 
@@ -776,7 +779,7 @@ async def generate_skill(
 async def generate_role_skill(
     role_name: Annotated[str, "Fully-qualified role name (e.g. 'fedora.linux_system_roles.timesync')"],
     install_to: Annotated[str | None, "Optional absolute path to install the skill to"] = None,
-    ctx: Context = None,
+    ctx: Context | None = None,
 ) -> str | dict[str, str]:
     """Generate a skill package for one role.
 
@@ -833,7 +836,7 @@ async def generate_role_skill(
 async def generate_collection_skills(
     collection_namespace: Annotated[str, "Collection namespace (e.g. 'netbox.netbox')"],
     install_to: Annotated[str | None, "Optional absolute path to install skills to"] = None,
-    ctx: Context = None,
+    ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Batch generate skills for an entire collection.
 
@@ -880,7 +883,8 @@ async def generate_collection_skills(
                 output_dir = base_dir / skill_name
                 await _run_in_executor(skills.write_skill_package, output_dir, metadata)
                 succeeded += 1
-            except Exception:
+            except Exception as exc:
+                logger.warning("Skill generation failed for %s: %s", module_name, exc)
                 failed += 1
 
         manifest = collection_manifest.generate_manifest(

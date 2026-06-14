@@ -29,7 +29,7 @@ async def _fetch_manifest(source_name: str, url: str) -> list[dict[str, Any]]:
         if content_length:
             try:
                 size = int(content_length)
-            except (ValueError, OverflowError):
+            except ValueError:
                 size = None
             if size is not None and size > MAX_MANIFEST_SIZE:
                 raise ValueError(f"Manifest too large: {content_length} bytes (max {MAX_MANIFEST_SIZE})")
@@ -76,9 +76,12 @@ async def search_docs(
         if source and src_name != source:
             continue
 
+        if "url" not in src_config:
+            continue
+
         try:
             entries = await _fetch_manifest(src_name, src_config["url"])
-        except (httpx.HTTPError, KeyError, ValueError):
+        except (httpx.HTTPError, ValueError):
             continue
 
         for entry in entries:

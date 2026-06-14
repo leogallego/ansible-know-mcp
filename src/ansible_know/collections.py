@@ -63,7 +63,7 @@ def _parse_version(stdout: str, namespace: str, tmpdir: str) -> str:
             version = manifest.get("collection_info", {}).get("version")
             if version:
                 return version
-        except (json.JSONDecodeError, KeyError):
+        except json.JSONDecodeError:
             pass
 
     logger.warning("Could not parse installed version for %s", namespace)

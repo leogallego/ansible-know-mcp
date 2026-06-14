@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 
@@ -33,13 +34,11 @@ def get_doc_sources() -> dict[str, dict[str, str]]:
         try:
             parsed = json.loads(env_val)
         except (json.JSONDecodeError, ValueError):
-            import logging
             logging.getLogger("ansible_know").warning(
                 "Invalid JSON in ANSIBLE_KNOW_DOC_SOURCES, using defaults"
             )
             return DEFAULT_DOC_SOURCES
         if not isinstance(parsed, dict):
-            import logging
             logging.getLogger("ansible_know").warning(
                 "ANSIBLE_KNOW_DOC_SOURCES must be a JSON object, using defaults"
             )
