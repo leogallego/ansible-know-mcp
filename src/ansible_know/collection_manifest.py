@@ -9,9 +9,12 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ansible_know.config import SKILLS_DIR
+
+if TYPE_CHECKING:
+    from ansible_know.types import ModuleMetadata
 
 
 def _derive_tags(fqcn: str, params: list[dict[str, Any]]) -> list[str]:
@@ -45,7 +48,7 @@ def _derive_tags(fqcn: str, params: list[dict[str, Any]]) -> list[str]:
 
 def generate_manifest(
     collection_namespace: str,
-    modules_metadata: list[dict[str, Any]],
+    modules_metadata: list[ModuleMetadata],
     roles_metadata: list[dict[str, Any]] | None = None,
     skills_dir: Path | None = None,
     collection_version: str | None = None,

@@ -12,9 +12,12 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ansible_know.errors import AnsibleDocError, CollectionNotFoundError
+
+if TYPE_CHECKING:
+    from ansible_know.types import ModuleMetadata, RoleMetadata
 
 _MISSING_COLLECTION_PATTERNS = ("has no attribute", "was not found", "could not be found")
 
@@ -93,19 +96,19 @@ def get_module_doc(module_name: str) -> dict[str, Any]:
     return doc
 
 
-def list_modules(namespace: str | None = None) -> dict[str, str]:
+def list_modules(collection_filter: str | None = None) -> dict[str, str]:
     """List available modules with short descriptions.
 
     Args:
-        namespace: Optional namespace filter (e.g., "community.docker").
-                   If None, lists all modules.
+        collection_filter: Optional collection filter passed to ansible-doc
+                           (e.g., "community.docker"). If None, lists all modules.
 
     Returns:
         Dict mapping fully-qualified module names to their short descriptions.
     """
     args = ["--list", "--json"]
-    if namespace:
-        args.append(namespace)
+    if collection_filter:
+        args.append(collection_filter)
     raw = _run_ansible_doc(*args)
     try:
         modules = json.loads(raw)
@@ -114,17 +117,17 @@ def list_modules(namespace: str | None = None) -> dict[str, str]:
     return modules
 
 
-def search_modules(keyword: str, namespace: str | None = None) -> dict[str, str]:
+def search_modules(keyword: str, collection_filter: str | None = None) -> dict[str, str]:
     """Search modules by keyword in name or description.
 
     Args:
         keyword: Search term (case-insensitive).
-        namespace: Optional namespace to restrict the search.
+        collection_filter: Optional collection to restrict the search.
 
     Returns:
         Filtered dict of matching module names -> descriptions.
     """
-    all_modules = list_modules(namespace)
+    all_modules = list_modules(collection_filter)
     keyword_lower = keyword.lower()
     return {
         name: desc
@@ -205,7 +208,7 @@ def is_api_module(module_doc: dict[str, Any]) -> bool:
     return False
 
 
-def extract_module_metadata(module_doc: dict[str, Any]) -> dict[str, Any]:
+def extract_module_metadata(module_doc: dict[str, Any]) -> ModuleMetadata:
     """Extract all metadata needed for skill generation."""
     module_name = _get_module_name(module_doc)
     return {
@@ -217,14 +220,19 @@ def extract_module_metadata(module_doc: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def list_roles(namespace: str | None = None) -> dict[str, dict[str, Any]]:
+def list_roles(collection_filter: str | None = None) -> dict[str, dict[str, Any]]:
     """List available roles with descriptions and entry points.
 
-    Returns dict mapping FQCNs to {collection, description, entry_points}.
+    Args:
+        collection_filter: Optional collection filter passed to ansible-doc
+                           (e.g., "fedora.linux_system_roles"). If None, lists all roles.
+
+    Returns:
+        Dict mapping FQCNs to {collection, description, entry_points}.
     """
     args = ["--list", "-t", "role", "--json"]
-    if namespace:
-        args.append(namespace)
+    if collection_filter:
+        args.append(collection_filter)
     raw = _run_ansible_doc(*args)
     try:
         roles = json.loads(raw)
@@ -247,7 +255,7 @@ def get_role_doc(role_name: str) -> dict[str, Any]:
     return doc
 
 
-def extract_role_metadata(role_doc: dict[str, Any]) -> dict[str, Any]:
+def extract_role_metadata(role_doc: dict[str, Any]) -> RoleMetadata:
     """Extract metadata from ansible-doc -t role JSON output.
 
     Returns dict with role_name, short_description, and entry_points.

@@ -39,9 +39,9 @@ class TestListModules:
         assert len(result) == 4
         mock.assert_called_once_with("--list", "--json")
 
-    def test_passes_namespace(self, sample_module_list_json):
+    def test_passes_collection_filter(self, sample_module_list_json):
         with patch("ansible_know.parser._run_ansible_doc", return_value=sample_module_list_json) as mock:
-            list_modules(namespace="community.general")
+            list_modules(collection_filter="community.general")
         mock.assert_called_once_with("--list", "--json", "community.general")
 
 
@@ -246,9 +246,9 @@ class TestListRoles:
         assert "fedora.linux_system_roles.gfs2" in result
         mock.assert_called_once_with("--list", "-t", "role", "--json")
 
-    def test_passes_namespace(self, sample_role_list_json):
+    def test_passes_collection_filter(self, sample_role_list_json):
         with patch("ansible_know.parser._run_ansible_doc", return_value=sample_role_list_json) as mock:
-            list_roles(namespace="fedora.linux_system_roles")
+            list_roles(collection_filter="fedora.linux_system_roles")
         mock.assert_called_once_with("--list", "-t", "role", "--json", "fedora.linux_system_roles")
 
 
