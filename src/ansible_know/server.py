@@ -212,12 +212,13 @@ async def _resolve_module_doc(
     servers = galaxy_servers or load_galaxy_servers()
     namespace = ".".join(module_name.split(".")[:2]) if "." in module_name else None
 
+    async def _fetch_from_galaxy(client):
+        return await client.fetch_module_doc(module_name)
+
     if namespace and namespace in _missing_collections:
         try:
-            async def _fetch(client):
-                return await client.fetch_module_doc(module_name)
             (galaxy_doc, galaxy_meta), server_name = await _try_galaxy_servers(
-                servers, _fetch, http_client,
+                servers, _fetch_from_galaxy, http_client,
             )
             galaxy_meta["doc_source_server"] = server_name
             return galaxy_doc, galaxy_meta
@@ -234,10 +235,8 @@ async def _resolve_module_doc(
             _missing_collections.add(namespace)
         logger.info("Collection not installed, trying Galaxy: %s", local_exc)
         try:
-            async def _fetch(client):
-                return await client.fetch_module_doc(module_name)
             (galaxy_doc, galaxy_meta), server_name = await _try_galaxy_servers(
-                servers, _fetch, http_client,
+                servers, _fetch_from_galaxy, http_client,
             )
             galaxy_meta["doc_source_server"] = server_name
             return galaxy_doc, galaxy_meta
@@ -979,7 +978,10 @@ def resource_server_version() -> str:
 @mcp.resource(
     "galaxy://servers",
     name="Galaxy Servers",
-    description="List configured Galaxy servers from ansible.cfg",
+    description=(
+        "List configured Galaxy servers from ansible.cfg. "
+        "Shows auth type (token/basic/none) for debugging; credentials are never exposed."
+    ),
 )
 def resource_galaxy_servers() -> str:
     from ansible_know.galaxy_config import load_galaxy_servers
