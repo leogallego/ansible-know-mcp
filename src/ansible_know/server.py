@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import os
+from collections.abc import Awaitable, Callable
 from functools import partial
 from importlib.metadata import version as pkg_version
 from typing import Annotated, Any
@@ -38,7 +39,7 @@ logger = logging.getLogger("ansible_know")
 
 _VERSION = pkg_version("ansible-know-mcp")
 _version_info: dict[str, Any] | None = None
-_galaxy_servers: list | None = None
+_galaxy_servers: list[Any] | None = None
 
 
 def _is_stable(v: str) -> bool:
@@ -164,10 +165,10 @@ def _maybe_add_hint(error_msg: str, namespace: str | None) -> str:
 
 
 async def _try_galaxy_servers(
-    servers: list,
-    operation,
+    servers: list[Any],
+    operation: Callable[..., Awaitable[Any]],
     http_client: httpx.AsyncClient | None = None,
-):
+) -> tuple[Any, str]:
     """Try an operation across multiple Galaxy servers in priority order.
 
     Args:
@@ -198,7 +199,7 @@ async def _try_galaxy_servers(
 async def _resolve_module_doc(
     module_name: str,
     http_client: httpx.AsyncClient | None = None,
-    galaxy_servers: list | None = None,
+    galaxy_servers: list[Any] | None = None,
 ) -> tuple[dict, dict | None]:
     """Try local ansible-doc, fall back to Galaxy if the collection is missing.
 
@@ -248,7 +249,7 @@ async def _resolve_module_doc(
 async def _resolve_role_doc(
     role_name: str,
     http_client: httpx.AsyncClient | None = None,
-    galaxy_servers: list | None = None,
+    galaxy_servers: list[Any] | None = None,
 ) -> dict[str, Any]:
     """Try local ansible-doc -t role, fall back to Galaxy readme_html.
 
