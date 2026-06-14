@@ -746,10 +746,11 @@ class TestCheckPypiVersion:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_returns_none_when_skip_env_set(self, monkeypatch):
+    @pytest.mark.parametrize("value", ["1", "true", "yes"])
+    async def test_returns_none_when_skip_env_set(self, monkeypatch, value):
         from ansible_know.server import _check_pypi_version
 
-        monkeypatch.setenv("ANSIBLE_KNOW_SKIP_UPDATE_CHECK", "1")
+        monkeypatch.setenv("ANSIBLE_KNOW_SKIP_UPDATE_CHECK", value)
         mock_client = AsyncMock()
         result = await _check_pypi_version(mock_client)
         assert result is None
