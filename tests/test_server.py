@@ -684,6 +684,24 @@ class TestParseVersion:
         assert not (_parse_version("0.3.2") > _parse_version("0.4.0.dev0"))
 
 
+class TestIsStable:
+    def test_stable_versions(self):
+        from ansible_know.server import _is_stable
+        assert _is_stable("0.3.2") is True
+        assert _is_stable("1.0.0") is True
+
+    def test_prerelease_versions(self):
+        from ansible_know.server import _is_stable
+        assert _is_stable("0.4.0.dev0") is False
+        assert _is_stable("0.4.0a1") is False
+        assert _is_stable("0.4.0rc1") is False
+        assert _is_stable("0.4.0.post1") is False
+
+    def test_empty(self):
+        from ansible_know.server import _is_stable
+        assert _is_stable("") is False
+
+
 class TestCheckPypiVersion:
     @pytest.mark.asyncio
     async def test_returns_version_info_when_outdated(self):
@@ -743,6 +761,20 @@ class TestCheckPypiVersion:
 
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"info": {"version": ""}}
+        mock_resp.raise_for_status.return_value = None
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_resp
+
+        result = await _check_pypi_version(mock_client)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_ignores_prerelease_from_pypi(self):
+        from ansible_know.server import _check_pypi_version
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"info": {"version": "0.4.0rc1"}}
         mock_resp.raise_for_status.return_value = None
 
         mock_client = AsyncMock()

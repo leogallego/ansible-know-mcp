@@ -40,6 +40,11 @@ _VERSION = pkg_version("ansible-know-mcp")
 _version_info: dict[str, Any] | None = None
 
 
+def _is_stable(v: str) -> bool:
+    import re
+    return bool(re.fullmatch(r"\d+(\.\d+)*", v.strip()))
+
+
 def _parse_version(v: str) -> tuple[int, ...]:
     import re
     match = re.match(r"^(\d+(?:\.\d+)*)", v.strip())
@@ -59,7 +64,7 @@ async def _check_pypi_version(client: httpx.AsyncClient) -> dict[str, Any] | Non
         )
         resp.raise_for_status()
         latest = resp.json().get("info", {}).get("version", "")
-        if not latest:
+        if not latest or not _is_stable(latest):
             return None
         outdated = _parse_version(latest) > _parse_version(_VERSION)
         return {
