@@ -448,6 +448,8 @@ class GalaxyClient:
                 f"({namespace}.{name} {resolved_version}). "
                 f"Your installed version may differ."
             )
+        if self.server_name:
+            meta["doc_source_server"] = self.server_name
         return doc, meta
 
     async def fetch_role_doc(
@@ -507,6 +509,8 @@ class GalaxyClient:
             meta["doc_warning"] = (
                 "Documentation parsed from Galaxy README (best-effort)."
             )
+        if self.server_name:
+            meta["doc_source_server"] = self.server_name
         return role_metadata, meta
 
     async def list_collection_modules(

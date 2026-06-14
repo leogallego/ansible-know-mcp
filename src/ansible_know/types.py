@@ -23,10 +23,13 @@ class RoleMetadata(TypedDict):
     entry_points: dict[str, dict[str, Any]]
 
 
-class DocProvenance(TypedDict, total=False):
-    """Provenance metadata for documentation sourced from Galaxy."""
-
+class _DocProvenanceBase(TypedDict):
     doc_source: str
     doc_version: str
+
+
+class DocProvenance(_DocProvenanceBase, total=False):
+    """Provenance metadata for documentation sourced from Galaxy."""
+
     doc_warning: str
     doc_source_server: str

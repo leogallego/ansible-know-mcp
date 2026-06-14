@@ -89,7 +89,7 @@ async def app_lifespan(server):
     global _version_info, _galaxy_servers
     from ansible_know.galaxy_config import load_galaxy_servers
 
-    galaxy_servers = load_galaxy_servers()
+    galaxy_servers = await _run_in_executor(load_galaxy_servers)
     _galaxy_servers = galaxy_servers
     for gs in galaxy_servers:
         auth_type = "token" if gs.token else ("basic" if gs.username else "none")
@@ -127,6 +127,24 @@ def _run_in_executor(func, *args, **kwargs):
     """Run a blocking function in the default executor."""
     loop = asyncio.get_event_loop()
     return loop.run_in_executor(None, partial(func, *args, **kwargs))
+
+
+def _get_lifespan_resources(
+    ctx: Context | None,
+) -> tuple[httpx.AsyncClient | None, list[GalaxyServerConfig] | None]:
+    """Extract http_client and galaxy_servers from the lifespan context."""
+    if ctx is None:
+        return None, None
+    lc = ctx.lifespan_context
+    return lc.get("http_client"), lc.get("galaxy_servers")
+
+
+def _select_http_client(
+    http_client: httpx.AsyncClient | None,
+    server: GalaxyServerConfig,
+) -> httpx.AsyncClient | None:
+    """Use shared client only when server validates certs."""
+    return http_client if server.validate_certs else None
 
 
 async def _maybe_warn_upgrade(ctx: Context | None) -> None:
@@ -172,13 +190,8 @@ async def _try_galaxy_servers(
     servers: list[GalaxyServerConfig],
     operation: Callable[..., Awaitable[Any]],
     http_client: httpx.AsyncClient | None = None,
-) -> tuple[Any, str]:
+) -> Any:
     """Try an operation across multiple Galaxy servers in priority order.
-
-    Args:
-        servers: List of GalaxyServerConfig objects.
-        operation: Async callable taking a GalaxyClient, returns result.
-        http_client: Shared httpx client.
 
     Returns the first successful result. Raises the last GalaxyError if all fail.
     """
@@ -188,10 +201,10 @@ async def _try_galaxy_servers(
     last_exc: GalaxyError | None = None
     for server in servers:
         try:
-            client_kwarg = http_client if server.validate_certs else None
-            async with GalaxyClient.from_config(server, http_client=client_kwarg) as client:
-                result = await operation(client)
-            return result, server.name
+            async with GalaxyClient.from_config(
+                server, http_client=_select_http_client(http_client, server),
+            ) as client:
+                return await operation(client)
         except GalaxyError as exc:
             logger.info("Galaxy server '%s' failed: %s", server.name, exc)
             last_exc = exc
@@ -214,7 +227,7 @@ async def _resolve_module_doc(
     from ansible_know.errors import CollectionNotFoundError, GalaxyError
     from ansible_know.galaxy_config import load_galaxy_servers
 
-    servers = galaxy_servers or load_galaxy_servers()
+    servers = galaxy_servers or _galaxy_servers or load_galaxy_servers()
     namespace = ".".join(module_name.split(".")[:2]) if "." in module_name else None
 
     async def _fetch_from_galaxy(client):
@@ -222,10 +235,9 @@ async def _resolve_module_doc(
 
     if namespace and namespace in _missing_collections:
         try:
-            (galaxy_doc, galaxy_meta), server_name = await _try_galaxy_servers(
+            galaxy_doc, galaxy_meta = await _try_galaxy_servers(
                 servers, _fetch_from_galaxy, http_client,
             )
-            galaxy_meta["doc_source_server"] = server_name
             return galaxy_doc, galaxy_meta
         except GalaxyError as galaxy_exc:
             raise CollectionNotFoundError(
@@ -240,10 +252,9 @@ async def _resolve_module_doc(
             _missing_collections.add(namespace)
         logger.info("Collection not installed, trying Galaxy: %s", local_exc)
         try:
-            (galaxy_doc, galaxy_meta), server_name = await _try_galaxy_servers(
+            galaxy_doc, galaxy_meta = await _try_galaxy_servers(
                 servers, _fetch_from_galaxy, http_client,
             )
-            galaxy_meta["doc_source_server"] = server_name
             return galaxy_doc, galaxy_meta
         except GalaxyError as galaxy_exc:
             logger.warning("Galaxy fallback also failed: %s", galaxy_exc)
@@ -263,7 +274,7 @@ async def _resolve_role_doc(
     from ansible_know.errors import CollectionNotFoundError, GalaxyError
     from ansible_know.galaxy_config import load_galaxy_servers
 
-    servers = galaxy_servers or load_galaxy_servers()
+    servers = galaxy_servers or _galaxy_servers or load_galaxy_servers()
     namespace = ".".join(role_name.split(".")[:2]) if "." in role_name else None
 
     local_doc: dict[str, Any] = {}
@@ -288,17 +299,18 @@ async def _resolve_role_doc(
     try:
         async def _fetch(client):
             return await client.fetch_role_doc(role_name)
-        (galaxy_role_meta, galaxy_meta), server_name = await _try_galaxy_servers(
+        galaxy_role_meta, galaxy_meta = await _try_galaxy_servers(
             servers, _fetch, http_client,
         )
 
         result = dict(galaxy_role_meta)
         result["content_type"] = "role"
         result["doc_source"] = "galaxy_readme"
-        result["doc_source_server"] = server_name
         result["doc_version"] = galaxy_meta.get("doc_version", "")
         if "doc_warning" in galaxy_meta:
             result["doc_warning"] = galaxy_meta["doc_warning"]
+        if "doc_source_server" in galaxy_meta:
+            result["doc_source_server"] = galaxy_meta["doc_source_server"]
         return result
     except GalaxyError as galaxy_exc:
         return {
@@ -368,8 +380,7 @@ async def get_module_doc(
     try:
         from ansible_know import parser
 
-        http_client = ctx.lifespan_context.get("http_client") if ctx else None
-        galaxy_servers = ctx.lifespan_context.get("galaxy_servers") if ctx else None
+        http_client, galaxy_servers = _get_lifespan_resources(ctx)
         raw_doc, galaxy_meta = await _resolve_module_doc(
             module_name, http_client=http_client, galaxy_servers=galaxy_servers,
         )
@@ -411,8 +422,7 @@ async def get_role_doc(
         return {"error": str(exc)}
 
     try:
-        http_client = ctx.lifespan_context.get("http_client") if ctx else None
-        galaxy_servers = ctx.lifespan_context.get("galaxy_servers") if ctx else None
+        http_client, galaxy_servers = _get_lifespan_resources(ctx)
         return await _resolve_role_doc(
             role_name, http_client=http_client, galaxy_servers=galaxy_servers,
         )
@@ -485,13 +495,13 @@ async def search_collections(
         from ansible_know.galaxy import GalaxyClient
         from ansible_know.galaxy_config import load_galaxy_servers
 
-        http_client = ctx.lifespan_context.get("http_client") if ctx else None
-        galaxy_servers = ctx.lifespan_context.get("galaxy_servers") if ctx else None
-        servers = galaxy_servers or load_galaxy_servers()
+        http_client, galaxy_servers = _get_lifespan_resources(ctx)
+        servers = galaxy_servers or _galaxy_servers or load_galaxy_servers()
 
         async def _query_server(server):
-            client_kwarg = http_client if server.validate_certs else None
-            async with GalaxyClient.from_config(server, http_client=client_kwarg) as client:
+            async with GalaxyClient.from_config(
+                server, http_client=_select_http_client(http_client, server),
+            ) as client:
                 result = await client.search_collections(query, tags=tags)
             return server.name, result
 
@@ -750,8 +760,7 @@ async def generate_skill(
         if ctx:
             await ctx.report_progress(progress=0, total=100)
 
-        http_client = ctx.lifespan_context.get("http_client") if ctx else None
-        galaxy_servers = ctx.lifespan_context.get("galaxy_servers") if ctx else None
+        http_client, galaxy_servers = _get_lifespan_resources(ctx)
         raw_doc, galaxy_meta = await _resolve_module_doc(
             module_name, http_client=http_client, galaxy_servers=galaxy_servers,
         )
@@ -811,8 +820,7 @@ async def generate_role_skill(
         if ctx:
             await ctx.report_progress(progress=0, total=100)
 
-        http_client = ctx.lifespan_context.get("http_client") if ctx else None
-        galaxy_servers = ctx.lifespan_context.get("galaxy_servers") if ctx else None
+        http_client, galaxy_servers = _get_lifespan_resources(ctx)
         metadata = await _resolve_role_doc(
             role_name, http_client=http_client, galaxy_servers=galaxy_servers,
         )
