@@ -11,12 +11,15 @@ import logging
 import threading
 import time
 from collections import OrderedDict
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from ansible_know.config import GALAXY_BASE_URL
 from ansible_know.errors import GalaxyError
+
+if TYPE_CHECKING:
+    from ansible_know.galaxy_config import GalaxyServerConfig
 
 logger = logging.getLogger("ansible_know")
 
@@ -107,10 +110,39 @@ def _parse_fqcn(module_name: str) -> tuple[str, str, str]:
 class GalaxyClient:
     """Async client for the Galaxy v3 API."""
 
-    def __init__(self, base_url: str | None = None, http_client: httpx.AsyncClient | None = None):
+    def __init__(
+        self,
+        base_url: str | None = None,
+        http_client: httpx.AsyncClient | None = None,
+        token: str | None = None,
+        username: str | None = None,
+        password: str | None = None,
+        verify: bool = True,
+        server_name: str | None = None,
+    ):
         self._base = (base_url or GALAXY_BASE_URL).rstrip("/")
         self._http_client = http_client
         self._owned_client: httpx.AsyncClient | None = None
+        self._token = token
+        self._username = username
+        self._password = password
+        self._verify = verify
+        self.server_name = server_name
+
+    @classmethod
+    def from_config(
+        cls, config: GalaxyServerConfig, http_client: httpx.AsyncClient | None = None,
+    ) -> GalaxyClient:
+        """Create a GalaxyClient from a GalaxyServerConfig."""
+        return cls(
+            base_url=config.url,
+            http_client=http_client,
+            token=config.token,
+            username=config.username,
+            password=config.password,
+            verify=config.validate_certs,
+            server_name=config.name,
+        )
 
     async def __aenter__(self) -> GalaxyClient:
         return self
@@ -131,9 +163,16 @@ class GalaxyClient:
         if self._owned_client is None:
             self._owned_client = httpx.AsyncClient(
                 timeout=httpx.Timeout(10.0, read=120.0),
-                verify=True,
+                verify=self._verify,
             )
         return self._owned_client
+
+    def _auth_headers(self) -> dict[str, str]:
+        """Build authentication headers based on configured credentials."""
+        headers: dict[str, str] = {"Accept": "application/json"}
+        if self._token:
+            headers["Authorization"] = f"Token {self._token}"
+        return headers
 
     async def _api_get(
         self,
@@ -143,9 +182,14 @@ class GalaxyClient:
     ) -> dict[str, Any]:
         url = f"{self._base}{path}"
         client = self._get_client()
-        resp = await client.get(
-            url, params=params, headers={"Accept": "application/json"}, timeout=timeout,
-        )
+        kwargs: dict[str, Any] = {
+            "params": params,
+            "headers": self._auth_headers(),
+            "timeout": timeout,
+        }
+        if not self._token and self._username and self._password:
+            kwargs["auth"] = httpx.BasicAuth(self._username, self._password)
+        resp = await client.get(url, **kwargs)
         try:
             resp.raise_for_status()
         except httpx.HTTPStatusError as exc:
