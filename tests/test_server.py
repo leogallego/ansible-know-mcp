@@ -3,6 +3,7 @@
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from tests.conftest import (
@@ -643,6 +644,242 @@ class TestPromptFunctions:
         assert "NetBox DCIM" in result
         assert "search_collections" in result
         assert "ensure_collection" in result
+
+
+class TestParseVersion:
+    def test_simple_version(self):
+        from ansible_know.server import _parse_version
+        assert _parse_version("0.3.2") == (0, 3, 2)
+
+    def test_major_version(self):
+        from ansible_know.server import _parse_version
+        assert _parse_version("1.0.0") == (1, 0, 0)
+
+    def test_invalid_version(self):
+        from ansible_know.server import _parse_version
+        assert _parse_version("abc") == (0,)
+
+    def test_empty_string(self):
+        from ansible_know.server import _parse_version
+        assert _parse_version("") == (0,)
+
+    def test_dev_version(self):
+        from ansible_know.server import _parse_version
+        assert _parse_version("0.4.0.dev0") == (0, 4, 0)
+
+    def test_prerelease_versions(self):
+        from ansible_know.server import _parse_version
+        assert _parse_version("0.4.0a1") == (0, 4, 0)
+        assert _parse_version("0.4.0rc1") == (0, 4, 0)
+        assert _parse_version("0.4.0.post1") == (0, 4, 0)
+
+    def test_comparison(self):
+        from ansible_know.server import _parse_version
+        assert _parse_version("0.4.0") > _parse_version("0.3.2")
+        assert _parse_version("0.3.2") == _parse_version("0.3.2")
+        assert not (_parse_version("0.3.2") > _parse_version("0.4.0"))
+
+    def test_dev_not_outdated_by_older_stable(self):
+        from ansible_know.server import _parse_version
+        assert not (_parse_version("0.3.2") > _parse_version("0.4.0.dev0"))
+
+
+class TestIsStable:
+    def test_stable_versions(self):
+        from ansible_know.server import _is_stable
+        assert _is_stable("0.3.2") is True
+        assert _is_stable("1.0.0") is True
+
+    def test_prerelease_versions(self):
+        from ansible_know.server import _is_stable
+        assert _is_stable("0.4.0.dev0") is False
+        assert _is_stable("0.4.0a1") is False
+        assert _is_stable("0.4.0rc1") is False
+        assert _is_stable("0.4.0.post1") is False
+
+    def test_empty(self):
+        from ansible_know.server import _is_stable
+        assert _is_stable("") is False
+
+
+class TestCheckPypiVersion:
+    @pytest.mark.asyncio
+    async def test_returns_version_info_when_outdated(self):
+        from ansible_know.server import _check_pypi_version
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"info": {"version": "99.0.0"}}
+        mock_resp.raise_for_status.return_value = None
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_resp
+
+        result = await _check_pypi_version(mock_client)
+        assert result is not None
+        assert result["latest"] == "99.0.0"
+        assert result["outdated"] is True
+        assert "upgrade_command" in result
+
+    @pytest.mark.asyncio
+    async def test_returns_not_outdated_when_current(self):
+        from ansible_know.server import _VERSION, _check_pypi_version
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"info": {"version": _VERSION}}
+        mock_resp.raise_for_status.return_value = None
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_resp
+
+        result = await _check_pypi_version(mock_client)
+        assert result is not None
+        assert result["outdated"] is False
+
+    @pytest.mark.asyncio
+    async def test_returns_none_on_network_error(self):
+        from ansible_know.server import _check_pypi_version
+
+        mock_client = AsyncMock()
+        mock_client.get.side_effect = httpx.ConnectError("no network")
+
+        result = await _check_pypi_version(mock_client)
+        assert result is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("value", ["1", "true", "yes"])
+    async def test_returns_none_when_skip_env_set(self, monkeypatch, value):
+        from ansible_know.server import _check_pypi_version
+
+        monkeypatch.setenv("ANSIBLE_KNOW_SKIP_UPDATE_CHECK", value)
+        mock_client = AsyncMock()
+        result = await _check_pypi_version(mock_client)
+        assert result is None
+        mock_client.get.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_returns_none_on_empty_version(self):
+        from ansible_know.server import _check_pypi_version
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"info": {"version": ""}}
+        mock_resp.raise_for_status.return_value = None
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_resp
+
+        result = await _check_pypi_version(mock_client)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_ignores_prerelease_from_pypi(self):
+        from ansible_know.server import _check_pypi_version
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"info": {"version": "0.4.0rc1"}}
+        mock_resp.raise_for_status.return_value = None
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_resp
+
+        result = await _check_pypi_version(mock_client)
+        assert result is None
+
+
+class TestMaybeWarnUpgrade:
+    @pytest.mark.asyncio
+    async def test_warns_when_outdated(self):
+        from ansible_know.server import _maybe_warn_upgrade
+
+        mock_ctx = MagicMock()
+        mock_ctx.lifespan_context = {
+            "version_info": {"installed": "0.3.2", "latest": "0.4.0", "outdated": True, "upgrade_command": "uvx --upgrade ansible-know-mcp"},
+            "upgrade_warned": False,
+        }
+        mock_ctx.warning = AsyncMock()
+
+        await _maybe_warn_upgrade(mock_ctx)
+        mock_ctx.warning.assert_called_once()
+        assert "outdated" in mock_ctx.warning.call_args[0][0]
+        assert mock_ctx.lifespan_context["upgrade_warned"] is True
+
+    @pytest.mark.asyncio
+    async def test_warns_only_once(self):
+        from ansible_know.server import _maybe_warn_upgrade
+
+        mock_ctx = MagicMock()
+        mock_ctx.lifespan_context = {
+            "version_info": {"installed": "0.3.2", "latest": "0.4.0", "outdated": True, "upgrade_command": "uvx --upgrade ansible-know-mcp"},
+            "upgrade_warned": False,
+        }
+        mock_ctx.warning = AsyncMock()
+
+        await _maybe_warn_upgrade(mock_ctx)
+        await _maybe_warn_upgrade(mock_ctx)
+        mock_ctx.warning.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_no_warn_when_current(self):
+        from ansible_know.server import _maybe_warn_upgrade
+
+        mock_ctx = MagicMock()
+        mock_ctx.lifespan_context = {
+            "version_info": {"installed": "0.3.2", "latest": "0.3.2", "outdated": False, "upgrade_command": "uvx --upgrade ansible-know-mcp"},
+            "upgrade_warned": False,
+        }
+        mock_ctx.warning = AsyncMock()
+
+        await _maybe_warn_upgrade(mock_ctx)
+        mock_ctx.warning.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_warn_when_check_failed(self):
+        from ansible_know.server import _maybe_warn_upgrade
+
+        mock_ctx = MagicMock()
+        mock_ctx.lifespan_context = {
+            "version_info": None,
+            "upgrade_warned": False,
+        }
+        mock_ctx.warning = AsyncMock()
+
+        await _maybe_warn_upgrade(mock_ctx)
+        mock_ctx.warning.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_warn_when_no_ctx(self):
+        from ansible_know.server import _maybe_warn_upgrade
+        await _maybe_warn_upgrade(None)
+
+
+class TestServerVersionResource:
+    def test_returns_installed_version_without_pypi_check(self):
+        import ansible_know.server as srv
+        old = srv._version_info
+        try:
+            srv._version_info = None
+            result = json.loads(srv.resource_server_version())
+            assert result["installed"] == srv._VERSION
+            assert result["latest"] is None
+            assert result["outdated"] is None
+        finally:
+            srv._version_info = old
+
+    def test_returns_pypi_info_when_available(self):
+        import ansible_know.server as srv
+        old = srv._version_info
+        try:
+            srv._version_info = {
+                "installed": "0.3.2",
+                "latest": "0.4.0",
+                "outdated": True,
+                "upgrade_command": "uvx --upgrade ansible-know-mcp",
+            }
+            result = json.loads(srv.resource_server_version())
+            assert result["installed"] == "0.3.2"
+            assert result["latest"] == "0.4.0"
+            assert result["outdated"] is True
+        finally:
+            srv._version_info = old
 
 
 class TestSearchCollectionsTool:

@@ -53,6 +53,7 @@ src/ansible_know/
 | `skills://list` | List all generated skill packages |
 | `skills://{skill_name}` | Read a skill's SKILL.md by FQCN |
 | `galaxy://installed` | List collections installed in this session |
+| `server://version` | Installed/latest version info with upgrade status |
 | `docs://sources` | List configured doc manifest sources |
 
 ## MCP Prompts
@@ -73,6 +74,8 @@ src/ansible_know/
 - `docs.py` fetches manifests via httpx, caches per-source in a dict.
 - `galaxy.py` provides async Galaxy v3 API client with version/docs-blob caching and format conversion.
 - `get_module_doc` falls back to Galaxy docs-blob when local collection is missing.
+- Lifespan checks PyPI for newer versions (non-blocking, 3s timeout, `ANSIBLE_KNOW_SKIP_UPDATE_CHECK=1` to suppress).
+- First tool call emits a single `ctx.warning()` if outdated; `server://version` resource exposes the cached result.
 - Tests mock `_run_ansible_doc` — no real `ansible-doc` needed.
 - `readme_parser.py` parses Galaxy role README HTML using stdlib `html.parser`. Handles four variable documentation patterns: tables, heading-per-variable, code-block-per-variable, and graceful degradation.
 - `get_role_doc` uses three-tier resolution: local ansible-doc → Galaxy readme_html → graceful degradation.

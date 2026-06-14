@@ -37,7 +37,7 @@ In `src/ansible_know/config.py`, add after the `SEARCH_DOCS_LIMIT` line:
 
 ```python
 GALAXY_BASE_URL = os.environ.get(
-    "ANSIBLE_KNOWLEDGE_GALAXY_URL",
+    "ANSIBLE_KNOW_GALAXY_URL",
     "https://galaxy.ansible.com",
 )
 ```
