@@ -6,11 +6,14 @@ fetches them via HTTP, caches per-source, and provides cross-source search.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import httpx
 
 from ansible_know.config import SEARCH_DOCS_LIMIT, get_doc_sources
+
+logger = logging.getLogger("ansible_know")
 
 MAX_MANIFEST_SIZE = 5_000_000  # 5MB
 
@@ -77,6 +80,7 @@ async def search_docs(
             continue
 
         if "url" not in src_config:
+            logger.warning("Doc source '%s' missing 'url', skipping", src_name)
             continue
 
         try:

@@ -78,7 +78,7 @@ async def _check_pypi_version(client: httpx.AsyncClient) -> dict[str, Any] | Non
             "outdated": outdated,
             "upgrade_command": "uvx --upgrade ansible-know-mcp",
         }
-    except (httpx.HTTPError, ValueError):
+    except Exception:
         logger.debug("PyPI version check failed (non-blocking)")
         return None
 
