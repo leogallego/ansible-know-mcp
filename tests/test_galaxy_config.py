@@ -152,6 +152,42 @@ class TestLoadGalaxyServers:
         assert servers[1].name == "public_galaxy"
         assert servers[1].url == "https://galaxy.ansible.com"
 
+    def test_no_public_galaxy_env_var(self, tmp_path):
+        cfg = tmp_path / "ansible.cfg"
+        cfg.write_text(textwrap.dedent("""\
+            [galaxy]
+            server_list = private_hub
+
+            [galaxy_server.private_hub]
+            url = https://hub.internal.com/api/galaxy/
+            token = secret
+        """))
+        with patch.dict(os.environ, {
+            "ANSIBLE_CONFIG": str(cfg),
+            "ANSIBLE_KNOW_NO_PUBLIC_GALAXY": "1",
+        }):
+            servers = load_galaxy_servers()
+
+        assert len(servers) == 1
+        assert servers[0].name == "private_hub"
+
+    def test_no_public_galaxy_env_var_true(self, tmp_path):
+        cfg = tmp_path / "ansible.cfg"
+        cfg.write_text(textwrap.dedent("""\
+            [galaxy]
+            server_list = private_hub
+
+            [galaxy_server.private_hub]
+            url = https://hub.internal.com/api/galaxy/
+        """))
+        with patch.dict(os.environ, {
+            "ANSIBLE_CONFIG": str(cfg),
+            "ANSIBLE_KNOW_NO_PUBLIC_GALAXY": "true",
+        }):
+            servers = load_galaxy_servers()
+
+        assert len(servers) == 1
+
     def test_public_galaxy_not_duplicated(self, tmp_path):
         cfg = tmp_path / "ansible.cfg"
         cfg.write_text(textwrap.dedent("""\

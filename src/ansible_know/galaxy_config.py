@@ -140,11 +140,15 @@ def load_galaxy_servers() -> list[GalaxyServerConfig]:
         if fallback_url != PUBLIC_GALAXY_URL:
             logger.info("Using custom Galaxy URL: %s", fallback_url)
 
-    seen_urls = {s.url.rstrip("/") for s in servers}
-    if PUBLIC_GALAXY_URL not in seen_urls:
-        servers.append(GalaxyServerConfig(
-            name="public_galaxy",
-            url=PUBLIC_GALAXY_URL,
-        ))
+    no_public = os.environ.get(
+        "ANSIBLE_KNOW_NO_PUBLIC_GALAXY", "",
+    ).strip().lower() in ("1", "true", "yes")
+    if not no_public:
+        seen_urls = {s.url.rstrip("/") for s in servers}
+        if PUBLIC_GALAXY_URL not in seen_urls:
+            servers.append(GalaxyServerConfig(
+                name="public_galaxy",
+                url=PUBLIC_GALAXY_URL,
+            ))
 
     return servers

@@ -38,6 +38,7 @@ logger = logging.getLogger("ansible_know")
 
 _VERSION = pkg_version("ansible-know-mcp")
 _version_info: dict[str, Any] | None = None
+_galaxy_servers: list | None = None
 
 
 def _is_stable(v: str) -> bool:
@@ -80,10 +81,11 @@ async def _check_pypi_version(client: httpx.AsyncClient) -> dict[str, Any] | Non
 
 @lifespan
 async def app_lifespan(server):
-    global _version_info
+    global _version_info, _galaxy_servers
     from ansible_know.galaxy_config import load_galaxy_servers
 
     galaxy_servers = load_galaxy_servers()
+    _galaxy_servers = galaxy_servers
     for gs in galaxy_servers:
         auth_type = "token" if gs.token else ("basic" if gs.username else "none")
         logger.info("Galaxy server: %s (%s, auth=%s)", gs.name, gs.url, auth_type)
@@ -205,9 +207,9 @@ async def _resolve_module_doc(
     """
     from ansible_know import parser
     from ansible_know.errors import CollectionNotFoundError, GalaxyError
-    from ansible_know.galaxy_config import GalaxyServerConfig
+    from ansible_know.galaxy_config import load_galaxy_servers
 
-    servers = galaxy_servers or [GalaxyServerConfig(name="galaxy", url="https://galaxy.ansible.com")]
+    servers = galaxy_servers or load_galaxy_servers()
     namespace = ".".join(module_name.split(".")[:2]) if "." in module_name else None
 
     if namespace and namespace in _missing_collections:
@@ -255,9 +257,9 @@ async def _resolve_role_doc(
     """
     from ansible_know import parser
     from ansible_know.errors import CollectionNotFoundError, GalaxyError
-    from ansible_know.galaxy_config import GalaxyServerConfig
+    from ansible_know.galaxy_config import load_galaxy_servers
 
-    servers = galaxy_servers or [GalaxyServerConfig(name="galaxy", url="https://galaxy.ansible.com")]
+    servers = galaxy_servers or load_galaxy_servers()
     namespace = ".".join(role_name.split(".")[:2]) if "." in role_name else None
 
     local_doc: dict[str, Any] = {}
@@ -474,32 +476,41 @@ async def search_collections(
         return {"error": str(exc)}
 
     try:
-        from ansible_know.errors import GalaxyError
         from ansible_know.galaxy import GalaxyClient
-        from ansible_know.galaxy_config import GalaxyServerConfig
+        from ansible_know.galaxy_config import load_galaxy_servers
 
         http_client = ctx.lifespan_context.get("http_client") if ctx else None
         galaxy_servers = ctx.lifespan_context.get("galaxy_servers") if ctx else None
-        servers = galaxy_servers or [GalaxyServerConfig(name="galaxy", url="https://galaxy.ansible.com")]
+        servers = galaxy_servers or load_galaxy_servers()
+
+        async def _query_server(server):
+            client_kwarg = http_client if server.validate_certs else None
+            async with GalaxyClient.from_config(server, http_client=client_kwarg) as client:
+                result = await client.search_collections(query, tags=tags)
+            return server.name, result
+
+        tasks = [_query_server(s) for s in servers]
+        outcomes = await asyncio.gather(*tasks, return_exceptions=True)
 
         all_collections: list[dict[str, Any]] = []
         seen_namespaces: set[str] = set()
         errors: list[str] = []
 
-        for server in servers:
-            try:
-                client_kwarg = http_client if server.validate_certs else None
-                async with GalaxyClient.from_config(server, http_client=client_kwarg) as client:
-                    result = await client.search_collections(query, tags=tags)
-                for coll in result.get("collections", []):
-                    ns = coll.get("namespace", "")
-                    if ns not in seen_namespaces:
-                        coll["source"] = server.name
-                        all_collections.append(coll)
-                        seen_namespaces.add(ns)
-            except GalaxyError as exc:
-                logger.info("search_collections on '%s' failed: %s", server.name, exc)
-                errors.append(f"{server.name}: {exc}")
+        for i, outcome in enumerate(outcomes):
+            if isinstance(outcome, Exception):
+                logger.info(
+                    "search_collections on '%s' failed: %s",
+                    servers[i].name, outcome,
+                )
+                errors.append(f"{servers[i].name}: {outcome}")
+                continue
+            server_name, result = outcome
+            for coll in result.get("collections", []):
+                ns = coll.get("namespace", "")
+                if ns not in seen_namespaces:
+                    coll["source"] = server_name
+                    all_collections.append(coll)
+                    seen_namespaces.add(ns)
 
         if not all_collections and errors:
             return {"error": f"All Galaxy servers failed: {'; '.join(errors)}"}
@@ -973,7 +984,7 @@ def resource_server_version() -> str:
 def resource_galaxy_servers() -> str:
     from ansible_know.galaxy_config import load_galaxy_servers
 
-    servers = load_galaxy_servers()
+    servers = _galaxy_servers or load_galaxy_servers()
     return json.dumps([
         {
             "name": s.name,
