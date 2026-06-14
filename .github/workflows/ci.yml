@@ -30,3 +30,29 @@ jobs:
 
       - name: Run tests with coverage
         run: uv run pytest tests/ -v --cov=ansible_know --cov-report=term-missing
+
+  integration:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python 3.13
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Install ansible-core
+        run: uv pip install ansible-core
+
+      - name: Run ansible-doc integration tests
+        run: uv run pytest tests/integration/test_ansible_doc.py -v --run-integration
+
+      - name: Run network integration tests (Galaxy API + e2e)
+        continue-on-error: true
+        run: uv run pytest tests/integration/test_galaxy_api.py tests/integration/test_mcp_e2e.py -v --run-integration
