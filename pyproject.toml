@@ -26,7 +26,7 @@ authors = [
     { name = "Leonardo Gallego", email = "leo.pypi@gallego.red" },
 ]
 dependencies = [
-    "fastmcp>=3.0",
+    "fastmcp>=3.2,<4",
     "httpx>=0.27",
     "jinja2>=3.1",
     "pyyaml>=6.0",
