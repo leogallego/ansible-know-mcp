@@ -6,6 +6,7 @@ Module discovery, documentation search, and skill generation for AI agents via t
 
 Ansible Know is the foundational "learn" layer for AI agents working with Ansible. It provides:
 
+- **Multi-server Galaxy support** — query public Galaxy, private Automation Hub, and AAP Gateway in parallel, configured via `ansible.cfg` with per-server authentication
 - **Galaxy collection discovery** — search 2000+ collections on Ansible Galaxy by keyword, ranked by download count
 - **Module discovery** — search and explore Ansible modules across installed collections
 - **Module documentation** — get structured parameter specs, examples, and metadata (falls back to Galaxy if not installed locally)
@@ -146,6 +147,7 @@ uvx ansible-know-mcp
 | `skills://{skill_name}` | Read a skill's SKILL.md content by FQCN |
 | `galaxy://installed` | List collections installed in this session |
 | `server://version` | Installed and latest version info with upgrade status |
+| `galaxy://servers` | List configured Galaxy servers (names, URLs, auth types — never credentials) |
 | `docs://sources` | List configured documentation manifest sources |
 
 ## Prompts
@@ -183,6 +185,27 @@ uv pip install -e ".[dev]"
 pytest
 ```
 
+## Multi-server Galaxy Support
+
+Ansible Know reads `[galaxy_server.*]` sections from `ansible.cfg` (using the standard 4-step resolution: `ANSIBLE_CONFIG` env → `./ansible.cfg` → `~/.ansible.cfg` → `/etc/ansible/ansible.cfg`) to support multiple Galaxy-compatible endpoints:
+
+```ini
+# ansible.cfg
+[galaxy_server.automation_hub]
+url = https://hub.example.com/api/galaxy/
+token = my-token
+
+[galaxy_server.public_galaxy]
+url = https://galaxy.ansible.com/api/
+```
+
+- Supports token auth, basic auth, and per-server TLS verification
+- `search_collections` queries all configured servers in parallel, merges results with source attribution
+- `get_module_doc` / `get_role_doc` Galaxy fallback tries servers in priority order
+- Public Galaxy is appended as a final fallback; opt out with `ANSIBLE_KNOW_NO_PUBLIC_GALAXY=1`
+- Per-server env var overrides: `ANSIBLE_GALAXY_SERVER_{NAME}_{KEY}` (matches ansible-core behavior)
+- View configured servers via the `galaxy://servers` resource
+
 ## Configuration
 
 | Environment Variable | Description | Default |
@@ -191,6 +214,7 @@ pytest
 | `ANSIBLE_KNOW_DOC_SOURCES` | JSON dict of doc manifest sources | Built-in ansible-core source |
 | `ANSIBLE_KNOW_GALAXY_URL` | Galaxy API base URL | `https://galaxy.ansible.com` |
 | `ANSIBLE_KNOW_SKIP_UPDATE_CHECK` | Set to `1` to disable PyPI version check at startup | *(not set)* |
+| `ANSIBLE_KNOW_NO_PUBLIC_GALAXY` | Set to `1` to suppress auto-appending public Galaxy (for air-gapped deployments) | *(not set)* |
 
 ## License
 
