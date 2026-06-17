@@ -4,44 +4,40 @@ Module discovery, documentation search, and skill generation for AI agents via t
 
 ## What It Does
 
-Ansible Know is the foundational "learn" layer for AI agents working with Ansible. It provides:
+Ansible Know is the **learn** layer for AI agents working with Ansible:
 
-- **Multi-server Galaxy support** — query public Galaxy, private Automation Hub, and AAP Gateway in parallel, configured via `ansible.cfg` with per-server authentication
-- **Galaxy collection discovery** — search 2000+ collections on Ansible Galaxy by keyword, ranked by download count
-- **Module discovery** — search and explore Ansible modules across installed collections
-- **Module documentation** — get structured parameter specs, examples, and metadata (falls back to Galaxy if not installed locally)
+- **Galaxy collection discovery** — search 2000+ collections by keyword, ranked by download count
+- **Multi-server Galaxy support** — query public Galaxy, private Automation Hub, and AAP Gateway in parallel
+- **Module and role documentation** — structured parameter specs, examples, and metadata with Galaxy fallback
 - **Documentation search** — find conceptual guides from Ansible's AI-friendly docs
-- **Skill generation** — create ready-to-use skill packages that teach agents how to use specific modules
-- **Collection bootstrapping** — auto-install collections from Galaxy for the current session
-- **Collection manifests** — get collection-level overviews with per-module summaries
-- **Resources** — browse skills and doc sources as MCP resources
-- **Prompts** — pre-built templates for playbook review, module explanation, and role generation
+- **Collection management** — auto-install collections and get collection-level overviews
+- **Skill generation** — create ready-to-use skill packages that teach agents how to use specific modules and roles
+- **Resources and prompts** — browse skills, doc sources, and Galaxy servers; pre-built templates for playbook review, module explanation, and role generation
 
 Together with [Ansible Devtools MCP](https://github.com/ansible/ansible-dev-tools) (build) and [AAP MCP](https://github.com/ansible/aap-mcp-server) (deploy), this enables the full autonomous cycle: **learn -> build -> deploy**.
 
 ```
  Agent's MCP servers:
 
- +-----------------------+  +-------------------+  +---------------+
- | Ansible Know          |  | Ansible Devtools  |  |   AAP MCP     |
- | (this project)        |  |                   |  |               |
- |                       |  |                   |  |               |
- | search_collections    |  | ansible_lint      |  | controller.*  |
- | search_modules        |  | ansible_navigator |  | eda.*         |
- | get_module_doc        |  | ansible_create_*  |  | gateway.*     |
- | get_role_doc          |  | build_ee          |  | galaxy.*      |
- | get_collection_       |  | zen_of_ansible    |  |               |
- |   manifest            |  | setup_environment |  |               |
- | search_docs           |  | environment_info  |  |               |
- | ensure_collection     |  |                   |  |               |
- | generate_skill        |  |                   |  |               |
- | generate_role_skill   |  |                   |  |               |
- | generate_collection   |  |                   |  |               |
- | list_skills           |  |                   |  |               |
- | get_skill             |  |                   |  |               |
- |                       |  |                   |  |               |
- | LEARN                 |  | BUILD             |  | DEPLOY        |
- +-----------------------+  +-------------------+  +---------------+
+ +----------------------------+  +-------------------+  +--------------+
+ | Ansible Know               |  | Ansible Devtools  |  | AAP MCP      |
+ | (this project)             |  |                   |  |              |
+ |                            |  |                   |  |              |
+ | search_collections         |  | ansible_lint      |  | controller.* |
+ | search_modules             |  | ansible_navigator |  | eda.*        |
+ | get_module_doc             |  | ansible_create_*  |  | gateway.*    |
+ | get_role_doc               |  | build_ee          |  | galaxy.*     |
+ | get_collection_manifest    |  | zen_of_ansible    |  |              |
+ | search_docs                |  | setup_environment |  |              |
+ | ensure_collection          |  | environment_info  |  |              |
+ | generate_skill             |  |                   |  |              |
+ | generate_role_skill        |  |                   |  |              |
+ | generate_collection_skills |  |                   |  |              |
+ | list_skills                |  |                   |  |              |
+ | get_skill                  |  |                   |  |              |
+ |                            |  |                   |  |              |
+ | LEARN                      |  | BUILD             |  | DEPLOY       |
+ +----------------------------+  +-------------------+  +--------------+
 ```
 
 ## Installation
@@ -58,23 +54,21 @@ Using `pip`:
 pip install ansible-know-mcp
 ```
 
-Runtime requirement: `ansible-core` must be installed in the same environment (for `ansible-doc`).
+**Requirement:** `ansible-core` must be installed in the same Python environment (provides `ansible-doc`).
 
 ## Usage
 
-### With Claude Code
+### Claude Code
 
 ```bash
+# Project-scoped
 claude mcp add ansible-know -- uvx ansible-know-mcp
-```
 
-To make it available in all projects:
-
-```bash
+# Available in all projects
 claude mcp add --scope user ansible-know -- uvx ansible-know-mcp
 ```
 
-### With VS Code / Cursor
+### VS Code / Cursor
 
 Add to `.vscode/mcp.json` in your workspace:
 
@@ -90,15 +84,15 @@ Add to `.vscode/mcp.json` in your workspace:
 }
 ```
 
-### With any MCP client
+### Any MCP client
 
-The server runs over stdio by default:
+The server communicates over stdio:
 
 ```bash
 uvx ansible-know-mcp
 ```
 
-### Full stack configuration
+### Full stack
 
 ```json
 {
@@ -112,32 +106,32 @@ uvx ansible-know-mcp
 
 ## Tools
 
-### Discovery (read-only)
+### Discovery
 
 | Tool | Description |
 |------|-------------|
-| `search_collections(query, tags?)` | Search Ansible Galaxy for collections by keyword. Returns results ranked by download count. |
-| `search_modules(keyword, namespace?)` | Find modules by keyword in name or description. Returns up to 50 matches. |
-| `get_module_doc(module_name)` | Get full structured docs: params, examples, API detection. Falls back to Galaxy if not installed locally. |
-| `get_role_doc(role_name)` | Get role documentation with three-tier resolution: local ansible-doc, Galaxy README, or graceful degradation. |
-| `search_docs(query, source?, topic?, audience?, core_only?)` | Search documentation manifests for conceptual guides. Returns up to 20 matches. |
-| `get_collection_manifest(collection_namespace)` | Get collection-level manifest with per-module and per-role summaries. |
+| `search_collections(query, tags?)` | Search Ansible Galaxy for collections by keyword, ranked by download count |
+| `search_modules(keyword, namespace?)` | Find modules by keyword in name or description (up to 50 matches) |
+| `get_module_doc(module_name)` | Full structured docs: params, examples, API detection. Falls back to Galaxy if not installed locally |
+| `get_role_doc(role_name)` | Role documentation with three-tier resolution: local ansible-doc, Galaxy README, or graceful degradation |
+| `search_docs(query, source?, topic?, audience?, core_only?)` | Search documentation manifests for conceptual guides (up to 20 matches) |
+| `get_collection_manifest(collection_namespace)` | Collection-level manifest with per-module and per-role summaries |
 
 ### Collection management
 
 | Tool | Description |
 |------|-------------|
-| `ensure_collection(collection_namespace, version?)` | Install a collection to a temporary directory for this session. |
+| `ensure_collection(collection_namespace, version?)` | Install a collection to a temporary directory for this session |
 
-### Skill management
+### Skills
 
 | Tool | Description |
 |------|-------------|
-| `list_skills()` | List all generated skills (read-only). |
-| `get_skill(skill_name)` | Read a skill's SKILL.md content (read-only). |
-| `generate_skill(module_name, install_to?)` | Generate a skill package for one module. Returns SKILL.md inline. |
-| `generate_role_skill(role_name, install_to?)` | Generate a skill package for one role. Returns SKILL.md inline. |
-| `generate_collection_skills(collection_namespace, install_to?)` | Batch generate skills for an entire collection. |
+| `list_skills()` | List all generated skills |
+| `get_skill(skill_name)` | Read a skill's SKILL.md content |
+| `generate_skill(module_name, install_to?)` | Generate a skill package for one module |
+| `generate_role_skill(role_name, install_to?)` | Generate a skill package for one role |
+| `generate_collection_skills(collection_namespace, install_to?)` | Batch generate skills for an entire collection |
 
 ## Resources
 
@@ -146,8 +140,8 @@ uvx ansible-know-mcp
 | `skills://list` | List all generated skill packages |
 | `skills://{skill_name}` | Read a skill's SKILL.md content by FQCN |
 | `galaxy://installed` | List collections installed in this session |
-| `server://version` | Installed and latest version info with upgrade status |
 | `galaxy://servers` | List configured Galaxy servers (names, URLs, auth types — never credentials) |
+| `server://version` | Installed and latest version info with upgrade status |
 | `docs://sources` | List configured documentation manifest sources |
 
 ## Prompts
@@ -155,39 +149,13 @@ uvx ansible-know-mcp
 | Prompt | Description |
 |--------|-------------|
 | `review_playbook(playbook_yaml)` | Review a playbook against module docs and best practices |
-| `explain_module(module_name)` | Get a detailed module explanation with usage examples |
+| `explain_module(module_name)` | Detailed module explanation with usage examples |
 | `generate_role(role_purpose, modules)` | Generate a role skeleton using specified modules |
 | `find_collection(platform_or_use_case)` | Guide through search, install, and explore workflow |
 
-## Upgrading
-
-The server exposes its version via the MCP protocol. To upgrade to the latest release:
-
-| Installation method | Upgrade command |
-|---|---|
-| `uvx` | `uvx --upgrade ansible-know-mcp` |
-| `pip` | `pip install --upgrade ansible-know-mcp` |
-| Claude Code (`claude mcp add`) | `uvx --upgrade ansible-know-mcp` then restart Claude Code |
-| VS Code / Cursor | `uvx --upgrade ansible-know-mcp` then reload window |
-| Local dev | `git pull && uv sync` |
-
-> **Note:** `uvx` caches the installed version. It does not auto-upgrade on new releases.
-> To always run the latest version at the cost of slower startup, register with:
-> `claude mcp add ansible-know -- uvx --upgrade ansible-know-mcp`
-
-## Development
-
-```bash
-git clone https://github.com/leogallego/ansible-know-mcp.git
-cd ansible-know-mcp
-uv venv && source .venv/bin/activate
-uv pip install -e ".[dev]"
-pytest
-```
-
 ## Multi-server Galaxy Support
 
-Ansible Know reads `[galaxy_server.*]` sections from `ansible.cfg` (using the standard 4-step resolution: `ANSIBLE_CONFIG` env → `./ansible.cfg` → `~/.ansible.cfg` → `/etc/ansible/ansible.cfg`) to support multiple Galaxy-compatible endpoints:
+Ansible Know reads `[galaxy_server.*]` sections from `ansible.cfg` (resolved in standard order: `ANSIBLE_CONFIG` env, `./ansible.cfg`, `~/.ansible.cfg`, `/etc/ansible/ansible.cfg`):
 
 ```ini
 # ansible.cfg
@@ -199,8 +167,8 @@ token = my-token
 url = https://galaxy.ansible.com/api/
 ```
 
-- Supports token auth, basic auth, and per-server TLS verification
-- `search_collections` queries all configured servers in parallel, merges results with source attribution
+- Token auth, basic auth, and per-server TLS verification
+- `search_collections` queries all configured servers in parallel, merging results with source attribution
 - `get_module_doc` / `get_role_doc` Galaxy fallback tries servers in priority order
 - Public Galaxy is appended as a final fallback; opt out with `ANSIBLE_KNOW_NO_PUBLIC_GALAXY=1`
 - Per-server env var overrides: `ANSIBLE_GALAXY_SERVER_{NAME}_{KEY}` (matches ansible-core behavior)
@@ -214,7 +182,31 @@ url = https://galaxy.ansible.com/api/
 | `ANSIBLE_KNOW_DOC_SOURCES` | JSON dict of doc manifest sources | Built-in ansible-core source |
 | `ANSIBLE_KNOW_GALAXY_URL` | Galaxy API base URL | `https://galaxy.ansible.com` |
 | `ANSIBLE_KNOW_SKIP_UPDATE_CHECK` | Set to `1` to disable PyPI version check at startup | *(not set)* |
-| `ANSIBLE_KNOW_NO_PUBLIC_GALAXY` | Set to `1` to suppress auto-appending public Galaxy (for air-gapped deployments) | *(not set)* |
+| `ANSIBLE_KNOW_NO_PUBLIC_GALAXY` | Set to `1` to suppress auto-appending public Galaxy | *(not set)* |
+
+## Upgrading
+
+| Method | Command |
+|--------|---------|
+| `uvx` | `uvx --upgrade ansible-know-mcp` |
+| `pip` | `pip install --upgrade ansible-know-mcp` |
+| Claude Code | `uvx --upgrade ansible-know-mcp` then restart Claude Code |
+| VS Code / Cursor | `uvx --upgrade ansible-know-mcp` then reload window |
+| Local dev | `git pull && uv sync` |
+
+> **Note:** `uvx` caches the installed version and does not auto-upgrade on new releases.
+> To always run the latest version (at the cost of slower startup):
+> `claude mcp add ansible-know -- uvx --upgrade ansible-know-mcp`
+
+## Development
+
+```bash
+git clone https://github.com/leogallego/ansible-know-mcp.git
+cd ansible-know-mcp
+uv venv && source .venv/bin/activate
+uv pip install -e ".[dev]"
+pytest
+```
 
 ## License
 
