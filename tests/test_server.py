@@ -407,28 +407,28 @@ class TestMissingCollectionHints:
 
 class TestIsMissingCollectionError:
     def test_has_no_attribute(self):
-        from ansible_know.server import _is_missing_collection_error
-        assert _is_missing_collection_error("netbox.netbox has no attribute") is True
+        from ansible_know.errors import is_missing_collection_error
+        assert is_missing_collection_error("netbox.netbox has no attribute") is True
 
     def test_was_not_found(self):
-        from ansible_know.server import _is_missing_collection_error
-        assert _is_missing_collection_error("module was not found") is True
+        from ansible_know.errors import is_missing_collection_error
+        assert is_missing_collection_error("module was not found") is True
 
     def test_could_not_be_found(self):
-        from ansible_know.server import _is_missing_collection_error
-        assert _is_missing_collection_error("could not be found in Galaxy") is True
+        from ansible_know.errors import is_missing_collection_error
+        assert is_missing_collection_error("could not be found in Galaxy") is True
 
     def test_unrelated_error(self):
-        from ansible_know.server import _is_missing_collection_error
-        assert _is_missing_collection_error("ansible-doc timed out") is False
+        from ansible_know.errors import is_missing_collection_error
+        assert is_missing_collection_error("ansible-doc timed out") is False
 
     def test_empty_string(self):
-        from ansible_know.server import _is_missing_collection_error
-        assert _is_missing_collection_error("") is False
+        from ansible_know.errors import is_missing_collection_error
+        assert is_missing_collection_error("") is False
 
     def test_case_insensitive(self):
-        from ansible_know.server import _is_missing_collection_error
-        assert _is_missing_collection_error("HAS NO ATTRIBUTE") is True
+        from ansible_know.errors import is_missing_collection_error
+        assert is_missing_collection_error("HAS NO ATTRIBUTE") is True
 
 
 class TestGalaxyDocsFallback:
