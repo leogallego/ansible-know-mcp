@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from ansible_know import collections
 from ansible_know.errors import AnsibleDocError, CollectionNotFoundError, is_missing_collection_error
 
 if TYPE_CHECKING:
@@ -42,7 +43,6 @@ def _run_ansible_doc(*args: str) -> str:
     ansible_doc = _find_ansible_doc()
     cmd = [ansible_doc, *args]
 
-    from ansible_know import collections
     collections_path = collections.get_collections_path()
     logger.debug("Running: %s (collections_path=%s)", " ".join(cmd), collections_path)
     env = None

@@ -33,3 +33,34 @@ class DocProvenance(_DocProvenanceBase, total=False):
 
     doc_warning: str
     doc_source_server: str
+
+
+class ErrorResponse(TypedDict):
+    """Standard error shape returned by all tools on failure."""
+
+    error: str
+
+
+class EnsureCollectionResult(TypedDict):
+    """Result of ensure_collection tool."""
+
+    namespace: str
+    version: str
+    status: str
+    message: str
+
+
+class SkillEntry(TypedDict):
+    """Single entry in list_skills output."""
+
+    name: str
+    description: str
+    path: str
+
+
+class CollectionSearchResult(TypedDict):
+    """Result of search_collections tool."""
+
+    query: str
+    count: int
+    collections: list[dict[str, Any]]

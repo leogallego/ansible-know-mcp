@@ -45,6 +45,9 @@ def _get_enrichment_semaphore() -> asyncio.Semaphore:
         _enrichment_semaphore_loop = loop
     return _enrichment_semaphore
 
+# Module-level caches shared across all GalaxyClient instances.
+# Keys include enough context (namespace, name, version) to avoid
+# cross-instance collisions. Thread-safe via dedicated locks.
 _version_cache: OrderedDict[tuple[str, str], tuple[str, float]] = OrderedDict()
 _version_lock = threading.Lock()
 _blob_cache: OrderedDict[tuple[str, str, str], tuple[dict[str, Any], float]] = OrderedDict()
