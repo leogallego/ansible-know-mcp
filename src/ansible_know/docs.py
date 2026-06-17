@@ -17,8 +17,11 @@ from ansible_know.config import SEARCH_DOCS_LIMIT, get_doc_sources
 logger = logging.getLogger("ansible_know")
 
 MAX_MANIFEST_SIZE = 5_000_000  # 5MB
+CACHE_TTL_SECONDS = 3600
 
-_manifest_cache: BoundedCache[str, list[dict[str, Any]]] = BoundedCache(max_size=50)
+_manifest_cache: BoundedCache[str, list[dict[str, Any]]] = BoundedCache(
+    max_size=50, ttl=CACHE_TTL_SECONDS,
+)
 
 
 async def _fetch_manifest(source_name: str, url: str) -> list[dict[str, Any]]:

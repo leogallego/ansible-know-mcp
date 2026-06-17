@@ -58,9 +58,33 @@ class SkillEntry(TypedDict):
     path: str
 
 
+class _CollectionInfoBase(TypedDict):
+    """Required fields for a collection search result entry."""
+
+    namespace: str
+    description: str
+    tags: list[str]
+    latest_version: str
+    module_count: int
+    deprecated: bool
+    signed: bool
+
+
+class CollectionInfo(_CollectionInfoBase, total=False):
+    """Single collection entry from search_collections.
+
+    Optional fields are populated during enrichment (download_count,
+    role_count) or added by server.py (source).
+    """
+
+    role_count: int
+    download_count: int
+    source: str
+
+
 class CollectionSearchResult(TypedDict):
     """Result of search_collections tool."""
 
     query: str
     count: int
-    collections: list[dict[str, Any]]
+    collections: list[CollectionInfo]

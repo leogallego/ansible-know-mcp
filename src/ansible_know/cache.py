@@ -53,9 +53,19 @@ class BoundedCache(Generic[K, V]):
         with self._lock:
             self._data.clear()
 
+    @property
+    def max_size(self) -> int:
+        return self._max_size
+
     def __len__(self) -> int:
         with self._lock:
             return len(self._data)
 
     def __contains__(self, key: K) -> bool:
-        return self.get(key) is not None
+        with self._lock:
+            entry = self._data.get(key)
+            if entry is None:
+                return False
+            if self._ttl is not None and time.monotonic() - entry[1] > self._ttl:
+                return False
+            return True

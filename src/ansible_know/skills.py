@@ -16,16 +16,22 @@ from ansible_know.config import TEMPLATE_DIR
 logger = logging.getLogger("ansible_know")
 
 
-def _get_template_env():
-    """Create a Jinja2 environment pointed at the templates directory."""
-    from jinja2 import Environment, FileSystemLoader
+_template_env = None
 
-    return Environment(
-        loader=FileSystemLoader(str(TEMPLATE_DIR)),
-        keep_trailing_newline=True,
-        trim_blocks=True,
-        lstrip_blocks=True,
-    )
+
+def _get_template_env():
+    """Return the cached Jinja2 environment, creating it on first call."""
+    global _template_env
+    if _template_env is None:
+        from jinja2 import Environment, FileSystemLoader
+
+        _template_env = Environment(
+            loader=FileSystemLoader(str(TEMPLATE_DIR)),
+            keep_trailing_newline=True,
+            trim_blocks=True,
+            lstrip_blocks=True,
+        )
+    return _template_env
 
 
 def _module_to_skill_name(module_name: str) -> str:

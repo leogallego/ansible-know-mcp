@@ -84,6 +84,26 @@ class TestBoundedCache:
         assert "a" in cache
         assert "b" not in cache
 
+    def test_contains_does_not_refresh_lru(self):
+        cache: BoundedCache[str, int] = BoundedCache(max_size=3)
+        cache.put("a", 1)
+        cache.put("b", 2)
+        cache.put("c", 3)
+        assert "a" in cache
+        cache.put("d", 4)
+        assert "a" not in cache
+
+    def test_contains_expired_does_not_delete(self):
+        cache: BoundedCache[str, int] = BoundedCache(max_size=10, ttl=0.5)
+        cache.put("a", 1)
+        with patch("ansible_know.cache.time.monotonic", return_value=time.monotonic() + 1.0):
+            assert "a" not in cache
+        assert len(cache) == 1
+
+    def test_max_size_property(self):
+        cache: BoundedCache[str, int] = BoundedCache(max_size=42)
+        assert cache.max_size == 42
+
     def test_tuple_keys(self):
         cache: BoundedCache[tuple[str, str], str] = BoundedCache(max_size=10)
         cache.put(("ns", "name"), "1.0.0")

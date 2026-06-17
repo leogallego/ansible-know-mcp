@@ -661,7 +661,7 @@ class TestResponseSizeLimit:
 
 class TestCacheEviction:
     def test_version_cache_evicts_oldest(self):
-        max_size = _version_cache._max_size
+        max_size = _version_cache.max_size
         for i in range(max_size + 5):
             _version_cache.put(("ns", f"col{i}"), f"1.0.{i}")
         assert _version_cache.get(("ns", "col0")) is None
@@ -669,7 +669,7 @@ class TestCacheEviction:
         assert _version_cache.get(("ns", f"col{max_size + 4}")) == f"1.0.{max_size + 4}"
 
     def test_blob_cache_evicts_oldest(self):
-        max_size = _blob_cache._max_size
+        max_size = _blob_cache.max_size
         for i in range(max_size + 5):
             _blob_cache.put(("ns", f"col{i}", "1.0.0"), {"idx": i})
         assert _blob_cache.get(("ns", "col0", "1.0.0")) is None
@@ -677,7 +677,7 @@ class TestCacheEviction:
         assert _blob_cache.get(("ns", f"col{max_size + 4}", "1.0.0")) == {"idx": max_size + 4}
 
     def test_version_cache_stays_at_max_size(self):
-        max_size = _version_cache._max_size
+        max_size = _version_cache.max_size
         for i in range(max_size + 10):
             _version_cache.put(("ns", f"c{i}"), f"v{i}")
         assert len(_version_cache) <= max_size
