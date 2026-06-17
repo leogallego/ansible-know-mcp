@@ -6,11 +6,14 @@ from Ansible module metadata.
 
 from __future__ import annotations
 
+import logging
 import stat
 from pathlib import Path
 from typing import Any
 
 from ansible_know.config import TEMPLATE_DIR
+
+logger = logging.getLogger("ansible_know")
 
 
 def _get_template_env():
@@ -55,6 +58,7 @@ def _examples_contain_play(examples: str) -> bool:
 
 def render_skill(metadata: dict[str, Any]) -> str:
     """Render the SKILL.md template with the given module metadata."""
+    logger.debug("Rendering skill for module %s", metadata.get("module_name", "?"))
     env = _get_template_env()
     template = env.get_template("SKILL.md.j2")
     return template.render(**_template_context(metadata))
@@ -62,6 +66,7 @@ def render_skill(metadata: dict[str, Any]) -> str:
 
 def write_skill_package(output_dir: Path, metadata: dict[str, Any]) -> None:
     """Write the full skill package: SKILL.md + scripts + assets."""
+    logger.debug("Writing skill package to %s for %s", output_dir, metadata.get("module_name", "?"))
     env = _get_template_env()
     ctx = _template_context(metadata)
 
@@ -150,6 +155,7 @@ def _role_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
 
 def render_role_skill(metadata: dict[str, Any]) -> str:
     """Render the ROLE_SKILL.md.j2 template with role metadata."""
+    logger.debug("Rendering role skill for %s", metadata.get("role_name", "?"))
     env = _get_template_env()
     template = env.get_template("ROLE_SKILL.md.j2")
     return template.render(**_role_template_context(metadata))
@@ -157,6 +163,7 @@ def render_role_skill(metadata: dict[str, Any]) -> str:
 
 def write_role_skill_package(output_dir: Path, metadata: dict[str, Any]) -> None:
     """Write the role skill package: SKILL.md + assets/playbook.yml (no scripts/)."""
+    logger.debug("Writing role skill package to %s for %s", output_dir, metadata.get("role_name", "?"))
     env = _get_template_env()
     ctx = _role_template_context(metadata)
 
