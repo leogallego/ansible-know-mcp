@@ -16,13 +16,6 @@ from functools import partial
 from importlib.metadata import version as pkg_version
 from typing import TYPE_CHECKING, Annotated, Any
 
-from ansible_know.types import (
-    CollectionSearchResult,
-    EnsureCollectionResult,
-    ErrorResponse,
-    SkillEntry,
-)
-
 if TYPE_CHECKING:
     from ansible_know.galaxy_config import GalaxyServerConfig
     from ansible_know.types import DocProvenance
@@ -457,7 +450,7 @@ async def search_collections(
     query: Annotated[str, "Search keyword (e.g., 'netbox', 'cisco ios', 'vmware')"],
     tags: Annotated[str | None, "Optional comma-separated Galaxy tags to filter (e.g., 'networking,cloud')"] = None,
     ctx: Context | None = None,
-) -> CollectionSearchResult | ErrorResponse:
+) -> dict[str, Any]:
     """Search Ansible Galaxy for collections by keyword.
 
     Returns non-deprecated collections ranked by download count.
@@ -615,7 +608,7 @@ async def ensure_collection(
         str | None,
         "Optional version (e.g. '4.1.0'). If omitted, installs latest and pins the resolved version.",
     ] = None,
-) -> EnsureCollectionResult | ErrorResponse:
+) -> dict[str, Any]:
     """Install a collection to a temporary directory for this session.
 
     Installs once and pins the resolved version. Subsequent calls with the
@@ -660,7 +653,7 @@ async def ensure_collection(
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
-async def list_skills() -> list[SkillEntry] | ErrorResponse:
+async def list_skills() -> list[dict[str, str]] | dict[str, str]:
     """List all available generated skills. Returns name, description, path for each.
 
     Returns: [{"name": str, "description": str, "path": str}, ...] or {"error": str} on failure.

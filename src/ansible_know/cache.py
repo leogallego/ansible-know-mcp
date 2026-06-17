@@ -30,13 +30,16 @@ class BoundedCache(Generic[K, V]):
         self._data: OrderedDict[K, tuple[V, float]] = OrderedDict()
         self._lock = threading.Lock()
 
+    def _is_expired(self, timestamp: float) -> bool:
+        return self._ttl is not None and time.monotonic() - timestamp > self._ttl
+
     def get(self, key: K) -> V | None:
         with self._lock:
             entry = self._data.get(key)
             if entry is None:
                 return None
             value, timestamp = entry
-            if self._ttl is not None and time.monotonic() - timestamp > self._ttl:
+            if self._is_expired(timestamp):
                 del self._data[key]
                 return None
             self._data.move_to_end(key)
@@ -66,6 +69,4 @@ class BoundedCache(Generic[K, V]):
             entry = self._data.get(key)
             if entry is None:
                 return False
-            if self._ttl is not None and time.monotonic() - entry[1] > self._ttl:
-                return False
-            return True
+            return not self._is_expired(entry[1])

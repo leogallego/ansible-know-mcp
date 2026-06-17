@@ -6,6 +6,7 @@ from Ansible module metadata.
 
 from __future__ import annotations
 
+import functools
 import logging
 import stat
 from pathlib import Path
@@ -16,22 +17,17 @@ from ansible_know.config import TEMPLATE_DIR
 logger = logging.getLogger("ansible_know")
 
 
-_template_env = None
-
-
+@functools.lru_cache(maxsize=1)
 def _get_template_env():
     """Return the cached Jinja2 environment, creating it on first call."""
-    global _template_env
-    if _template_env is None:
-        from jinja2 import Environment, FileSystemLoader
+    from jinja2 import Environment, FileSystemLoader
 
-        _template_env = Environment(
-            loader=FileSystemLoader(str(TEMPLATE_DIR)),
-            keep_trailing_newline=True,
-            trim_blocks=True,
-            lstrip_blocks=True,
-        )
-    return _template_env
+    return Environment(
+        loader=FileSystemLoader(str(TEMPLATE_DIR)),
+        keep_trailing_newline=True,
+        trim_blocks=True,
+        lstrip_blocks=True,
+    )
 
 
 def _module_to_skill_name(module_name: str) -> str:

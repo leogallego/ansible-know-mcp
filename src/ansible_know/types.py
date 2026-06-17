@@ -66,6 +66,7 @@ class _CollectionInfoBase(TypedDict):
     tags: list[str]
     latest_version: str
     module_count: int
+    role_count: int
     deprecated: bool
     signed: bool
 
@@ -73,11 +74,10 @@ class _CollectionInfoBase(TypedDict):
 class CollectionInfo(_CollectionInfoBase, total=False):
     """Single collection entry from search_collections.
 
-    Optional fields are populated during enrichment (download_count,
-    role_count) or added by server.py (source).
+    Optional fields are populated during enrichment (download_count)
+    or added by server.py (source).
     """
 
-    role_count: int
     download_count: int
     source: str
 
