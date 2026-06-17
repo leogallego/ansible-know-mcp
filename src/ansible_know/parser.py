@@ -14,12 +14,11 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from ansible_know.errors import AnsibleDocError, CollectionNotFoundError
+from ansible_know.errors import AnsibleDocError, CollectionNotFoundError, is_missing_collection_error
 
 if TYPE_CHECKING:
     from ansible_know.types import ModuleMetadata, RoleMetadata
 
-_MISSING_COLLECTION_PATTERNS = ("has no attribute", "was not found", "could not be found")
 
 
 def _find_ansible_doc() -> str:
@@ -67,14 +66,12 @@ def _run_ansible_doc(*args: str) -> str:
 
     if result.returncode != 0:
         msg = f"ansible-doc failed (exit {result.returncode}): {result.stderr.strip()}"
-        msg_lower = msg.lower()
-        if any(p in msg_lower for p in _MISSING_COLLECTION_PATTERNS):
+        if is_missing_collection_error(msg):
             raise CollectionNotFoundError(msg)
         raise AnsibleDocError(msg)
 
     if result.stdout.strip() in ("", "{}"):
-        stderr_lower = result.stderr.lower()
-        if any(p in stderr_lower for p in _MISSING_COLLECTION_PATTERNS):
+        if is_missing_collection_error(result.stderr):
             raise CollectionNotFoundError(
                 f"ansible-doc returned empty output: {result.stderr.strip()}"
             )

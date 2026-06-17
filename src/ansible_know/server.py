@@ -25,7 +25,7 @@ from fastmcp import Context, FastMCP
 from fastmcp.server.lifespan import lifespan
 from mcp.types import ToolAnnotations
 
-from ansible_know.errors import AnsibleDocError, ValidationError
+from ansible_know.errors import AnsibleDocError, ValidationError, collection_hint, maybe_add_hint
 from ansible_know.validation import (
     sanitize_error,
     truncate_response,
@@ -162,28 +162,7 @@ async def _maybe_warn_upgrade(ctx: Context | None) -> None:
     lc["upgrade_warned"] = True
 
 
-_MISSING_COLLECTION_PATTERNS = ("has no attribute", "was not found", "could not be found")
 _missing_collections: set[str] = set()
-
-
-def _collection_hint(namespace: str) -> str:
-    return (
-        f" Collection '{namespace}' not installed locally. "
-        f"Use ensure_collection('{namespace}') to install it from Ansible Galaxy "
-        f"(latest version, or specify version='X.Y.Z')."
-    )
-
-
-def _is_missing_collection_error(error_msg: str) -> bool:
-    """Check if an error message indicates a missing/not-found collection or module."""
-    msg_lower = error_msg.lower()
-    return any(p in msg_lower for p in _MISSING_COLLECTION_PATTERNS)
-
-
-def _maybe_add_hint(error_msg: str, namespace: str | None) -> str:
-    if namespace and _is_missing_collection_error(error_msg):
-        return error_msg + _collection_hint(namespace)
-    return error_msg
 
 
 async def _try_galaxy_servers(
@@ -354,7 +333,7 @@ async def search_modules(
         return results
     except Exception as exc:
         logger.warning("search_modules failed: %s", exc)
-        return {"error": _maybe_add_hint(sanitize_error(str(exc)), namespace)}
+        return {"error": maybe_add_hint(sanitize_error(str(exc)), namespace)}
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -396,7 +375,7 @@ async def get_module_doc(
         from ansible_know.errors import GalaxyError
         if isinstance(exc.__cause__, GalaxyError):
             return {"error": sanitize_error(str(exc))}
-        return {"error": _maybe_add_hint(sanitize_error(str(exc)), ns)}
+        return {"error": maybe_add_hint(sanitize_error(str(exc)), ns)}
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -429,7 +408,7 @@ async def get_role_doc(
     except Exception as exc:
         logger.warning("get_role_doc failed: %s", exc)
         ns = ".".join(role_name.split(".")[:2]) if "." in role_name else None
-        return {"error": _maybe_add_hint(sanitize_error(str(exc)), ns)}
+        return {"error": maybe_add_hint(sanitize_error(str(exc)), ns)}
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -584,7 +563,7 @@ async def get_collection_manifest(
         if not modules and not roles_raw:
             return {"error": (
                 f"No modules or roles found in collection '{collection_namespace}'."
-                + _collection_hint(collection_namespace)
+                + collection_hint(collection_namespace)
             )}
 
         metadata_list = []
@@ -615,7 +594,7 @@ async def get_collection_manifest(
         raise
     except Exception as exc:
         logger.warning("get_collection_manifest failed: %s", exc)
-        return {"error": _maybe_add_hint(sanitize_error(str(exc)), collection_namespace)}
+        return {"error": maybe_add_hint(sanitize_error(str(exc)), collection_namespace)}
 
 
 @mcp.tool(annotations=ToolAnnotations(idempotentHint=True, readOnlyHint=False, destructiveHint=False))
@@ -790,7 +769,7 @@ async def generate_skill(
         from ansible_know.errors import GalaxyError
         if isinstance(exc.__cause__, GalaxyError):
             return {"error": sanitize_error(str(exc))}
-        return {"error": _maybe_add_hint(sanitize_error(str(exc)), ns)}
+        return {"error": maybe_add_hint(sanitize_error(str(exc)), ns)}
 
 
 @mcp.tool(annotations=ToolAnnotations(idempotentHint=True))
@@ -846,7 +825,7 @@ async def generate_role_skill(
     except Exception as exc:
         logger.warning("generate_role_skill failed: %s", exc)
         ns = ".".join(role_name.split(".")[:2]) if "." in role_name else None
-        return {"error": _maybe_add_hint(sanitize_error(str(exc)), ns)}
+        return {"error": maybe_add_hint(sanitize_error(str(exc)), ns)}
 
 
 @mcp.tool(annotations=ToolAnnotations(idempotentHint=True))
@@ -880,7 +859,7 @@ async def generate_collection_skills(
         if not modules:
             return {"error": (
                 f"No modules found in collection '{collection_namespace}'."
-                + _collection_hint(collection_namespace)
+                + collection_hint(collection_namespace)
             )}
 
         total = len(modules)
@@ -924,7 +903,7 @@ async def generate_collection_skills(
         raise
     except Exception as exc:
         logger.warning("generate_collection_skills failed: %s", exc)
-        return {"error": _maybe_add_hint(sanitize_error(str(exc)), collection_namespace)}
+        return {"error": maybe_add_hint(sanitize_error(str(exc)), collection_namespace)}
 
 
 # --- Resources (read-only data) ---
