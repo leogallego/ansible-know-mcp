@@ -11,19 +11,21 @@ from typing import Any
 
 import httpx
 
+from ansible_know.cache import BoundedCache
 from ansible_know.config import SEARCH_DOCS_LIMIT, get_doc_sources
 
 logger = logging.getLogger("ansible_know")
 
 MAX_MANIFEST_SIZE = 5_000_000  # 5MB
 
-_manifest_cache: dict[str, list[dict[str, Any]]] = {}
+_manifest_cache: BoundedCache[str, list[dict[str, Any]]] = BoundedCache(max_size=50)
 
 
 async def _fetch_manifest(source_name: str, url: str) -> list[dict[str, Any]]:
     """Fetch and cache a manifest from a URL."""
-    if source_name in _manifest_cache:
-        return _manifest_cache[source_name]
+    cached = _manifest_cache.get(source_name)
+    if cached is not None:
+        return cached
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=30.0)) as client:
         resp = await client.get(url)
@@ -48,7 +50,7 @@ async def _fetch_manifest(source_name: str, url: str) -> list[dict[str, Any]]:
         if "url" not in entry and "path" in entry and base_url:
             entry["url"] = f"{base_url.rstrip('/')}/{entry['path'].lstrip('/')}"
 
-    _manifest_cache[source_name] = entries
+    _manifest_cache.put(source_name, entries)
     return entries
 
 
@@ -130,3 +132,4 @@ async def search_docs(
 def clear_cache() -> None:
     """Clear the manifest cache (useful for testing)."""
     _manifest_cache.clear()
+

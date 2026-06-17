@@ -8,13 +8,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import threading
-import time
-from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from ansible_know.cache import BoundedCache
 from ansible_know.config import GALAXY_BASE_URL
 from ansible_know.errors import GalaxyError
 
@@ -25,8 +23,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger("ansible_know")
 
 MAX_GALAXY_RESPONSE_SIZE = 5_000_000  # 5MB
-MAX_VERSION_CACHE_SIZE = 500
-MAX_BLOB_CACHE_SIZE = 50
 CACHE_TTL_SECONDS = 3600
 
 TIMEOUT_FAST = httpx.Timeout(10.0)
@@ -47,57 +43,19 @@ def _get_enrichment_semaphore() -> asyncio.Semaphore:
 
 # Module-level caches shared across all GalaxyClient instances.
 # Keys include enough context (namespace, name, version) to avoid
-# cross-instance collisions. Thread-safe via dedicated locks.
-_version_cache: OrderedDict[tuple[str, str], tuple[str, float]] = OrderedDict()
-_version_lock = threading.Lock()
-_blob_cache: OrderedDict[tuple[str, str, str], tuple[dict[str, Any], float]] = OrderedDict()
-_blob_lock = threading.Lock()
-
-
-def _get_version_cache(key: tuple[str, str]) -> str | None:
-    with _version_lock:
-        cached = _version_cache.get(key)
-        if cached is None:
-            return None
-        value, timestamp = cached
-        if time.monotonic() - timestamp > CACHE_TTL_SECONDS:
-            del _version_cache[key]
-            return None
-        return value
-
-
-def _put_version_cache(key: tuple[str, str], value: str) -> None:
-    with _version_lock:
-        _version_cache[key] = (value, time.monotonic())
-        while len(_version_cache) > MAX_VERSION_CACHE_SIZE:
-            _version_cache.popitem(last=False)
-
-
-def _get_blob_cache(key: tuple[str, str, str]) -> dict[str, Any] | None:
-    with _blob_lock:
-        cached = _blob_cache.get(key)
-        if cached is None:
-            return None
-        value, timestamp = cached
-        if time.monotonic() - timestamp > CACHE_TTL_SECONDS:
-            del _blob_cache[key]
-            return None
-        return value
-
-
-def _put_blob_cache(key: tuple[str, str, str], value: dict[str, Any]) -> None:
-    with _blob_lock:
-        _blob_cache[key] = (value, time.monotonic())
-        while len(_blob_cache) > MAX_BLOB_CACHE_SIZE:
-            _blob_cache.popitem(last=False)
+# cross-instance collisions. Thread-safe via BoundedCache.
+_version_cache: BoundedCache[tuple[str, str], str] = BoundedCache(
+    max_size=500, ttl=CACHE_TTL_SECONDS,
+)
+_blob_cache: BoundedCache[tuple[str, str, str], dict[str, Any]] = BoundedCache(
+    max_size=50, ttl=CACHE_TTL_SECONDS,
+)
 
 
 def clear_cache() -> None:
     """Clear Galaxy caches (useful for testing)."""
-    with _version_lock:
-        _version_cache.clear()
-    with _blob_lock:
-        _blob_cache.clear()
+    _version_cache.clear()
+    _blob_cache.clear()
 
 
 def _parse_fqcn(module_name: str) -> tuple[str, str, str]:
@@ -239,7 +197,7 @@ class GalaxyClient:
             GalaxyError: If the collection is not found or the API fails.
         """
         cache_key = (namespace, name)
-        cached = _get_version_cache(cache_key)
+        cached = _version_cache.get(cache_key)
         if cached is not None:
             return cached
         path = (
@@ -254,7 +212,7 @@ class GalaxyClient:
                 f"No versions found for {namespace}.{name} on Galaxy."
             )
         version = versions[0]["version"]
-        _put_version_cache(cache_key, version)
+        _version_cache.put(cache_key, version)
         return version
 
     async def _get_collection_detail(
@@ -343,7 +301,7 @@ class GalaxyClient:
         self, namespace: str, name: str, version: str,
     ) -> dict[str, Any]:
         cache_key = (namespace, name, version)
-        cached = _get_blob_cache(cache_key)
+        cached = _blob_cache.get(cache_key)
         if cached is not None:
             return cached
         path = (
@@ -353,7 +311,7 @@ class GalaxyClient:
         params = {"format": "json"}
         data = await self._safe_api_get(path, params=params, timeout=TIMEOUT_SLOW)
         blob = data.get("docs_blob", data)
-        _put_blob_cache(cache_key, blob)
+        _blob_cache.put(cache_key, blob)
         return blob
 
     @staticmethod
