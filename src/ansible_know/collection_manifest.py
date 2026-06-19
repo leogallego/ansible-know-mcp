@@ -16,6 +16,11 @@ from ansible_know.config import SKILLS_DIR
 if TYPE_CHECKING:
     from ansible_know.types import ModuleMetadata
 
+__all__ = [
+    "generate_manifest",
+    "load_cached_manifest",
+]
+
 
 def _derive_tags(fqcn: str, params: list[dict[str, Any]]) -> list[str]:
     """Heuristically derive tags from module name segments and parameters."""

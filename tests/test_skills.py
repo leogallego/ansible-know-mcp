@@ -5,8 +5,8 @@ from ansible_know.parser import extract_module_metadata
 from ansible_know.skills import (
     _build_example_args,
     _extract_example_values,
-    _module_to_skill_name,
     _role_template_context,
+    module_to_skill_name,
     render_role_skill,
     render_skill,
     write_role_skill_package,
@@ -16,10 +16,10 @@ from ansible_know.skills import (
 
 class TestModuleToSkillName:
     def test_uses_fqcn(self):
-        assert _module_to_skill_name("ansible.builtin.package") == "ansible.builtin.package"
+        assert module_to_skill_name("ansible.builtin.package") == "ansible.builtin.package"
 
     def test_preserves_collection_prefix(self):
-        assert _module_to_skill_name("netbox.netbox.netbox_device") == "netbox.netbox.netbox_device"
+        assert module_to_skill_name("netbox.netbox.netbox_device") == "netbox.netbox.netbox_device"
 
 
 class TestExtractExampleValues:
