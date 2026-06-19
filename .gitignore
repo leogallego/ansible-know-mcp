@@ -10,5 +10,6 @@ __pycache__/
 dist/
 build/
 .pytest_cache/
-skills/
+skills/*
+!skills/pr-architecture-review/
 docs/research/
