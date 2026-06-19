@@ -7,11 +7,9 @@ via the Model Context Protocol.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
-from functools import partial
 from importlib.metadata import version as pkg_version
 from typing import TYPE_CHECKING, Annotated, Any
 
@@ -23,6 +21,7 @@ from fastmcp import Context, FastMCP
 from fastmcp.server.lifespan import lifespan
 from mcp.types import ToolAnnotations
 
+from ansible_know.async_utils import run_in_executor
 from ansible_know.errors import AnsibleDocError, ValidationError, collection_hint, maybe_add_hint
 from ansible_know.validation import (
     sanitize_error,
@@ -87,7 +86,7 @@ async def app_lifespan(server):
     global _version_info, _galaxy_servers
     from ansible_know.galaxy_config import load_galaxy_servers
 
-    galaxy_servers = await _run_in_executor(load_galaxy_servers)
+    galaxy_servers = await run_in_executor(load_galaxy_servers)
     _galaxy_servers = galaxy_servers
     for gs in galaxy_servers:
         auth_type = "token" if gs.token else ("basic" if gs.username else "none")
@@ -121,10 +120,10 @@ mcp = FastMCP(
 )
 
 
-def _run_in_executor(func, *args, **kwargs):
-    """Run a blocking function in the default executor."""
-    loop = asyncio.get_running_loop()
-    return loop.run_in_executor(None, partial(func, *args, **kwargs))
+def _galaxy_factory():
+    """Lazy import of GalaxyClient.from_config for dependency injection."""
+    from ansible_know.galaxy import GalaxyClient
+    return GalaxyClient.from_config
 
 
 def _get_lifespan_resources(
@@ -176,7 +175,7 @@ async def search_modules(
         from ansible_know import parser
         from ansible_know.config import SEARCH_MODULES_LIMIT
 
-        results = await _run_in_executor(
+        results = await run_in_executor(
             parser.search_modules, keyword, collection_filter=namespace,
         )
         if len(results) > SEARCH_MODULES_LIMIT:
@@ -213,6 +212,7 @@ async def get_module_doc(
         http_client, galaxy_servers = _get_lifespan_resources(ctx)
         raw_doc, galaxy_meta = await resolution.resolve_module_doc(
             module_name, http_client=http_client, galaxy_servers=galaxy_servers,
+            client_factory=_galaxy_factory(),
         )
         metadata = parser.extract_module_metadata(raw_doc)
         if galaxy_meta:
@@ -257,6 +257,7 @@ async def get_role_doc(
         http_client, galaxy_servers = _get_lifespan_resources(ctx)
         return await resolution.resolve_role_doc(
             role_name, http_client=http_client, galaxy_servers=galaxy_servers,
+            client_factory=_galaxy_factory(),
         )
     except Exception as exc:
         logger.warning("get_role_doc failed: %s", exc)
@@ -329,6 +330,7 @@ async def search_collections(
         http_client, galaxy_servers = _get_lifespan_resources(ctx)
         return await resolution.search_galaxy_collections(
             query, tags=tags, http_client=http_client, galaxy_servers=galaxy_servers,
+            client_factory=_galaxy_factory(),
         )
     except Exception as exc:
         logger.warning("search_collections failed: %s", exc)
@@ -361,13 +363,13 @@ async def get_collection_manifest(
         if cached:
             return cached
 
-        modules = await _run_in_executor(
+        modules = await run_in_executor(
             parser.search_modules, "", collection_filter=collection_namespace,
         )
 
         roles_raw = {}
         try:
-            roles_raw = await _run_in_executor(
+            roles_raw = await run_in_executor(
                 parser.list_roles, collection_filter=collection_namespace,
             )
         except Exception as exc:
@@ -382,7 +384,7 @@ async def get_collection_manifest(
         metadata_list = []
         for module_name in sorted(modules):
             try:
-                raw_doc = await _run_in_executor(parser.get_module_doc, module_name)
+                raw_doc = await run_in_executor(parser.get_module_doc, module_name)
                 metadata_list.append(parser.extract_module_metadata(raw_doc))
             except AnsibleDocError:
                 continue
@@ -444,7 +446,7 @@ async def ensure_collection(
     try:
         from ansible_know import collections, resolution
 
-        result = await _run_in_executor(
+        result = await run_in_executor(
             collections.ensure_collection, collection_fqcn=collection_namespace, version=version,
         )
         resolution.clear_missing_namespace(collection_namespace)
@@ -555,6 +557,7 @@ async def generate_skill(
         http_client, galaxy_servers = _get_lifespan_resources(ctx)
         raw_doc, galaxy_meta = await resolution.resolve_module_doc(
             module_name, http_client=http_client, galaxy_servers=galaxy_servers,
+            client_factory=_galaxy_factory(),
         )
         metadata = parser.extract_module_metadata(raw_doc)
         if galaxy_meta:
@@ -567,7 +570,7 @@ async def generate_skill(
         base_dir = validate_install_path(install_to) if install_to else SKILLS_DIR
         output_dir = base_dir / skill_name
 
-        await _run_in_executor(skills.write_skill_package, output_dir, metadata)
+        await run_in_executor(skills.write_skill_package, output_dir, metadata)
         logger.info("generate_skill wrote to %s", output_dir)
 
         if ctx:
@@ -615,6 +618,7 @@ async def generate_role_skill(
         http_client, galaxy_servers = _get_lifespan_resources(ctx)
         metadata = await resolution.resolve_role_doc(
             role_name, http_client=http_client, galaxy_servers=galaxy_servers,
+            client_factory=_galaxy_factory(),
         )
 
         if metadata.get("doc_source") == "unavailable":
@@ -626,7 +630,7 @@ async def generate_role_skill(
         base_dir = validate_install_path(install_to) if install_to else SKILLS_DIR
         output_dir = base_dir / role_name
 
-        await _run_in_executor(skills.write_role_skill_package, output_dir, metadata)
+        await run_in_executor(skills.write_role_skill_package, output_dir, metadata)
         logger.info("generate_role_skill wrote to %s", output_dir)
 
         if ctx:
@@ -666,7 +670,7 @@ async def generate_collection_skills(
         from ansible_know import collection_manifest, parser, skills
         from ansible_know.config import SKILLS_DIR
 
-        modules = await _run_in_executor(
+        modules = await run_in_executor(
             parser.search_modules, "", collection_filter=collection_namespace,
         )
         if not modules:
@@ -686,13 +690,13 @@ async def generate_collection_skills(
             if ctx:
                 await ctx.report_progress(progress=i, total=total)
             try:
-                raw_doc = await _run_in_executor(parser.get_module_doc, module_name)
+                raw_doc = await run_in_executor(parser.get_module_doc, module_name)
                 metadata = parser.extract_module_metadata(raw_doc)
                 metadata_list.append(metadata)
 
                 skill_name = skills.module_to_skill_name(metadata["module_name"])
                 output_dir = base_dir / skill_name
-                await _run_in_executor(skills.write_skill_package, output_dir, metadata)
+                await run_in_executor(skills.write_skill_package, output_dir, metadata)
                 succeeded += 1
             except Exception as exc:
                 logger.warning("Skill generation failed for %s: %s", module_name, exc)

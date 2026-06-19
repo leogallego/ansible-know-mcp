@@ -941,9 +941,11 @@ class TestLifespanHttpClient:
             from ansible_know.server import get_module_doc
             await get_module_doc("ansible.builtin.package", ctx=mock_ctx)
 
-        mock_resolve.assert_called_once_with(
-            "ansible.builtin.package", http_client=mock_client, galaxy_servers=None,
-        )
+        args, kwargs = mock_resolve.call_args
+        assert args == ("ansible.builtin.package",)
+        assert kwargs["http_client"] is mock_client
+        assert kwargs["galaxy_servers"] is None
+        assert kwargs["client_factory"] is not None
 
     @pytest.mark.asyncio
     async def test_search_collections_passes_lifespan_http_client(self):

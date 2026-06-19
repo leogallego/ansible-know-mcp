@@ -5,7 +5,10 @@ from unittest.mock import patch
 
 import pytest
 
+from ansible_know.galaxy import GalaxyClient
 from tests.conftest import SAMPLE_MODULE_DOC, SAMPLE_ROLE_DOC
+
+FACTORY = GalaxyClient.from_config
 
 
 @pytest.fixture(autouse=True)
@@ -72,7 +75,9 @@ class TestResolveModuleDoc:
             return_value=(galaxy_doc, galaxy_meta),
         ):
             from ansible_know.resolution import resolve_module_doc
-            raw_doc, meta = await resolve_module_doc("netbox.netbox.netbox_device")
+            raw_doc, meta = await resolve_module_doc(
+                "netbox.netbox.netbox_device", client_factory=FACTORY,
+            )
 
         assert raw_doc == galaxy_doc
         assert meta["doc_source"] == "galaxy"
@@ -90,7 +95,7 @@ class TestResolveModuleDoc:
         ):
             from ansible_know.resolution import resolve_module_doc
             with pytest.raises(CollectionNotFoundError, match="was not found"):
-                await resolve_module_doc("some.col.mod")
+                await resolve_module_doc("some.col.mod", client_factory=FACTORY)
 
 
 class TestResolveRoleDoc:
@@ -119,7 +124,9 @@ class TestResolveRoleDoc:
             return_value=(galaxy_role_meta, galaxy_meta),
         ):
             from ansible_know.resolution import resolve_role_doc
-            result = await resolve_role_doc("fedora.linux_system_roles.timesync")
+            result = await resolve_role_doc(
+                "fedora.linux_system_roles.timesync", client_factory=FACTORY,
+            )
 
         assert result["doc_source"] == "galaxy_readme"
         assert result["content_type"] == "role"
@@ -134,7 +141,9 @@ class TestResolveRoleDoc:
             side_effect=GalaxyError("not found"),
         ):
             from ansible_know.resolution import resolve_role_doc
-            result = await resolve_role_doc("some.col.missing_role")
+            result = await resolve_role_doc(
+                "some.col.missing_role", client_factory=FACTORY,
+            )
 
         assert result["doc_source"] == "unavailable"
         assert "error" in result
@@ -164,7 +173,9 @@ class TestNegativeCache:
             "ansible_know.galaxy.GalaxyClient.fetch_module_doc",
             return_value=(galaxy_doc, galaxy_meta),
         ):
-            raw_doc, meta = await resolution.resolve_module_doc("netbox.netbox.netbox_device")
+            raw_doc, meta = await resolution.resolve_module_doc(
+                "netbox.netbox.netbox_device", client_factory=FACTORY,
+            )
 
         mock_ansible_doc.assert_not_called()
         assert meta["doc_source"] == "galaxy"
@@ -181,7 +192,9 @@ class TestNegativeCache:
             side_effect=GalaxyError("not found"),
         ):
             with pytest.raises(CollectionNotFoundError):
-                await resolution.resolve_module_doc("netbox.netbox.netbox_device")
+                await resolution.resolve_module_doc(
+                    "netbox.netbox.netbox_device", client_factory=FACTORY,
+                )
 
         assert "netbox.netbox" in resolution._missing_collections
 
@@ -220,7 +233,9 @@ class TestNegativeCache:
             "ansible_know.galaxy.GalaxyClient.fetch_role_doc",
             return_value=(galaxy_role_meta, galaxy_meta),
         ):
-            result = await resolution.resolve_role_doc("some.col.role")
+            result = await resolution.resolve_role_doc(
+                "some.col.role", client_factory=FACTORY,
+            )
 
         mock_ansible_doc.assert_not_called()
         assert result["doc_source"] == "galaxy_readme"
@@ -251,7 +266,7 @@ class TestSearchGalaxyCollections:
                 return result1 if call_count == 1 else result2
             mock_search.side_effect = side_effect
             result = await search_galaxy_collections(
-                "net", galaxy_servers=[server1, server2],
+                "net", galaxy_servers=[server1, server2], client_factory=FACTORY,
             )
 
         assert result["count"] == 2
@@ -272,7 +287,7 @@ class TestSearchGalaxyCollections:
 
         with patch("ansible_know.galaxy.GalaxyClient.search_collections", return_value=dup_result):
             result = await search_galaxy_collections(
-                "net", galaxy_servers=[server1, server2],
+                "net", galaxy_servers=[server1, server2], client_factory=FACTORY,
             )
 
         assert result["count"] == 1
@@ -300,7 +315,7 @@ class TestSearchGalaxyCollections:
                 return good_result
             mock_search.side_effect = side_effect
             result = await search_galaxy_collections(
-                "net", galaxy_servers=[server1, server2],
+                "net", galaxy_servers=[server1, server2], client_factory=FACTORY,
             )
 
         assert result["count"] == 1
@@ -316,4 +331,6 @@ class TestSearchGalaxyCollections:
         with patch("ansible_know.galaxy.GalaxyClient.search_collections",
                    side_effect=GalaxyError("timeout")):
             with pytest.raises(GalaxyError, match="All Galaxy servers failed"):
-                await search_galaxy_collections("net", galaxy_servers=[server])
+                await search_galaxy_collections(
+                    "net", galaxy_servers=[server], client_factory=FACTORY,
+                )

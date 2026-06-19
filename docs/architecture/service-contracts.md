@@ -27,8 +27,9 @@ The server follows a 5-layer pipeline architecture adapted for MCP:
 │  External Access   galaxy.py, collections.py,           │
 │                    readme_parser.py                      │
 ├─────────────────────────────────────────────────────────┤
-│  Foundation        cache.py, config.py, galaxy_config.py,│
-│                    validation.py, errors.py, types.py    │
+│  Foundation        async_utils.py, cache.py, config.py,  │
+│                    galaxy_config.py, validation.py,      │
+│                    errors.py, types.py                    │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -192,7 +193,7 @@ layer and `_ReadmeParser` in `readme_parser.py` are the other classes.)
 | ID | Severity | Description | Location |
 |----|----------|-------------|----------|
 | ~~V-E1~~ | ~~Error~~ | ~~`server.py` calls `GalaxyClient` directly in `search_collections()` and `_try_galaxy_servers()`, bypassing the Domain layer entirely. Galaxy access should be mediated through a domain-level service.~~ **Fixed in PR #66** — Galaxy access is now mediated through `resolution.py`. | ~~`server.py:168-192`, `server.py:480-486`~~ |
-| V-E2 | Warning | `GalaxyClient` has no abstract base class or Protocol. If HTTP streaming transport is added later, or a mock Galaxy backend is needed for testing, there is no contract to code against. | `galaxy.py:111` |
+| ~~V-E2~~ | ~~Warning~~ | ~~`GalaxyClient` has no abstract base class or Protocol.~~ **Partially fixed in PR #66:** `GalaxyDocClient` Protocol and `GalaxyClientFactory` Protocol defined in `types.py`. `resolution.py` depends on the Protocol, not the concrete class. `GalaxyClient` satisfies the Protocol structurally. | ~~`galaxy.py:111`~~ → `types.py` |
 | V-E3 | Warning | `GalaxyClient._transform_to_ansible_doc_format()` is a static method that converts Galaxy format to ansible-doc format. This is a data transformation that belongs in the Domain layer (parser), not the External Access layer. | `galaxy.py:381-417` |
 | V-E4 | Warning | `collections.py` module-level mutable state (`_tmp_dir`, `_installed`, `_install_locks`) makes the module impossible to test in isolation without monkeypatching globals. Should be encapsulated in a class. | `collections.py:26-29` |
 | V-E5 | Info | `galaxy.py` uses `asyncio.Semaphore` for enrichment throttling but creates it lazily with event-loop detection (`_get_enrichment_semaphore`). This is fragile if the event loop changes. | `galaxy.py:40-46` |
@@ -211,12 +212,13 @@ dependencies on upper layers.
 
 | Foundation Module | Purpose | File |
 |-------------------|---------|------|
+| `async_utils.py` | `run_in_executor` — blocking-to-async bridge | `async_utils.py` |
 | `cache.py` | Thread-safe bounded LRU cache with TTL | `cache.py` |
 | `config.py` | Paths, constants, env var defaults, doc sources | `config.py` |
 | `galaxy_config.py` | Galaxy server config from `ansible.cfg` | `galaxy_config.py` |
 | `validation.py` | Input validation, error sanitization, response truncation | `validation.py` |
 | `errors.py` | Exception hierarchy and error helpers | `errors.py` |
-| `types.py` | `TypedDict` definitions for structured data | `types.py` |
+| `types.py` | `TypedDict` definitions, `GalaxyDocClient` Protocol | `types.py` |
 
 ### Types Exported
 
@@ -231,6 +233,8 @@ dependencies on upper layers.
 | `SkillEntry` | `TypedDict` | `types.py:52-57` |
 | `CollectionInfo` | `TypedDict` (partial) | `types.py:74-82` |
 | `CollectionSearchResult` | `TypedDict` | `types.py:85-90` |
+| `GalaxyDocClient` | `Protocol` | `types.py:94-120` |
+| `GalaxyClientFactory` | `Protocol` | `types.py:123-131` |
 | `GalaxyServerConfig` | `@dataclass(frozen=True)` | `galaxy_config.py:24-35` |
 | `AnsibleKnowError` | Exception base | `errors.py:6-7` |
 | `AnsibleDocError` | Exception | `errors.py:10-11` |
@@ -348,7 +352,8 @@ Foundation   → (no internal dependencies)
 7. ~~**V-D7 / V-L2**: Move `_resolve_module_doc()` and `_resolve_role_doc()` to a
    domain-level resolution module.~~ **Fixed in PR #66**.
 8. **V-D8**: Split `generate_manifest()` into generation and persistence.
-9. **V-E2**: Define a `GalaxyClientProtocol` for the Galaxy client interface.
+9. ~~**V-E2**: Define a `GalaxyClientProtocol` for the Galaxy client interface.~~
+   **Partially fixed in PR #66** — `GalaxyDocClient` Protocol in `types.py`.
 10. **V-E3**: Move `_transform_to_ansible_doc_format()` to `parser.py`.
 11. **V-E4**: Encapsulate `collections.py` state in a `CollectionManager` class.
 12. **V-S2**: Use `asyncio.Lock` or explicit synchronization for `_missing_collections`.

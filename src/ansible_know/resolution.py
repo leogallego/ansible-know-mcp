@@ -10,15 +10,15 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from functools import partial
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import httpx
 
     from ansible_know.galaxy_config import GalaxyServerConfig
-    from ansible_know.types import DocProvenance
+    from ansible_know.types import DocProvenance, GalaxyClientFactory
 
+from ansible_know.async_utils import run_in_executor
 from ansible_know.errors import AnsibleDocError
 from ansible_know.validation import sanitize_error
 
@@ -43,12 +43,6 @@ __all__ = [
 _missing_collections: set[str] = set()
 
 
-def _run_in_executor(func, *args, **kwargs):
-    """Run a blocking function in the default executor."""
-    loop = asyncio.get_running_loop()
-    return loop.run_in_executor(None, partial(func, *args, **kwargs))
-
-
 def _select_http_client(
     http_client: httpx.AsyncClient | None,
     server: GalaxyServerConfig,
@@ -60,6 +54,7 @@ def _select_http_client(
 async def _try_galaxy_servers(
     servers: list[GalaxyServerConfig],
     operation: Callable[..., Awaitable[Any]],
+    client_factory: GalaxyClientFactory,
     http_client: httpx.AsyncClient | None = None,
 ) -> Any:
     """Try an operation across multiple Galaxy servers in priority order.
@@ -67,12 +62,11 @@ async def _try_galaxy_servers(
     Returns the first successful result. Raises the last GalaxyError if all fail.
     """
     from ansible_know.errors import GalaxyError
-    from ansible_know.galaxy import GalaxyClient
 
     last_exc: GalaxyError | None = None
     for server in servers:
         try:
-            async with GalaxyClient.from_config(
+            async with client_factory(
                 server, http_client=_select_http_client(http_client, server),
             ) as client:
                 return await operation(client)
@@ -103,6 +97,7 @@ async def resolve_module_doc(
     module_name: str,
     http_client: httpx.AsyncClient | None = None,
     galaxy_servers: list[GalaxyServerConfig] | None = None,
+    client_factory: GalaxyClientFactory | None = None,
 ) -> tuple[dict[str, Any], DocProvenance | None]:
     """Try local ansible-doc, fall back to Galaxy if the collection is missing.
 
@@ -119,9 +114,13 @@ async def resolve_module_doc(
         return await client.fetch_module_doc(module_name)
 
     if namespace and namespace in _missing_collections:
+        if client_factory is None:
+            raise CollectionNotFoundError(
+                f"Collection '{namespace}' not installed locally"
+            )
         try:
             galaxy_doc, galaxy_meta = await _try_galaxy_servers(
-                servers, _fetch_from_galaxy, http_client,
+                servers, _fetch_from_galaxy, client_factory, http_client,
             )
             return galaxy_doc, galaxy_meta
         except GalaxyError as galaxy_exc:
@@ -130,15 +129,17 @@ async def resolve_module_doc(
             ) from galaxy_exc
 
     try:
-        raw_doc = await _run_in_executor(parser.get_module_doc, module_name)
+        raw_doc = await run_in_executor(parser.get_module_doc, module_name)
         return raw_doc, None
     except CollectionNotFoundError as local_exc:
         if namespace:
             _missing_collections.add(namespace)
+        if client_factory is None:
+            raise
         logger.info("Collection not installed, trying Galaxy: %s", local_exc)
         try:
             galaxy_doc, galaxy_meta = await _try_galaxy_servers(
-                servers, _fetch_from_galaxy, http_client,
+                servers, _fetch_from_galaxy, client_factory, http_client,
             )
             return galaxy_doc, galaxy_meta
         except GalaxyError as galaxy_exc:
@@ -150,6 +151,7 @@ async def resolve_role_doc(
     role_name: str,
     http_client: httpx.AsyncClient | None = None,
     galaxy_servers: list[GalaxyServerConfig] | None = None,
+    client_factory: GalaxyClientFactory | None = None,
 ) -> dict[str, Any]:
     """Try local ansible-doc -t role, fall back to Galaxy readme_html.
 
@@ -165,7 +167,7 @@ async def resolve_role_doc(
 
     if not (namespace and namespace in _missing_collections):
         try:
-            local_doc = await _run_in_executor(parser.get_role_doc, role_name)
+            local_doc = await run_in_executor(parser.get_role_doc, role_name)
         except CollectionNotFoundError:
             if namespace:
                 _missing_collections.add(namespace)
@@ -180,11 +182,20 @@ async def resolve_role_doc(
         metadata["doc_source"] = "local"
         return metadata
 
+    if client_factory is None:
+        return {
+            "role_name": role_name,
+            "content_type": "role",
+            "doc_source": "unavailable",
+            "error": "No Galaxy client configured for fallback",
+            "entry_points": {},
+        }
+
     try:
         async def _fetch(client):
             return await client.fetch_role_doc(role_name)
         galaxy_role_meta, galaxy_meta = await _try_galaxy_servers(
-            servers, _fetch, http_client,
+            servers, _fetch, client_factory, http_client,
         )
 
         result = dict(galaxy_role_meta)
@@ -211,14 +222,18 @@ async def search_galaxy_collections(
     tags: str | None = None,
     http_client: httpx.AsyncClient | None = None,
     galaxy_servers: list[GalaxyServerConfig] | None = None,
+    client_factory: GalaxyClientFactory | None = None,
 ) -> dict[str, Any]:
     """Search all configured Galaxy servers concurrently, merge and dedupe results."""
-    from ansible_know.galaxy import GalaxyClient
+    from ansible_know.errors import GalaxyError
+
+    if client_factory is None:
+        raise GalaxyError("No client factory configured for Galaxy search")
 
     servers = _get_servers(galaxy_servers)
 
     async def _query_server(server):
-        async with GalaxyClient.from_config(
+        async with client_factory(
             server, http_client=_select_http_client(http_client, server),
         ) as client:
             result = await client.search_collections(query, tags=tags)
@@ -248,7 +263,6 @@ async def search_galaxy_collections(
                 seen_namespaces.add(ns)
 
     if not all_collections and errors:
-        from ansible_know.errors import GalaxyError
         raise GalaxyError(f"All Galaxy servers failed: {'; '.join(errors)}")
 
     all_collections.sort(key=lambda c: c.get("download_count", 0), reverse=True)
