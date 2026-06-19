@@ -279,8 +279,8 @@ class TestSearchGalaxyCollections:
 
     @pytest.mark.asyncio
     async def test_partial_server_failure(self):
-        from ansible_know.galaxy_config import GalaxyServerConfig
         from ansible_know.errors import GalaxyError
+        from ansible_know.galaxy_config import GalaxyServerConfig
         from ansible_know.resolution import search_galaxy_collections
 
         server1 = GalaxyServerConfig(name="galaxy", url="https://galaxy.ansible.com")
@@ -307,8 +307,8 @@ class TestSearchGalaxyCollections:
 
     @pytest.mark.asyncio
     async def test_all_servers_fail_raises(self):
-        from ansible_know.galaxy_config import GalaxyServerConfig
         from ansible_know.errors import GalaxyError
+        from ansible_know.galaxy_config import GalaxyServerConfig
         from ansible_know.resolution import search_galaxy_collections
 
         server = GalaxyServerConfig(name="galaxy", url="https://galaxy.ansible.com")
