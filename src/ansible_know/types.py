@@ -33,3 +33,58 @@ class DocProvenance(_DocProvenanceBase, total=False):
 
     doc_warning: str
     doc_source_server: str
+
+
+class ErrorResponse(TypedDict):
+    """Standard error shape returned by all tools on failure."""
+
+    error: str
+
+
+class EnsureCollectionResult(TypedDict):
+    """Result of ensure_collection tool."""
+
+    namespace: str
+    version: str
+    status: str
+    message: str
+
+
+class SkillEntry(TypedDict):
+    """Single entry in list_skills output."""
+
+    name: str
+    description: str
+    path: str
+
+
+class _CollectionInfoBase(TypedDict):
+    """Required fields for a collection search result entry."""
+
+    namespace: str
+    description: str
+    tags: list[str]
+    latest_version: str
+    module_count: int
+    role_count: int
+    deprecated: bool
+    signed: bool
+
+
+class CollectionInfo(_CollectionInfoBase, total=False):
+    """Single collection entry from search_collections.
+
+    Optional fields are populated during enrichment (download_count)
+    or added by server.py (source).
+    """
+
+    download_count: int
+    source: str
+
+
+class CollectionSearchResult(TypedDict):
+    """Result of search_collections tool."""
+
+    query: str
+    count: int
+    collections: list[CollectionInfo]

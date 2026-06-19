@@ -17,6 +17,7 @@ import threading
 from pathlib import Path
 
 from ansible_know.errors import CollectionInstallError
+from ansible_know.types import EnsureCollectionResult
 from ansible_know.validation import sanitize_error
 
 logger = logging.getLogger("ansible_know")
@@ -73,7 +74,7 @@ def _parse_version(stdout: str, collection_fqcn: str, tmpdir: str) -> str:
 MAX_TRACKED_COLLECTIONS = 100
 
 
-def ensure_collection(collection_fqcn: str, version: str | None = None) -> dict:
+def ensure_collection(collection_fqcn: str, version: str | None = None) -> EnsureCollectionResult:
     """Install a collection to the temp directory (thread-safe).
 
     Args:

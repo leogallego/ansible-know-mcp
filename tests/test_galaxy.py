@@ -10,17 +10,13 @@ import pytest
 from ansible_know.errors import GalaxyError
 from ansible_know.galaxy import (
     CACHE_TTL_SECONDS,
-    MAX_BLOB_CACHE_SIZE,
     MAX_GALAXY_RESPONSE_SIZE,
-    MAX_VERSION_CACHE_SIZE,
     TIMEOUT_DEFAULT,
     TIMEOUT_FAST,
     TIMEOUT_SLOW,
     GalaxyClient,
-    _get_blob_cache,
-    _get_version_cache,
-    _put_blob_cache,
-    _put_version_cache,
+    _blob_cache,
+    _version_cache,
     clear_cache,
 )
 from tests.conftest import SAMPLE_DOCS_BLOB_WITH_ROLES
@@ -665,25 +661,26 @@ class TestResponseSizeLimit:
 
 class TestCacheEviction:
     def test_version_cache_evicts_oldest(self):
-        for i in range(MAX_VERSION_CACHE_SIZE + 5):
-            _put_version_cache(("ns", f"col{i}"), f"1.0.{i}")
-        assert _get_version_cache(("ns", "col0")) is None
-        assert _get_version_cache(("ns", "col1")) is None
-        assert _get_version_cache(("ns", f"col{MAX_VERSION_CACHE_SIZE + 4}")) == f"1.0.{MAX_VERSION_CACHE_SIZE + 4}"
+        max_size = _version_cache.max_size
+        for i in range(max_size + 5):
+            _version_cache.put(("ns", f"col{i}"), f"1.0.{i}")
+        assert _version_cache.get(("ns", "col0")) is None
+        assert _version_cache.get(("ns", "col1")) is None
+        assert _version_cache.get(("ns", f"col{max_size + 4}")) == f"1.0.{max_size + 4}"
 
     def test_blob_cache_evicts_oldest(self):
-        for i in range(MAX_BLOB_CACHE_SIZE + 5):
-            _put_blob_cache(("ns", f"col{i}", "1.0.0"), {"idx": i})
-        assert _get_blob_cache(("ns", "col0", "1.0.0")) is None
-        assert _get_blob_cache(("ns", "col1", "1.0.0")) is None
-        assert _get_blob_cache(("ns", f"col{MAX_BLOB_CACHE_SIZE + 4}", "1.0.0")) == {"idx": MAX_BLOB_CACHE_SIZE + 4}
+        max_size = _blob_cache.max_size
+        for i in range(max_size + 5):
+            _blob_cache.put(("ns", f"col{i}", "1.0.0"), {"idx": i})
+        assert _blob_cache.get(("ns", "col0", "1.0.0")) is None
+        assert _blob_cache.get(("ns", "col1", "1.0.0")) is None
+        assert _blob_cache.get(("ns", f"col{max_size + 4}", "1.0.0")) == {"idx": max_size + 4}
 
     def test_version_cache_stays_at_max_size(self):
-        from ansible_know.galaxy import _version_cache, _version_lock
-        for i in range(MAX_VERSION_CACHE_SIZE + 10):
-            _put_version_cache(("ns", f"c{i}"), f"v{i}")
-        with _version_lock:
-            assert len(_version_cache) <= MAX_VERSION_CACHE_SIZE
+        max_size = _version_cache.max_size
+        for i in range(max_size + 10):
+            _version_cache.put(("ns", f"c{i}"), f"v{i}")
+        assert len(_version_cache) <= max_size
 
 
 class TestNetworkErrors:
@@ -735,7 +732,7 @@ class TestNetworkErrors:
 class TestCacheHitPaths:
     @pytest.mark.asyncio
     async def test_version_cache_hit_skips_api(self):
-        _put_version_cache(("netbox", "netbox"), "3.23.0")
+        _version_cache.put(("netbox", "netbox"), "3.23.0")
         mock_client = _mock_client_get({})
         with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
             client = GalaxyClient()
@@ -745,8 +742,8 @@ class TestCacheHitPaths:
 
     @pytest.mark.asyncio
     async def test_blob_cache_hit_skips_api(self):
-        _put_version_cache(("netbox", "netbox"), "3.23.0")
-        _put_blob_cache(("netbox", "netbox", "3.23.0"), SAMPLE_DOCS_BLOB["docs_blob"])
+        _version_cache.put(("netbox", "netbox"), "3.23.0")
+        _blob_cache.put(("netbox", "netbox", "3.23.0"), SAMPLE_DOCS_BLOB["docs_blob"])
 
         with patch.object(GalaxyClient, "_api_get", side_effect=AssertionError("should not call API")):
             client = GalaxyClient()
@@ -949,30 +946,30 @@ class TestUnicodeQueries:
 
 class TestCacheTTL:
     def test_version_cache_returns_none_after_ttl(self):
-        _put_version_cache(("ns", "col"), "1.0.0")
-        assert _get_version_cache(("ns", "col")) == "1.0.0"
-        with stdlib_patch("ansible_know.galaxy.time") as mock_time:
+        _version_cache.put(("ns", "col"), "1.0.0")
+        assert _version_cache.get(("ns", "col")) == "1.0.0"
+        with stdlib_patch("ansible_know.cache.time") as mock_time:
             mock_time.monotonic.return_value = time.monotonic() + CACHE_TTL_SECONDS + 1
-            assert _get_version_cache(("ns", "col")) is None
+            assert _version_cache.get(("ns", "col")) is None
 
     def test_blob_cache_returns_none_after_ttl(self):
-        _put_blob_cache(("ns", "col", "1.0.0"), {"data": "test"})
-        assert _get_blob_cache(("ns", "col", "1.0.0")) == {"data": "test"}
-        with stdlib_patch("ansible_know.galaxy.time") as mock_time:
+        _blob_cache.put(("ns", "col", "1.0.0"), {"data": "test"})
+        assert _blob_cache.get(("ns", "col", "1.0.0")) == {"data": "test"}
+        with stdlib_patch("ansible_know.cache.time") as mock_time:
             mock_time.monotonic.return_value = time.monotonic() + CACHE_TTL_SECONDS + 1
-            assert _get_blob_cache(("ns", "col", "1.0.0")) is None
+            assert _blob_cache.get(("ns", "col", "1.0.0")) is None
 
     def test_version_cache_returns_value_before_ttl(self):
-        _put_version_cache(("ns", "col"), "2.0.0")
-        with stdlib_patch("ansible_know.galaxy.time") as mock_time:
+        _version_cache.put(("ns", "col"), "2.0.0")
+        with stdlib_patch("ansible_know.cache.time") as mock_time:
             mock_time.monotonic.return_value = time.monotonic() + CACHE_TTL_SECONDS - 10
-            assert _get_version_cache(("ns", "col")) == "2.0.0"
+            assert _version_cache.get(("ns", "col")) == "2.0.0"
 
     def test_blob_cache_returns_value_before_ttl(self):
-        _put_blob_cache(("ns", "col", "1.0.0"), {"data": "fresh"})
-        with stdlib_patch("ansible_know.galaxy.time") as mock_time:
+        _blob_cache.put(("ns", "col", "1.0.0"), {"data": "fresh"})
+        with stdlib_patch("ansible_know.cache.time") as mock_time:
             mock_time.monotonic.return_value = time.monotonic() + CACHE_TTL_SECONDS - 10
-            assert _get_blob_cache(("ns", "col", "1.0.0")) == {"data": "fresh"}
+            assert _blob_cache.get(("ns", "col", "1.0.0")) == {"data": "fresh"}
 
 
 class TestConcurrentCacheAccess:
@@ -984,8 +981,8 @@ class TestConcurrentCacheAccess:
         def write_batch(start):
             try:
                 for i in range(100):
-                    _put_version_cache(("ns", f"col_{start}_{i}"), f"v{i}")
-                    _get_version_cache(("ns", f"col_{start}_{i}"))
+                    _version_cache.put(("ns", f"col_{start}_{i}"), f"v{i}")
+                    _version_cache.get(("ns", f"col_{start}_{i}"))
             except Exception as e:
                 errors.append(e)
 
@@ -1005,8 +1002,8 @@ class TestConcurrentCacheAccess:
         def write_batch(start):
             try:
                 for i in range(50):
-                    _put_blob_cache(("ns", f"col_{start}_{i}", "1.0"), {"v": i})
-                    _get_blob_cache(("ns", f"col_{start}_{i}", "1.0"))
+                    _blob_cache.put(("ns", f"col_{start}_{i}", "1.0"), {"v": i})
+                    _blob_cache.get(("ns", f"col_{start}_{i}", "1.0"))
             except Exception as e:
                 errors.append(e)
 
@@ -1051,7 +1048,7 @@ class TestTimeoutPassthrough:
 
     @pytest.mark.asyncio
     async def test_fetch_docs_blob_uses_slow_timeout(self):
-        _put_version_cache(("netbox", "netbox"), "3.23.0")
+        _version_cache.put(("netbox", "netbox"), "3.23.0")
         mock_client = _mock_client_get(SAMPLE_DOCS_BLOB)
         with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
             client = GalaxyClient()

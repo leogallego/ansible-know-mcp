@@ -162,6 +162,10 @@ async def _maybe_warn_upgrade(ctx: Context | None) -> None:
     lc["upgrade_warned"] = True
 
 
+# Negative cache: namespaces that failed local ansible-doc lookup.
+# Skips retrying local resolution for known-missing collections,
+# going straight to Galaxy fallback. Cleared per-namespace on
+# successful ensure_collection().
 _missing_collections: set[str] = set()
 
 

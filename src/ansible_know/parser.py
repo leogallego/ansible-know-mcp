@@ -7,6 +7,7 @@ for skill generation and module discovery.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -14,10 +15,13 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from ansible_know import collections
 from ansible_know.errors import AnsibleDocError, CollectionNotFoundError, is_missing_collection_error
 
 if TYPE_CHECKING:
     from ansible_know.types import ModuleMetadata, RoleMetadata
+
+logger = logging.getLogger("ansible_know")
 
 
 
@@ -39,8 +43,8 @@ def _run_ansible_doc(*args: str) -> str:
     ansible_doc = _find_ansible_doc()
     cmd = [ansible_doc, *args]
 
-    from ansible_know import collections
     collections_path = collections.get_collections_path()
+    logger.debug("Running: %s (collections_path=%s)", " ".join(cmd), collections_path)
     env = None
     if collections_path:
         env = os.environ.copy()
@@ -58,10 +62,12 @@ def _run_ansible_doc(*args: str) -> str:
             env=env,
         )
     except FileNotFoundError as exc:
+        logger.debug("ansible-doc binary not found")
         raise AnsibleDocError(
             "ansible-doc not found. Install ansible-core: pip install ansible-core"
         ) from exc
     except subprocess.TimeoutExpired as exc:
+        logger.debug("ansible-doc timed out: %s", " ".join(cmd))
         raise AnsibleDocError(f"ansible-doc timed out: {' '.join(cmd)}") from exc
 
     if result.returncode != 0:
@@ -208,6 +214,7 @@ def is_api_module(module_doc: dict[str, Any]) -> bool:
 def extract_module_metadata(module_doc: dict[str, Any]) -> ModuleMetadata:
     """Extract all metadata needed for skill generation."""
     module_name = _get_module_name(module_doc)
+    logger.debug("Extracting module metadata for %s", module_name)
     return {
         "module_name": module_name,
         "short_description": extract_short_description(module_doc),
@@ -263,6 +270,7 @@ def extract_role_metadata(role_doc: dict[str, Any]) -> RoleMetadata:
         return {"role_name": "", "short_description": "", "entry_points": {}}
 
     role_name = next(iter(role_doc))
+    logger.debug("Extracting role metadata for %s", role_name)
     role_data = role_doc[role_name]
     raw_entry_points = role_data.get("entry_points", {})
 
