@@ -21,13 +21,15 @@ The server follows a 5-layer pipeline architecture adapted for MCP:
 │                    logic, lifespan management            │
 ├─────────────────────────────────────────────────────────┤
 │  Domain            parser.py, skills.py,                │
-│                    collection_manifest.py, docs.py       │
+│                    collection_manifest.py, docs.py,      │
+│                    resolution.py                         │
 ├─────────────────────────────────────────────────────────┤
 │  External Access   galaxy.py, collections.py,           │
 │                    readme_parser.py                      │
 ├─────────────────────────────────────────────────────────┤
-│  Foundation        cache.py, config.py, galaxy_config.py,│
-│                    validation.py, errors.py, types.py    │
+│  Foundation        async_utils.py, cache.py, config.py,  │
+│                    galaxy_config.py, validation.py,      │
+│                    errors.py, types.py                    │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -103,6 +105,7 @@ business logic. Domain modules are imported lazily to avoid loading
 | `collection_manifest` | `generate_manifest()`, `load_cached_manifest()` | `collection_manifest.py` |
 | `docs` | `search_docs()` | `docs.py` |
 | `collections` | `ensure_collection()`, `list_installed()` | `collections.py` |
+| `resolution` | `resolve_module_doc()`, `resolve_role_doc()`, `search_galaxy_collections()`, `clear_missing_namespace()` | `resolution.py` |
 
 ### Types Crossing This Boundary
 
@@ -138,7 +141,7 @@ business logic. Domain modules are imported lazily to avoid loading
 | V-D4 | Warning | `collection_manifest.py` does not define `__all__`. | `collection_manifest.py` |
 | V-D5 | Warning | `docs.py` does not define `__all__`. | `docs.py` |
 | V-D6 | Info | Several Domain functions return `dict[str, Any]` where TypedDicts exist. Partially addressed in PR #60 (`EnsureCollectionResult` now typed on `collections.ensure_collection()`, plus `ErrorResponse`, `SkillEntry`, `CollectionSearchResult` TypedDicts added) but not all return sites use them yet. | `parser.py:214-223`, `server.py:195-240` |
-| V-D7 | Warning | `_resolve_module_doc()` and `_resolve_role_doc()` in `server.py` contain significant business logic (Galaxy fallback, missing-collection caching). This logic belongs in the Domain layer, not Orchestration. The Orchestration layer should delegate to a domain-level resolution function. | `server.py:195-301` |
+| ~~V-D7~~ | ~~Warning~~ | ~~`_resolve_module_doc()` and `_resolve_role_doc()` in `server.py` contain significant business logic (Galaxy fallback, missing-collection caching). This logic belongs in the Domain layer, not Orchestration. The Orchestration layer should delegate to a domain-level resolution function.~~ **Fixed in PR #66** — Resolution logic moved to `resolution.py`. | ~~`server.py:195-301`~~ |
 | V-D8 | Warning | `collection_manifest.generate_manifest()` writes to disk as a side effect. A Domain function that both generates and persists violates separation of concerns — generation and persistence should be separate operations. | `collection_manifest.py:113-117` |
 
 ---
@@ -189,8 +192,8 @@ layer and `_ReadmeParser` in `readme_parser.py` are the other classes.)
 
 | ID | Severity | Description | Location |
 |----|----------|-------------|----------|
-| V-E1 | Error | `server.py` calls `GalaxyClient` directly in `search_collections()` and `_try_galaxy_servers()`, bypassing the Domain layer entirely. Galaxy access should be mediated through a domain-level service. | `server.py:168-192`, `server.py:480-486` |
-| V-E2 | Warning | `GalaxyClient` has no abstract base class or Protocol. If HTTP streaming transport is added later, or a mock Galaxy backend is needed for testing, there is no contract to code against. | `galaxy.py:111` |
+| ~~V-E1~~ | ~~Error~~ | ~~`server.py` calls `GalaxyClient` directly in `search_collections()` and `_try_galaxy_servers()`, bypassing the Domain layer entirely. Galaxy access should be mediated through a domain-level service.~~ **Fixed in PR #66** — Galaxy access is now mediated through `resolution.py`. | ~~`server.py:168-192`, `server.py:480-486`~~ |
+| ~~V-E2~~ | ~~Warning~~ | ~~`GalaxyClient` has no abstract base class or Protocol.~~ **Partially fixed in PR #66:** `GalaxyDocClient` Protocol and `GalaxyClientFactory` Protocol defined in `types.py`. `resolution.py` depends on the Protocol, not the concrete class. `GalaxyClient` satisfies the Protocol structurally. | ~~`galaxy.py:111`~~ → `types.py` |
 | V-E3 | Warning | `GalaxyClient._transform_to_ansible_doc_format()` is a static method that converts Galaxy format to ansible-doc format. This is a data transformation that belongs in the Domain layer (parser), not the External Access layer. | `galaxy.py:381-417` |
 | V-E4 | Warning | `collections.py` module-level mutable state (`_tmp_dir`, `_installed`, `_install_locks`) makes the module impossible to test in isolation without monkeypatching globals. Should be encapsulated in a class. | `collections.py:26-29` |
 | V-E5 | Info | `galaxy.py` uses `asyncio.Semaphore` for enrichment throttling but creates it lazily with event-loop detection (`_get_enrichment_semaphore`). This is fragile if the event loop changes. | `galaxy.py:40-46` |
@@ -209,12 +212,13 @@ dependencies on upper layers.
 
 | Foundation Module | Purpose | File |
 |-------------------|---------|------|
+| `async_utils.py` | `run_in_executor` — blocking-to-async bridge | `async_utils.py` |
 | `cache.py` | Thread-safe bounded LRU cache with TTL | `cache.py` |
 | `config.py` | Paths, constants, env var defaults, doc sources | `config.py` |
 | `galaxy_config.py` | Galaxy server config from `ansible.cfg` | `galaxy_config.py` |
 | `validation.py` | Input validation, error sanitization, response truncation | `validation.py` |
 | `errors.py` | Exception hierarchy and error helpers | `errors.py` |
-| `types.py` | `TypedDict` definitions for structured data | `types.py` |
+| `types.py` | `TypedDict` definitions, `GalaxyDocClient` Protocol | `types.py` |
 
 ### Types Exported
 
@@ -229,6 +233,8 @@ dependencies on upper layers.
 | `SkillEntry` | `TypedDict` | `types.py:52-57` |
 | `CollectionInfo` | `TypedDict` (partial) | `types.py:74-82` |
 | `CollectionSearchResult` | `TypedDict` | `types.py:85-90` |
+| `GalaxyDocClient` | `Protocol` | `types.py:94-120` |
+| `GalaxyClientFactory` | `Protocol` | `types.py:123-131` |
 | `GalaxyServerConfig` | `@dataclass(frozen=True)` | `galaxy_config.py:24-35` |
 | `AnsibleKnowError` | Exception base | `errors.py:6-7` |
 | `AnsibleDocError` | Exception | `errors.py:10-11` |
@@ -318,8 +324,8 @@ Foundation   → (no internal dependencies)
 
 | ID | Severity | Description |
 |----|----------|-------------|
-| V-L1 | Error | Orchestration (`server.py`) imports and calls External Access (`galaxy.py:GalaxyClient`) directly, bypassing the Domain layer. | 
-| V-L2 | Warning | Orchestration (`server.py`) contains domain logic in `_resolve_module_doc()` and `_resolve_role_doc()` — these are domain-level resolution strategies, not orchestration. |
+| ~~V-L1~~ | ~~Error~~ | ~~Orchestration (`server.py`) imports and calls External Access (`galaxy.py:GalaxyClient`) directly, bypassing the Domain layer.~~ **Fixed in PR #66** — Orchestration delegates to `resolution.py` (Domain). | 
+| ~~V-L2~~ | ~~Warning~~ | ~~Orchestration (`server.py`) contains domain logic in `_resolve_module_doc()` and `_resolve_role_doc()` — these are domain-level resolution strategies, not orchestration.~~ **Fixed in PR #66** — Moved to `resolution.py`. |
 | V-L3 | Info | External Access (`galaxy.py`) calls Domain (`readme_parser.py`) for `fetch_role_doc()`. This is arguably acceptable as `readme_parser` is a pure data transformer, but it means `galaxy.py` depends upward. |
 | V-L4 | Warning | Domain (`parser.py`) imports External Access (`collections.py`) at the top level to get the collections path. This permanently couples the parser to the collection installation mechanism. (Was a lazy import before PR #60; now a top-level `from ansible_know import collections`.) |
 
@@ -331,9 +337,9 @@ Foundation   → (no internal dependencies)
 
 1. ~~**V-S1**: Add `asyncio.Lock` to `docs.py` `_manifest_cache` access.~~
    **Fixed in PR #60** — `docs.py` now uses `BoundedCache`.
-2. **V-E1 / V-L1**: Extract Galaxy client orchestration from `server.py` into
-   a domain-level service (e.g., `resolution.py`) that handles the
-   local-then-Galaxy fallback pattern.
+2. ~~**V-E1 / V-L1**: Extract Galaxy client orchestration from `server.py` into
+   a domain-level service.~~ **Fixed in PR #66** — `resolution.py` now owns
+   all Galaxy fallback and multi-server search logic.
 
 ### Priority 2 (Warning-level violations)
 
@@ -343,10 +349,11 @@ Foundation   → (no internal dependencies)
 5. **V-D1**: Make `_module_to_skill_name()` public (rename to
    `module_to_skill_name()`).
 6. **V-D2–V-D5**: Add `__all__` to all modules.
-7. **V-D7 / V-L2**: Move `_resolve_module_doc()` and `_resolve_role_doc()` to a
-   domain-level resolution module.
+7. ~~**V-D7 / V-L2**: Move `_resolve_module_doc()` and `_resolve_role_doc()` to a
+   domain-level resolution module.~~ **Fixed in PR #66**.
 8. **V-D8**: Split `generate_manifest()` into generation and persistence.
-9. **V-E2**: Define a `GalaxyClientProtocol` for the Galaxy client interface.
+9. ~~**V-E2**: Define a `GalaxyClientProtocol` for the Galaxy client interface.~~
+   **Partially fixed in PR #66** — `GalaxyDocClient` Protocol in `types.py`.
 10. **V-E3**: Move `_transform_to_ansible_doc_format()` to `parser.py`.
 11. **V-E4**: Encapsulate `collections.py` state in a `CollectionManager` class.
 12. **V-S2**: Use `asyncio.Lock` or explicit synchronization for `_missing_collections`.

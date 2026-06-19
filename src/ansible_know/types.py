@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import TYPE_CHECKING, Any, Protocol, TypedDict
+
+if TYPE_CHECKING:
+    import httpx
+
+    from ansible_know.galaxy_config import GalaxyServerConfig
 
 
 class ModuleMetadata(TypedDict):
@@ -88,3 +93,38 @@ class CollectionSearchResult(TypedDict):
     query: str
     count: int
     collections: list[CollectionInfo]
+
+
+class GalaxyDocClient(Protocol):
+    """Structural interface for Galaxy documentation clients.
+
+    GalaxyClient satisfies this protocol without inheriting from it.
+    Defined here (Foundation) so Domain modules can depend on the
+    protocol rather than importing the concrete External Access class.
+    """
+
+    async def fetch_module_doc(
+        self, module_name: str,
+    ) -> tuple[dict[str, Any], DocProvenance]: ...
+
+    async def fetch_role_doc(
+        self, role_name: str,
+    ) -> tuple[dict[str, Any], DocProvenance]: ...
+
+    async def search_collections(
+        self, query: str, tags: str | None = None,
+    ) -> dict[str, Any]: ...
+
+    async def __aenter__(self) -> GalaxyDocClient: ...
+
+    async def __aexit__(self, *exc: object) -> None: ...
+
+
+class GalaxyClientFactory(Protocol):
+    """Factory that creates GalaxyDocClient instances from config."""
+
+    def __call__(
+        self,
+        config: GalaxyServerConfig,
+        http_client: httpx.AsyncClient | None = None,
+    ) -> GalaxyDocClient: ...

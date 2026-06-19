@@ -7,24 +7,21 @@ via the Model Context Protocol.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
-from collections.abc import Awaitable, Callable
-from functools import partial
 from importlib.metadata import version as pkg_version
 from typing import TYPE_CHECKING, Annotated, Any
 
 if TYPE_CHECKING:
     from ansible_know.galaxy_config import GalaxyServerConfig
-    from ansible_know.types import DocProvenance
 
 import httpx
 from fastmcp import Context, FastMCP
 from fastmcp.server.lifespan import lifespan
 from mcp.types import ToolAnnotations
 
+from ansible_know.async_utils import run_in_executor
 from ansible_know.errors import AnsibleDocError, ValidationError, collection_hint, maybe_add_hint
 from ansible_know.validation import (
     sanitize_error,
@@ -89,7 +86,7 @@ async def app_lifespan(server):
     global _version_info, _galaxy_servers
     from ansible_know.galaxy_config import load_galaxy_servers
 
-    galaxy_servers = await _run_in_executor(load_galaxy_servers)
+    galaxy_servers = await run_in_executor(load_galaxy_servers)
     _galaxy_servers = galaxy_servers
     for gs in galaxy_servers:
         auth_type = "token" if gs.token else ("basic" if gs.username else "none")
@@ -123,10 +120,10 @@ mcp = FastMCP(
 )
 
 
-def _run_in_executor(func, *args, **kwargs):
-    """Run a blocking function in the default executor."""
-    loop = asyncio.get_running_loop()
-    return loop.run_in_executor(None, partial(func, *args, **kwargs))
+def _galaxy_factory():
+    """Lazy import of GalaxyClient.from_config for dependency injection."""
+    from ansible_know.galaxy import GalaxyClient
+    return GalaxyClient.from_config
 
 
 def _get_lifespan_resources(
@@ -137,14 +134,6 @@ def _get_lifespan_resources(
         return None, None
     lc = ctx.lifespan_context
     return lc.get("http_client"), lc.get("galaxy_servers")
-
-
-def _select_http_client(
-    http_client: httpx.AsyncClient | None,
-    server: GalaxyServerConfig,
-) -> httpx.AsyncClient | None:
-    """Use shared client only when server validates certs."""
-    return http_client if server.validate_certs else None
 
 
 async def _maybe_warn_upgrade(ctx: Context | None) -> None:
@@ -160,154 +149,6 @@ async def _maybe_warn_upgrade(ctx: Context | None) -> None:
         f"Upgrade: {info['upgrade_command']}"
     )
     lc["upgrade_warned"] = True
-
-
-# Negative cache: namespaces that failed local ansible-doc lookup.
-# Skips retrying local resolution for known-missing collections,
-# going straight to Galaxy fallback. Cleared per-namespace on
-# successful ensure_collection().
-#
-# Thread safety: only mutated from the asyncio event loop thread
-# (add/discard in coroutines); executor callbacks (parser calls)
-# never touch it. Under CPython, set.add/discard/`in` are also
-# GIL-atomic, so even an accidental cross-thread read is safe.
-_missing_collections: set[str] = set()
-
-
-async def _try_galaxy_servers(
-    servers: list[GalaxyServerConfig],
-    operation: Callable[..., Awaitable[Any]],
-    http_client: httpx.AsyncClient | None = None,
-) -> Any:
-    """Try an operation across multiple Galaxy servers in priority order.
-
-    Returns the first successful result. Raises the last GalaxyError if all fail.
-    """
-    from ansible_know.errors import GalaxyError
-    from ansible_know.galaxy import GalaxyClient
-
-    last_exc: GalaxyError | None = None
-    for server in servers:
-        try:
-            async with GalaxyClient.from_config(
-                server, http_client=_select_http_client(http_client, server),
-            ) as client:
-                return await operation(client)
-        except GalaxyError as exc:
-            logger.info("Galaxy server '%s' failed: %s", server.name, exc)
-            last_exc = exc
-    if last_exc is not None:
-        raise last_exc
-    raise GalaxyError("No Galaxy servers configured")
-
-
-async def _resolve_module_doc(
-    module_name: str,
-    http_client: httpx.AsyncClient | None = None,
-    galaxy_servers: list[GalaxyServerConfig] | None = None,
-) -> tuple[dict[str, Any], DocProvenance | None]:
-    """Try local ansible-doc, fall back to Galaxy if the collection is missing.
-
-    Returns (raw_doc, galaxy_meta_or_none). Raises on non-missing-collection
-    errors and when both local and Galaxy lookups fail.
-    """
-    from ansible_know import parser
-    from ansible_know.errors import CollectionNotFoundError, GalaxyError
-    from ansible_know.galaxy_config import load_galaxy_servers
-
-    servers = galaxy_servers or _galaxy_servers or load_galaxy_servers()
-    namespace = ".".join(module_name.split(".")[:2]) if "." in module_name else None
-
-    async def _fetch_from_galaxy(client):
-        return await client.fetch_module_doc(module_name)
-
-    if namespace and namespace in _missing_collections:
-        try:
-            galaxy_doc, galaxy_meta = await _try_galaxy_servers(
-                servers, _fetch_from_galaxy, http_client,
-            )
-            return galaxy_doc, galaxy_meta
-        except GalaxyError as galaxy_exc:
-            raise CollectionNotFoundError(
-                f"Collection '{namespace}' not installed locally"
-            ) from galaxy_exc
-
-    try:
-        raw_doc = await _run_in_executor(parser.get_module_doc, module_name)
-        return raw_doc, None
-    except CollectionNotFoundError as local_exc:
-        if namespace:
-            _missing_collections.add(namespace)
-        logger.info("Collection not installed, trying Galaxy: %s", local_exc)
-        try:
-            galaxy_doc, galaxy_meta = await _try_galaxy_servers(
-                servers, _fetch_from_galaxy, http_client,
-            )
-            return galaxy_doc, galaxy_meta
-        except GalaxyError as galaxy_exc:
-            logger.warning("Galaxy fallback also failed: %s", galaxy_exc)
-            raise local_exc from galaxy_exc
-
-
-async def _resolve_role_doc(
-    role_name: str,
-    http_client: httpx.AsyncClient | None = None,
-    galaxy_servers: list[GalaxyServerConfig] | None = None,
-) -> dict[str, Any]:
-    """Try local ansible-doc -t role, fall back to Galaxy readme_html.
-
-    Returns the complete tool response dict including doc_source and content_type.
-    """
-    from ansible_know import parser
-    from ansible_know.errors import CollectionNotFoundError, GalaxyError
-    from ansible_know.galaxy_config import load_galaxy_servers
-
-    servers = galaxy_servers or _galaxy_servers or load_galaxy_servers()
-    namespace = ".".join(role_name.split(".")[:2]) if "." in role_name else None
-
-    local_doc: dict[str, Any] = {}
-
-    if not (namespace and namespace in _missing_collections):
-        try:
-            local_doc = await _run_in_executor(parser.get_role_doc, role_name)
-        except CollectionNotFoundError:
-            if namespace:
-                _missing_collections.add(namespace)
-            local_doc = {}
-        except AnsibleDocError as exc:
-            logger.warning("Local role doc failed for %s: %s", role_name, exc)
-            local_doc = {}
-
-    if local_doc:
-        metadata = parser.extract_role_metadata(local_doc)
-        metadata["content_type"] = "role"
-        metadata["doc_source"] = "local"
-        return metadata
-
-    try:
-        async def _fetch(client):
-            return await client.fetch_role_doc(role_name)
-        galaxy_role_meta, galaxy_meta = await _try_galaxy_servers(
-            servers, _fetch, http_client,
-        )
-
-        result = dict(galaxy_role_meta)
-        result["content_type"] = "role"
-        result["doc_source"] = "galaxy_readme"
-        result["doc_version"] = galaxy_meta.get("doc_version", "")
-        if "doc_warning" in galaxy_meta:
-            result["doc_warning"] = galaxy_meta["doc_warning"]
-        if "doc_source_server" in galaxy_meta:
-            result["doc_source_server"] = galaxy_meta["doc_source_server"]
-        return result
-    except GalaxyError as galaxy_exc:
-        return {
-            "role_name": role_name,
-            "content_type": "role",
-            "doc_source": "unavailable",
-            "error": sanitize_error(str(galaxy_exc)),
-            "entry_points": {},
-        }
 
 
 # --- Discovery tools (read-only) ---
@@ -334,7 +175,7 @@ async def search_modules(
         from ansible_know import parser
         from ansible_know.config import SEARCH_MODULES_LIMIT
 
-        results = await _run_in_executor(
+        results = await run_in_executor(
             parser.search_modules, keyword, collection_filter=namespace,
         )
         if len(results) > SEARCH_MODULES_LIMIT:
@@ -366,11 +207,12 @@ async def get_module_doc(
         return {"error": str(exc)}
 
     try:
-        from ansible_know import parser
+        from ansible_know import parser, resolution
 
         http_client, galaxy_servers = _get_lifespan_resources(ctx)
-        raw_doc, galaxy_meta = await _resolve_module_doc(
+        raw_doc, galaxy_meta = await resolution.resolve_module_doc(
             module_name, http_client=http_client, galaxy_servers=galaxy_servers,
+            client_factory=_galaxy_factory(),
         )
         metadata = parser.extract_module_metadata(raw_doc)
         if galaxy_meta:
@@ -410,9 +252,12 @@ async def get_role_doc(
         return {"error": str(exc)}
 
     try:
+        from ansible_know import resolution
+
         http_client, galaxy_servers = _get_lifespan_resources(ctx)
-        return await _resolve_role_doc(
+        return await resolution.resolve_role_doc(
             role_name, http_client=http_client, galaxy_servers=galaxy_servers,
+            client_factory=_galaxy_factory(),
         )
     except Exception as exc:
         logger.warning("get_role_doc failed: %s", exc)
@@ -480,52 +325,13 @@ async def search_collections(
         return {"error": str(exc)}
 
     try:
-        from ansible_know.galaxy import GalaxyClient
-        from ansible_know.galaxy_config import load_galaxy_servers
+        from ansible_know import resolution
 
         http_client, galaxy_servers = _get_lifespan_resources(ctx)
-        servers = galaxy_servers or _galaxy_servers or load_galaxy_servers()
-
-        async def _query_server(server):
-            async with GalaxyClient.from_config(
-                server, http_client=_select_http_client(http_client, server),
-            ) as client:
-                result = await client.search_collections(query, tags=tags)
-            return server.name, result
-
-        tasks = [_query_server(s) for s in servers]
-        outcomes = await asyncio.gather(*tasks, return_exceptions=True)
-
-        all_collections: list[dict[str, Any]] = []
-        seen_namespaces: set[str] = set()
-        errors: list[str] = []
-
-        for i, outcome in enumerate(outcomes):
-            if isinstance(outcome, Exception):
-                logger.info(
-                    "search_collections on '%s' failed: %s",
-                    servers[i].name, outcome,
-                )
-                errors.append(f"{servers[i].name}: {outcome}")
-                continue
-            server_name, result = outcome
-            for coll in result.get("collections", []):
-                ns = coll.get("namespace", "")
-                if ns not in seen_namespaces:
-                    coll["source"] = server_name
-                    all_collections.append(coll)
-                    seen_namespaces.add(ns)
-
-        if not all_collections and errors:
-            return {"error": f"All Galaxy servers failed: {'; '.join(errors)}"}
-
-        all_collections.sort(key=lambda c: c.get("download_count", 0), reverse=True)
-
-        return {
-            "query": query,
-            "count": len(all_collections),
-            "collections": all_collections,
-        }
+        return await resolution.search_galaxy_collections(
+            query, tags=tags, http_client=http_client, galaxy_servers=galaxy_servers,
+            client_factory=_galaxy_factory(),
+        )
     except Exception as exc:
         logger.warning("search_collections failed: %s", exc)
         return {"error": sanitize_error(str(exc))}
@@ -557,13 +363,13 @@ async def get_collection_manifest(
         if cached:
             return cached
 
-        modules = await _run_in_executor(
+        modules = await run_in_executor(
             parser.search_modules, "", collection_filter=collection_namespace,
         )
 
         roles_raw = {}
         try:
-            roles_raw = await _run_in_executor(
+            roles_raw = await run_in_executor(
                 parser.list_roles, collection_filter=collection_namespace,
             )
         except Exception as exc:
@@ -578,7 +384,7 @@ async def get_collection_manifest(
         metadata_list = []
         for module_name in sorted(modules):
             try:
-                raw_doc = await _run_in_executor(parser.get_module_doc, module_name)
+                raw_doc = await run_in_executor(parser.get_module_doc, module_name)
                 metadata_list.append(parser.extract_module_metadata(raw_doc))
             except AnsibleDocError:
                 continue
@@ -638,12 +444,12 @@ async def ensure_collection(
         return {"error": str(exc)}
 
     try:
-        from ansible_know import collections
+        from ansible_know import collections, resolution
 
-        result = await _run_in_executor(
+        result = await run_in_executor(
             collections.ensure_collection, collection_fqcn=collection_namespace, version=version,
         )
-        _missing_collections.discard(collection_namespace)
+        resolution.clear_missing_namespace(collection_namespace)
         logger.info(
             "ensure_collection result: namespace=%s version=%s status=%s",
             result["namespace"], result["version"], result["status"],
@@ -742,15 +548,16 @@ async def generate_skill(
         return {"error": str(exc)}
 
     try:
-        from ansible_know import parser, skills
+        from ansible_know import parser, resolution, skills
         from ansible_know.config import SKILLS_DIR
 
         if ctx:
             await ctx.report_progress(progress=0, total=100)
 
         http_client, galaxy_servers = _get_lifespan_resources(ctx)
-        raw_doc, galaxy_meta = await _resolve_module_doc(
+        raw_doc, galaxy_meta = await resolution.resolve_module_doc(
             module_name, http_client=http_client, galaxy_servers=galaxy_servers,
+            client_factory=_galaxy_factory(),
         )
         metadata = parser.extract_module_metadata(raw_doc)
         if galaxy_meta:
@@ -763,7 +570,7 @@ async def generate_skill(
         base_dir = validate_install_path(install_to) if install_to else SKILLS_DIR
         output_dir = base_dir / skill_name
 
-        await _run_in_executor(skills.write_skill_package, output_dir, metadata)
+        await run_in_executor(skills.write_skill_package, output_dir, metadata)
         logger.info("generate_skill wrote to %s", output_dir)
 
         if ctx:
@@ -802,15 +609,16 @@ async def generate_role_skill(
         return {"error": str(exc)}
 
     try:
-        from ansible_know import skills
+        from ansible_know import resolution, skills
         from ansible_know.config import SKILLS_DIR
 
         if ctx:
             await ctx.report_progress(progress=0, total=100)
 
         http_client, galaxy_servers = _get_lifespan_resources(ctx)
-        metadata = await _resolve_role_doc(
+        metadata = await resolution.resolve_role_doc(
             role_name, http_client=http_client, galaxy_servers=galaxy_servers,
+            client_factory=_galaxy_factory(),
         )
 
         if metadata.get("doc_source") == "unavailable":
@@ -822,7 +630,7 @@ async def generate_role_skill(
         base_dir = validate_install_path(install_to) if install_to else SKILLS_DIR
         output_dir = base_dir / role_name
 
-        await _run_in_executor(skills.write_role_skill_package, output_dir, metadata)
+        await run_in_executor(skills.write_role_skill_package, output_dir, metadata)
         logger.info("generate_role_skill wrote to %s", output_dir)
 
         if ctx:
@@ -862,7 +670,7 @@ async def generate_collection_skills(
         from ansible_know import collection_manifest, parser, skills
         from ansible_know.config import SKILLS_DIR
 
-        modules = await _run_in_executor(
+        modules = await run_in_executor(
             parser.search_modules, "", collection_filter=collection_namespace,
         )
         if not modules:
@@ -882,13 +690,13 @@ async def generate_collection_skills(
             if ctx:
                 await ctx.report_progress(progress=i, total=total)
             try:
-                raw_doc = await _run_in_executor(parser.get_module_doc, module_name)
+                raw_doc = await run_in_executor(parser.get_module_doc, module_name)
                 metadata = parser.extract_module_metadata(raw_doc)
                 metadata_list.append(metadata)
 
                 skill_name = skills.module_to_skill_name(metadata["module_name"])
                 output_dir = base_dir / skill_name
-                await _run_in_executor(skills.write_skill_package, output_dir, metadata)
+                await run_in_executor(skills.write_skill_package, output_dir, metadata)
                 succeeded += 1
             except Exception as exc:
                 logger.warning("Skill generation failed for %s: %s", module_name, exc)
