@@ -20,6 +20,7 @@ Runtime requirement: `ansible-core` must be installed in the same environment (f
 src/ansible_know/
 ├── server.py              # FastMCP server: 12 tools, 4 resources, 4 prompts (entrypoint)
 ├── parser.py              # ansible-doc wrapper — module discovery and metadata extraction
+├── resolution.py          # local-then-Galaxy doc resolution + multi-server search
 ├── readme_parser.py       # Parse Galaxy role README HTML into structured data
 ├── skills.py              # skill rendering + package writing (Jinja2)
 ├── config.py              # paths, constants, doc source registry

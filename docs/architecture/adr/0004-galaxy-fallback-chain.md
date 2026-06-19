@@ -61,10 +61,11 @@ With multi-server Galaxy support:
 
 ### Negative
 
-- **Complexity in Orchestration**: the fallback logic (`_resolve_module_doc`,
+- ~~**Complexity in Orchestration**: the fallback logic (`_resolve_module_doc`,
   `_resolve_role_doc`) is currently in `server.py`, adding ~100 lines of
   business logic to the Orchestration layer. This should be in a Domain
-  module (see V-D7, V-L2 in service-contracts.md).
+  module (see V-D7, V-L2 in service-contracts.md).~~
+  **Fixed (PR #66):** fallback logic now lives in `resolution.py` (Domain layer).
 - **Inconsistent fallback strategies**: module docs use Galaxy docs-blob
   (structured API data), while role docs fall back to Galaxy
   `readme_html` parsing (best-effort HTML scraping). The quality of
