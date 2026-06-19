@@ -100,6 +100,23 @@ class TestBoundedCache:
             assert "a" not in cache
         assert len(cache) == 1
 
+    def test_expired_entries_purged_on_pressure(self):
+        cache: BoundedCache[str, int] = BoundedCache(max_size=3, ttl=0.5)
+        cache.put("a", 1)
+        cache.put("b", 2)
+        cache.put("c", 3)
+        with patch("ansible_know.cache.time.monotonic", return_value=time.monotonic() + 1.0):
+            cache.put("d", 4)
+            assert cache.get("d") == 4
+            assert len(cache) == 1
+
+    def test_no_purge_when_below_capacity(self):
+        cache: BoundedCache[str, int] = BoundedCache(max_size=10, ttl=0.5)
+        cache.put("a", 1)
+        with patch("ansible_know.cache.time.monotonic", return_value=time.monotonic() + 1.0):
+            cache.put("b", 2)
+        assert len(cache) == 2
+
     def test_max_size_property(self):
         cache: BoundedCache[str, int] = BoundedCache(max_size=42)
         assert cache.max_size == 42

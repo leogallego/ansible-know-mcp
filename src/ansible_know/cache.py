@@ -45,10 +45,19 @@ class BoundedCache(Generic[K, V]):
             self._data.move_to_end(key)
             return value
 
+    def _purge_expired(self) -> None:
+        if self._ttl is None:
+            return
+        expired = [k for k, (_, ts) in self._data.items() if self._is_expired(ts)]
+        for k in expired:
+            del self._data[k]
+
     def put(self, key: K, value: V) -> None:
         with self._lock:
             self._data[key] = (value, time.monotonic())
             self._data.move_to_end(key)
+            if len(self._data) > self._max_size:
+                self._purge_expired()
             while len(self._data) > self._max_size:
                 self._data.popitem(last=False)
 
@@ -65,6 +74,7 @@ class BoundedCache(Generic[K, V]):
             return len(self._data)
 
     def __contains__(self, key: K) -> bool:
+        # Non-mutating: expired entries are left for get()/put() to clean up.
         with self._lock:
             entry = self._data.get(key)
             if entry is None:
