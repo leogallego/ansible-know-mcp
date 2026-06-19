@@ -125,7 +125,7 @@ mcp = FastMCP(
 
 def _run_in_executor(func, *args, **kwargs):
     """Run a blocking function in the default executor."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return loop.run_in_executor(None, partial(func, *args, **kwargs))
 
 
@@ -166,6 +166,11 @@ async def _maybe_warn_upgrade(ctx: Context | None) -> None:
 # Skips retrying local resolution for known-missing collections,
 # going straight to Galaxy fallback. Cleared per-namespace on
 # successful ensure_collection().
+#
+# Thread safety: only mutated from the asyncio event loop thread
+# (add/discard in coroutines); executor callbacks (parser calls)
+# never touch it. Under CPython, set.add/discard/`in` are also
+# GIL-atomic, so even an accidental cross-thread read is safe.
 _missing_collections: set[str] = set()
 
 
@@ -754,7 +759,7 @@ async def generate_skill(
         if ctx:
             await ctx.report_progress(progress=50, total=100)
 
-        skill_name = skills._module_to_skill_name(metadata["module_name"])
+        skill_name = skills.module_to_skill_name(metadata["module_name"])
         base_dir = validate_install_path(install_to) if install_to else SKILLS_DIR
         output_dir = base_dir / skill_name
 
@@ -881,7 +886,7 @@ async def generate_collection_skills(
                 metadata = parser.extract_module_metadata(raw_doc)
                 metadata_list.append(metadata)
 
-                skill_name = skills._module_to_skill_name(metadata["module_name"])
+                skill_name = skills.module_to_skill_name(metadata["module_name"])
                 output_dir = base_dir / skill_name
                 await _run_in_executor(skills.write_skill_package, output_dir, metadata)
                 succeeded += 1

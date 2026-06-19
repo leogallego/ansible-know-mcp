@@ -16,6 +16,14 @@ from ansible_know.config import TEMPLATE_DIR
 
 logger = logging.getLogger("ansible_know")
 
+__all__ = [
+    "module_to_skill_name",
+    "render_role_skill",
+    "render_skill",
+    "write_role_skill_package",
+    "write_skill_package",
+]
+
 
 @functools.lru_cache(maxsize=1)
 def _get_template_env():
@@ -30,7 +38,7 @@ def _get_template_env():
     )
 
 
-def _module_to_skill_name(module_name: str) -> str:
+def module_to_skill_name(module_name: str) -> str:
     """Convert a module FQCN to a skill directory name."""
     return module_name
 

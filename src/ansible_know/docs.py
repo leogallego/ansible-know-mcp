@@ -16,6 +16,11 @@ from ansible_know.config import SEARCH_DOCS_LIMIT, get_doc_sources
 
 logger = logging.getLogger("ansible_know")
 
+__all__ = [
+    "clear_cache",
+    "search_docs",
+]
+
 MAX_MANIFEST_SIZE = 5_000_000  # 5MB
 CACHE_TTL_SECONDS = 3600
 

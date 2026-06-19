@@ -23,6 +23,20 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("ansible_know")
 
+__all__ = [
+    "extract_examples",
+    "extract_module_metadata",
+    "extract_params",
+    "extract_role_metadata",
+    "extract_short_description",
+    "get_module_doc",
+    "get_role_doc",
+    "is_api_module",
+    "list_modules",
+    "list_roles",
+    "search_modules",
+]
+
 
 
 def _find_ansible_doc() -> str:

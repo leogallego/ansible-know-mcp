@@ -11,10 +11,15 @@ _PKG_DIR = Path(__file__).resolve().parent
 
 TEMPLATE_DIR = _PKG_DIR / "templates"
 
-SKILLS_DIR = Path(os.environ.get(
-    "ANSIBLE_KNOW_SKILLS_DIR",
-    Path.cwd() / "skills",
-))
+def __getattr__(name: str):
+    if name == "SKILLS_DIR":
+        value = Path(os.environ.get(
+            "ANSIBLE_KNOW_SKILLS_DIR",
+            Path.cwd() / "skills",
+        ))
+        globals()["SKILLS_DIR"] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 DEFAULT_DOC_SOURCES: dict[str, dict[str, str]] = {
     "ansible-core": {
