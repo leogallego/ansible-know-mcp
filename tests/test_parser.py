@@ -17,6 +17,7 @@ from ansible_know.parser import (
     list_modules,
     list_roles,
     search_modules,
+    transform_galaxy_to_ansible_doc_format,
 )
 
 
@@ -37,12 +38,12 @@ class TestListModules:
         with patch("ansible_know.parser._run_ansible_doc", return_value=sample_module_list_json) as mock:
             result = list_modules()
         assert len(result) == 4
-        mock.assert_called_once_with("--list", "--json")
+        mock.assert_called_once_with("--list", "--json", collections_path=None)
 
     def test_passes_collection_filter(self, sample_module_list_json):
         with patch("ansible_know.parser._run_ansible_doc", return_value=sample_module_list_json) as mock:
             list_modules(collection_filter="community.general")
-        mock.assert_called_once_with("--list", "--json", "community.general")
+        mock.assert_called_once_with("--list", "--json", "community.general", collections_path=None)
 
 
 class TestSearchModules:
@@ -129,110 +130,100 @@ class TestExtractModuleMetadata:
 class TestRunAnsibleDocEnvInjection:
     def test_injects_collections_path(self):
         with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):
-            with patch("ansible_know.collections.get_collections_path", return_value="/tmp/ansible_know_abc123"):
-                with patch("subprocess.run", return_value=MagicMock(
-                    returncode=0, stdout='{}', stderr='',
-                )) as mock_run:
-                    from ansible_know.parser import _run_ansible_doc
-                    _run_ansible_doc("--list", "--json")
-                    env = mock_run.call_args[1]["env"]
-                    assert "/tmp/ansible_know_abc123" in env["ANSIBLE_COLLECTIONS_PATH"]
+            with patch("subprocess.run", return_value=MagicMock(
+                returncode=0, stdout='{}', stderr='',
+            )) as mock_run:
+                from ansible_know.parser import _run_ansible_doc
+                _run_ansible_doc("--list", "--json", collections_path="/tmp/ansible_know_abc123")
+                env = mock_run.call_args[1]["env"]
+                assert "/tmp/ansible_know_abc123" in env["ANSIBLE_COLLECTIONS_PATH"]
 
     def test_prepends_to_existing_collections_path(self):
         with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):
-            with patch("ansible_know.collections.get_collections_path", return_value="/tmp/ansible_know_abc123"):
-                with patch.dict("os.environ", {"ANSIBLE_COLLECTIONS_PATH": "/existing/path"}):
-                    with patch("subprocess.run", return_value=MagicMock(
-                        returncode=0, stdout='{}', stderr='',
-                    )) as mock_run:
-                        from ansible_know.parser import _run_ansible_doc
-                        _run_ansible_doc("--list", "--json")
-                        env = mock_run.call_args[1]["env"]
-                        assert env["ANSIBLE_COLLECTIONS_PATH"].startswith("/tmp/ansible_know_abc123")
-                        assert "/existing/path" in env["ANSIBLE_COLLECTIONS_PATH"]
-
-    def test_no_injection_when_no_collections(self):
-        with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):
-            with patch("ansible_know.collections.get_collections_path", return_value=None):
+            with patch.dict("os.environ", {"ANSIBLE_COLLECTIONS_PATH": "/existing/path"}):
                 with patch("subprocess.run", return_value=MagicMock(
                     returncode=0, stdout='{}', stderr='',
                 )) as mock_run:
                     from ansible_know.parser import _run_ansible_doc
-                    _run_ansible_doc("--list", "--json")
-                    call_kwargs = mock_run.call_args[1]
-                    assert call_kwargs.get("env") is None
+                    _run_ansible_doc("--list", "--json", collections_path="/tmp/ansible_know_abc123")
+                    env = mock_run.call_args[1]["env"]
+                    assert env["ANSIBLE_COLLECTIONS_PATH"].startswith("/tmp/ansible_know_abc123")
+                    assert "/existing/path" in env["ANSIBLE_COLLECTIONS_PATH"]
+
+    def test_no_injection_when_no_collections(self):
+        with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):
+            with patch("subprocess.run", return_value=MagicMock(
+                returncode=0, stdout='{}', stderr='',
+            )) as mock_run:
+                from ansible_know.parser import _run_ansible_doc
+                _run_ansible_doc("--list", "--json")
+                call_kwargs = mock_run.call_args[1]
+                assert call_kwargs.get("env") is None
 
 
 class TestCollectionNotFoundDetection:
     def test_raises_collection_not_found_on_has_no_attribute(self):
         with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):
-            with patch("ansible_know.collections.get_collections_path", return_value=None):
-                with patch("subprocess.run", return_value=MagicMock(
-                    returncode=1, stdout='', stderr='netbox.netbox has no attribute',
-                )):
-                    from ansible_know.parser import _run_ansible_doc
-                    with pytest.raises(CollectionNotFoundError, match="has no attribute"):
-                        _run_ansible_doc("netbox.netbox.netbox_device", "--json")
+            with patch("subprocess.run", return_value=MagicMock(
+                returncode=1, stdout='', stderr='netbox.netbox has no attribute',
+            )):
+                from ansible_know.parser import _run_ansible_doc
+                with pytest.raises(CollectionNotFoundError, match="has no attribute"):
+                    _run_ansible_doc("netbox.netbox.netbox_device", "--json")
 
     def test_raises_collection_not_found_on_was_not_found(self):
         with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):
-            with patch("ansible_know.collections.get_collections_path", return_value=None):
-                with patch("subprocess.run", return_value=MagicMock(
-                    returncode=1, stdout='', stderr='netbox.netbox was not found',
-                )):
-                    from ansible_know.parser import _run_ansible_doc
-                    with pytest.raises(CollectionNotFoundError, match="was not found"):
-                        _run_ansible_doc("netbox.netbox.netbox_device", "--json")
+            with patch("subprocess.run", return_value=MagicMock(
+                returncode=1, stdout='', stderr='netbox.netbox was not found',
+            )):
+                from ansible_know.parser import _run_ansible_doc
+                with pytest.raises(CollectionNotFoundError, match="was not found"):
+                    _run_ansible_doc("netbox.netbox.netbox_device", "--json")
 
     def test_raises_collection_not_found_on_could_not_be_found(self):
         with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):
-            with patch("ansible_know.collections.get_collections_path", return_value=None):
-                with patch("subprocess.run", return_value=MagicMock(
-                    returncode=1, stdout='', stderr='module could not be found',
-                )):
-                    from ansible_know.parser import _run_ansible_doc
-                    with pytest.raises(CollectionNotFoundError, match="could not be found"):
-                        _run_ansible_doc("netbox.netbox.netbox_device", "--json")
+            with patch("subprocess.run", return_value=MagicMock(
+                returncode=1, stdout='', stderr='module could not be found',
+            )):
+                from ansible_know.parser import _run_ansible_doc
+                with pytest.raises(CollectionNotFoundError, match="could not be found"):
+                    _run_ansible_doc("netbox.netbox.netbox_device", "--json")
 
     def test_raises_ansible_doc_error_on_other_errors(self):
         with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):
-            with patch("ansible_know.collections.get_collections_path", return_value=None):
-                with patch("subprocess.run", return_value=MagicMock(
-                    returncode=1, stdout='', stderr='ansible-doc timed out',
-                )):
-                    from ansible_know.parser import _run_ansible_doc
-                    with pytest.raises(AnsibleDocError, match="timed out"):
-                        _run_ansible_doc("ansible.builtin.copy", "--json")
+            with patch("subprocess.run", return_value=MagicMock(
+                returncode=1, stdout='', stderr='ansible-doc timed out',
+            )):
+                from ansible_know.parser import _run_ansible_doc
+                with pytest.raises(AnsibleDocError, match="timed out"):
+                    _run_ansible_doc("ansible.builtin.copy", "--json")
 
     def test_raises_collection_not_found_on_exit_0_with_empty_json(self):
         with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):
-            with patch("ansible_know.collections.get_collections_path", return_value=None):
-                with patch("subprocess.run", return_value=MagicMock(
-                    returncode=0, stdout='{}', stderr='[WARNING]: kubernetes.core.k8s was not found',
-                )):
-                    from ansible_know.parser import _run_ansible_doc
-                    with pytest.raises(CollectionNotFoundError, match="was not found"):
-                        _run_ansible_doc("kubernetes.core.k8s", "--json")
+            with patch("subprocess.run", return_value=MagicMock(
+                returncode=0, stdout='{}', stderr='[WARNING]: kubernetes.core.k8s was not found',
+            )):
+                from ansible_know.parser import _run_ansible_doc
+                with pytest.raises(CollectionNotFoundError, match="was not found"):
+                    _run_ansible_doc("kubernetes.core.k8s", "--json")
 
     def test_raises_collection_not_found_on_exit_0_with_empty_stdout(self):
         with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):
-            with patch("ansible_know.collections.get_collections_path", return_value=None):
-                with patch("subprocess.run", return_value=MagicMock(
-                    returncode=0, stdout='', stderr='[WARNING]: some.col.mod was not found',
-                )):
-                    from ansible_know.parser import _run_ansible_doc
-                    with pytest.raises(CollectionNotFoundError, match="was not found"):
-                        _run_ansible_doc("some.col.mod", "--json")
+            with patch("subprocess.run", return_value=MagicMock(
+                returncode=0, stdout='', stderr='[WARNING]: some.col.mod was not found',
+            )):
+                from ansible_know.parser import _run_ansible_doc
+                with pytest.raises(CollectionNotFoundError, match="was not found"):
+                    _run_ansible_doc("some.col.mod", "--json")
 
     def test_returns_normally_on_exit_0_with_valid_json(self):
         with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):
-            with patch("ansible_know.collections.get_collections_path", return_value=None):
-                with patch("subprocess.run", return_value=MagicMock(
-                    returncode=0, stdout='{"ansible.builtin.copy": {}}', stderr='',
-                )):
-                    from ansible_know.parser import _run_ansible_doc
-                    result = _run_ansible_doc("ansible.builtin.copy", "--json")
-                    assert "ansible.builtin.copy" in result
+            with patch("subprocess.run", return_value=MagicMock(
+                returncode=0, stdout='{"ansible.builtin.copy": {}}', stderr='',
+            )):
+                from ansible_know.parser import _run_ansible_doc
+                result = _run_ansible_doc("ansible.builtin.copy", "--json")
+                assert "ansible.builtin.copy" in result
 
     def test_collection_not_found_is_subclass_of_ansible_doc_error(self):
         assert issubclass(CollectionNotFoundError, AnsibleDocError)
@@ -244,12 +235,15 @@ class TestListRoles:
             result = list_roles()
         assert "fedora.linux_system_roles.timesync" in result
         assert "fedora.linux_system_roles.gfs2" in result
-        mock.assert_called_once_with("--list", "-t", "role", "--json")
+        mock.assert_called_once_with("--list", "-t", "role", "--json", collections_path=None)
 
     def test_passes_collection_filter(self, sample_role_list_json):
         with patch("ansible_know.parser._run_ansible_doc", return_value=sample_role_list_json) as mock:
             list_roles(collection_filter="fedora.linux_system_roles")
-        mock.assert_called_once_with("--list", "-t", "role", "--json", "fedora.linux_system_roles")
+        mock.assert_called_once_with(
+            "--list", "-t", "role", "--json", "fedora.linux_system_roles",
+            collections_path=None,
+        )
 
 
 class TestGetRoleDoc:
@@ -266,7 +260,7 @@ class TestGetRoleDoc:
     def test_passes_role_type_flag(self, sample_role_doc_json):
         with patch("ansible_know.parser._run_ansible_doc", return_value=sample_role_doc_json) as mock:
             get_role_doc("fedora.linux_system_roles.gfs2")
-        mock.assert_called_once_with("-t", "role", "fedora.linux_system_roles.gfs2", "--json")
+        mock.assert_called_once_with("-t", "role", "fedora.linux_system_roles.gfs2", "--json", collections_path=None)
 
 
 class TestExtractRoleMetadata:
@@ -324,3 +318,62 @@ class TestExtractRoleMetadata:
         assert "main" in meta["entry_points"]
         assert "configure" in meta["entry_points"]
         assert len(meta["entry_points"]["configure"]["options"]) == 1
+
+
+class TestTransformGalaxyToAnsibleDocFormat:
+    def test_missing_doc_strings(self):
+        entry = {"content_type": "module", "content_name": "test"}
+        result = transform_galaxy_to_ansible_doc_format("ns.col.test", entry)
+        doc = result["ns.col.test"]["doc"]
+        assert doc["short_description"] == ""
+        assert doc["options"] == {}
+
+    def test_missing_short_description(self):
+        entry = {
+            "doc_strings": {
+                "doc": {"description": ["Some desc"], "options": []},
+                "examples": "",
+                "return": [],
+                "metadata": {},
+            }
+        }
+        result = transform_galaxy_to_ansible_doc_format("ns.col.mod", entry)
+        assert result["ns.col.mod"]["doc"]["short_description"] == ""
+
+    def test_options_list_with_non_dict_items(self):
+        entry = {
+            "doc_strings": {
+                "doc": {
+                    "short_description": "Test",
+                    "options": [
+                        {"name": "valid", "type": "str"},
+                        "not_a_dict",
+                        42,
+                    ],
+                },
+                "examples": "",
+                "return": [],
+                "metadata": {},
+            }
+        }
+        result = transform_galaxy_to_ansible_doc_format("ns.col.mod", entry)
+        opts = result["ns.col.mod"]["doc"]["options"]
+        assert "valid" in opts
+        assert len(opts) == 1
+
+    def test_option_without_name_key(self):
+        entry = {
+            "doc_strings": {
+                "doc": {
+                    "short_description": "Test",
+                    "options": [
+                        {"type": "str", "required": True},
+                    ],
+                },
+                "examples": "",
+                "return": [],
+                "metadata": {},
+            }
+        }
+        result = transform_galaxy_to_ansible_doc_format("ns.col.mod", entry)
+        assert result["ns.col.mod"]["doc"]["options"] == {}

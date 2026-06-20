@@ -1174,7 +1174,7 @@ class TestGetCollectionManifestWithRoles:
     async def test_manifest_includes_roles(self, mock_ansible_doc):
         call_count = 0
 
-        def side_effect(*args):
+        def side_effect(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             if "-t" in args and "role" in args and "--list" in args:

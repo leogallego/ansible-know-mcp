@@ -158,8 +158,8 @@ the process boundary: the Galaxy REST API, the `ansible-doc` CLI, the
 
 | External Access Module | Consumers | File |
 |------------------------|-----------|------|
-| `galaxy.py` (`GalaxyClient`) | `server.py` (directly, bypassing Domain) | `galaxy.py` |
-| `collections.py` | `server.py`, `parser.py` | `collections.py` |
+| `galaxy.py` (`GalaxyClient`) | `resolution.py` (via `GalaxyDocClient` Protocol) | `galaxy.py` |
+| `collections.py` | `server.py`, `resolution.py` | `collections.py` |
 | `readme_parser.py` | `galaxy.py` | `readme_parser.py` |
 
 `GalaxyClient` is the primary class in the codebase. It acts as an async HTTP
@@ -193,8 +193,8 @@ layer and `_ReadmeParser` in `readme_parser.py` are the other classes.)
 | ID | Severity | Description | Location |
 |----|----------|-------------|----------|
 | ~~V-E1~~ | ~~Error~~ | ~~`server.py` calls `GalaxyClient` directly in `search_collections()` and `_try_galaxy_servers()`, bypassing the Domain layer entirely. Galaxy access should be mediated through a domain-level service.~~ **Fixed in PR #66** — Galaxy access is now mediated through `resolution.py`. | ~~`server.py:168-192`, `server.py:480-486`~~ |
-| ~~V-E2~~ | ~~Warning~~ | ~~`GalaxyClient` has no abstract base class or Protocol.~~ **Partially fixed in PR #66:** `GalaxyDocClient` Protocol and `GalaxyClientFactory` Protocol defined in `types.py`. `resolution.py` depends on the Protocol, not the concrete class. `GalaxyClient` satisfies the Protocol structurally. | ~~`galaxy.py:111`~~ → `types.py` |
-| V-E3 | Warning | `GalaxyClient._transform_to_ansible_doc_format()` is a static method that converts Galaxy format to ansible-doc format. This is a data transformation that belongs in the Domain layer (parser), not the External Access layer. | `galaxy.py:381-417` |
+| ~~V-E2~~ | ~~Warning~~ | ~~`GalaxyClient` has no abstract base class or Protocol.~~ **Fixed in PR #66:** `GalaxyDocClient` Protocol and `GalaxyClientFactory` Protocol defined in `types.py`. `resolution.py` depends on the Protocol, not the concrete class. `GalaxyClient` satisfies the Protocol structurally. | ~~`galaxy.py:111`~~ → `types.py` |
+| ~~V-E3~~ | ~~Warning~~ | ~~`GalaxyClient._transform_to_ansible_doc_format()` is a static method that converts Galaxy format to ansible-doc format. This is a data transformation that belongs in the Domain layer (parser), not the External Access layer.~~ **Fixed in PR #69** — Moved to `parser.transform_galaxy_to_ansible_doc_format()`. `galaxy.py` lazy-imports it. | ~~`galaxy.py:381-417`~~ → `parser.py` |
 | V-E4 | Warning | `collections.py` module-level mutable state (`_tmp_dir`, `_installed`, `_install_locks`) makes the module impossible to test in isolation without monkeypatching globals. Should be encapsulated in a class. | `collections.py:26-29` |
 | V-E5 | Info | `galaxy.py` uses `asyncio.Semaphore` for enrichment throttling but creates it lazily with event-loop detection (`_get_enrichment_semaphore`). This is fragile if the event loop changes. | `galaxy.py:40-46` |
 
@@ -326,8 +326,8 @@ Foundation   → (no internal dependencies)
 |----|----------|-------------|
 | ~~V-L1~~ | ~~Error~~ | ~~Orchestration (`server.py`) imports and calls External Access (`galaxy.py:GalaxyClient`) directly, bypassing the Domain layer.~~ **Fixed in PR #66** — Orchestration delegates to `resolution.py` (Domain). | 
 | ~~V-L2~~ | ~~Warning~~ | ~~Orchestration (`server.py`) contains domain logic in `_resolve_module_doc()` and `_resolve_role_doc()` — these are domain-level resolution strategies, not orchestration.~~ **Fixed in PR #66** — Moved to `resolution.py`. |
-| V-L3 | Info | External Access (`galaxy.py`) calls Domain (`readme_parser.py`) for `fetch_role_doc()`. This is arguably acceptable as `readme_parser` is a pure data transformer, but it means `galaxy.py` depends upward. |
-| V-L4 | Warning | Domain (`parser.py`) imports External Access (`collections.py`) at the top level to get the collections path. This permanently couples the parser to the collection installation mechanism. (Was a lazy import before PR #60; now a top-level `from ansible_know import collections`.) |
+| V-L3 | Info | External Access (`galaxy.py`) lazy-imports Domain modules (`readme_parser.py` for `fetch_role_doc()`, `parser.py` for `transform_galaxy_to_ansible_doc_format()` in `fetch_module_doc()`). Both are pure data transformers — acceptable cross-layer calls that avoid duplicating domain logic. |
+| ~~V-L4~~ | ~~Warning~~ | ~~Domain (`parser.py`) imports External Access (`collections.py`) at the top level to get the collections path.~~ **Fixed in PR #69** — `parser.py` accepts `collections_path` as a parameter; callers (server.py, resolution.py) inject it from `collections.get_collections_path()`. |
 
 ---
 
@@ -353,8 +353,9 @@ Foundation   → (no internal dependencies)
    domain-level resolution module.~~ **Fixed in PR #66**.
 8. **V-D8**: Split `generate_manifest()` into generation and persistence.
 9. ~~**V-E2**: Define a `GalaxyClientProtocol` for the Galaxy client interface.~~
-   **Partially fixed in PR #66** — `GalaxyDocClient` Protocol in `types.py`.
-10. **V-E3**: Move `_transform_to_ansible_doc_format()` to `parser.py`.
+   **Fixed in PR #66** — `GalaxyDocClient` Protocol in `types.py`.
+10. ~~**V-E3**: Move `_transform_to_ansible_doc_format()` to `parser.py`.~~
+    **Fixed in PR #69** — now `parser.transform_galaxy_to_ansible_doc_format()`.
 11. **V-E4**: Encapsulate `collections.py` state in a `CollectionManager` class.
 12. **V-S2**: Use `asyncio.Lock` or explicit synchronization for `_missing_collections`.
 13. **V-S3**: Design a `ServerState` or session context that encapsulates all

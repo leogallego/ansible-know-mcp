@@ -15,7 +15,6 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from ansible_know import collections
 from ansible_know.errors import AnsibleDocError, CollectionNotFoundError, is_missing_collection_error
 
 if TYPE_CHECKING:
@@ -35,6 +34,7 @@ __all__ = [
     "list_modules",
     "list_roles",
     "search_modules",
+    "transform_galaxy_to_ansible_doc_format",
 ]
 
 
@@ -52,12 +52,13 @@ def _find_ansible_doc() -> str:
     )
 
 
-def _run_ansible_doc(*args: str) -> str:
+def _run_ansible_doc(
+    *args: str, collections_path: str | None = None,
+) -> str:
     """Execute ansible-doc with the given arguments and return stdout."""
     ansible_doc = _find_ansible_doc()
     cmd = [ansible_doc, *args]
 
-    collections_path = collections.get_collections_path()
     logger.debug("Running: %s (collections_path=%s)", " ".join(cmd), collections_path)
     env = None
     if collections_path:
@@ -99,13 +100,15 @@ def _run_ansible_doc(*args: str) -> str:
     return result.stdout
 
 
-def get_module_doc(module_name: str) -> dict[str, Any]:
+def get_module_doc(
+    module_name: str, *, collections_path: str | None = None,
+) -> dict[str, Any]:
     """Fetch full documentation for a single module.
 
     Returns the parsed JSON from `ansible-doc <module> --json`.
     The top-level dict is keyed by the fully-qualified module name.
     """
-    raw = _run_ansible_doc(module_name, "--json")
+    raw = _run_ansible_doc(module_name, "--json", collections_path=collections_path)
     try:
         doc = json.loads(raw)
     except json.JSONDecodeError as exc:
@@ -113,12 +116,15 @@ def get_module_doc(module_name: str) -> dict[str, Any]:
     return doc
 
 
-def list_modules(collection_filter: str | None = None) -> dict[str, str]:
+def list_modules(
+    collection_filter: str | None = None, *, collections_path: str | None = None,
+) -> dict[str, str]:
     """List available modules with short descriptions.
 
     Args:
         collection_filter: Optional collection filter passed to ansible-doc
                            (e.g., "community.docker"). If None, lists all modules.
+        collections_path: Optional path to prepend to ANSIBLE_COLLECTIONS_PATH.
 
     Returns:
         Dict mapping fully-qualified module names to their short descriptions.
@@ -126,7 +132,7 @@ def list_modules(collection_filter: str | None = None) -> dict[str, str]:
     args = ["--list", "--json"]
     if collection_filter:
         args.append(collection_filter)
-    raw = _run_ansible_doc(*args)
+    raw = _run_ansible_doc(*args, collections_path=collections_path)
     try:
         modules = json.loads(raw)
     except json.JSONDecodeError as exc:
@@ -134,17 +140,23 @@ def list_modules(collection_filter: str | None = None) -> dict[str, str]:
     return modules
 
 
-def search_modules(keyword: str, collection_filter: str | None = None) -> dict[str, str]:
+def search_modules(
+    keyword: str,
+    collection_filter: str | None = None,
+    *,
+    collections_path: str | None = None,
+) -> dict[str, str]:
     """Search modules by keyword in name or description.
 
     Args:
         keyword: Search term (case-insensitive).
         collection_filter: Optional collection to restrict the search.
+        collections_path: Optional path to prepend to ANSIBLE_COLLECTIONS_PATH.
 
     Returns:
         Filtered dict of matching module names -> descriptions.
     """
-    all_modules = list_modules(collection_filter)
+    all_modules = list_modules(collection_filter, collections_path=collections_path)
     keyword_lower = keyword.lower()
     return {
         name: desc
@@ -238,12 +250,54 @@ def extract_module_metadata(module_doc: dict[str, Any]) -> ModuleMetadata:
     }
 
 
-def list_roles(collection_filter: str | None = None) -> dict[str, dict[str, Any]]:
+def transform_galaxy_to_ansible_doc_format(
+    fqcn: str, entry: dict[str, Any],
+) -> dict[str, Any]:
+    """Convert a Galaxy docs-blob content entry to ansible-doc --json format."""
+    ds = entry.get("doc_strings", {})
+    raw_doc = ds.get("doc", {})
+
+    raw_options = raw_doc.get("options", [])
+    if isinstance(raw_options, list):
+        options_dict: dict[str, Any] = {}
+        for opt in raw_options:
+            if not isinstance(opt, dict):
+                continue
+            opt_copy = dict(opt)
+            opt_name = opt_copy.pop("name", None)
+            if opt_name:
+                options_dict[opt_name] = opt_copy
+    else:
+        options_dict = raw_options
+
+    doc_section = {
+        "short_description": raw_doc.get("short_description", ""),
+        "description": raw_doc.get("description", []),
+        "options": options_dict,
+        "author": raw_doc.get("author", []),
+        "notes": raw_doc.get("notes", []),
+        "version_added": raw_doc.get("version_added", ""),
+    }
+
+    return {
+        fqcn: {
+            "doc": doc_section,
+            "examples": ds.get("examples", ""),
+            "return": ds.get("return", []),
+            "metadata": ds.get("metadata", {}),
+        }
+    }
+
+
+def list_roles(
+    collection_filter: str | None = None, *, collections_path: str | None = None,
+) -> dict[str, dict[str, Any]]:
     """List available roles with descriptions and entry points.
 
     Args:
         collection_filter: Optional collection filter passed to ansible-doc
                            (e.g., "fedora.linux_system_roles"). If None, lists all roles.
+        collections_path: Optional path to prepend to ANSIBLE_COLLECTIONS_PATH.
 
     Returns:
         Dict mapping FQCNs to {collection, description, entry_points}.
@@ -251,7 +305,7 @@ def list_roles(collection_filter: str | None = None) -> dict[str, dict[str, Any]
     args = ["--list", "-t", "role", "--json"]
     if collection_filter:
         args.append(collection_filter)
-    raw = _run_ansible_doc(*args)
+    raw = _run_ansible_doc(*args, collections_path=collections_path)
     try:
         roles = json.loads(raw)
     except json.JSONDecodeError as exc:
@@ -259,13 +313,15 @@ def list_roles(collection_filter: str | None = None) -> dict[str, dict[str, Any]
     return roles
 
 
-def get_role_doc(role_name: str) -> dict[str, Any]:
+def get_role_doc(
+    role_name: str, *, collections_path: str | None = None,
+) -> dict[str, Any]:
     """Fetch full documentation for a single role.
 
     Returns parsed JSON from ansible-doc. Returns {} if the role
     lacks argument_specs.yml (same as ansible-doc behavior).
     """
-    raw = _run_ansible_doc("-t", "role", role_name, "--json")
+    raw = _run_ansible_doc("-t", "role", role_name, "--json", collections_path=collections_path)
     try:
         doc = json.loads(raw)
     except json.JSONDecodeError as exc:

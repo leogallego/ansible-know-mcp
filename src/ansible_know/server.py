@@ -172,11 +172,12 @@ async def search_modules(
         return {"error": str(exc)}
 
     try:
-        from ansible_know import parser
+        from ansible_know import collections, parser
         from ansible_know.config import SEARCH_MODULES_LIMIT
 
         results = await run_in_executor(
             parser.search_modules, keyword, collection_filter=namespace,
+            collections_path=collections.get_collections_path(),
         )
         if len(results) > SEARCH_MODULES_LIMIT:
             results = dict(list(results.items())[:SEARCH_MODULES_LIMIT])
@@ -363,14 +364,18 @@ async def get_collection_manifest(
         if cached:
             return cached
 
+        cpath = collections.get_collections_path()
+
         modules = await run_in_executor(
             parser.search_modules, "", collection_filter=collection_namespace,
+            collections_path=cpath,
         )
 
         roles_raw = {}
         try:
             roles_raw = await run_in_executor(
                 parser.list_roles, collection_filter=collection_namespace,
+                collections_path=cpath,
             )
         except Exception as exc:
             logger.warning("list_roles failed for %s: %s", collection_namespace, exc)
@@ -384,7 +389,9 @@ async def get_collection_manifest(
         metadata_list = []
         for module_name in sorted(modules):
             try:
-                raw_doc = await run_in_executor(parser.get_module_doc, module_name)
+                raw_doc = await run_in_executor(
+                    parser.get_module_doc, module_name, collections_path=cpath,
+                )
                 metadata_list.append(parser.extract_module_metadata(raw_doc))
             except AnsibleDocError:
                 continue
@@ -667,11 +674,13 @@ async def generate_collection_skills(
         return {"error": str(exc)}
 
     try:
-        from ansible_know import collection_manifest, parser, skills
+        from ansible_know import collection_manifest, collections, parser, skills
         from ansible_know.config import SKILLS_DIR
 
+        cpath = collections.get_collections_path()
         modules = await run_in_executor(
             parser.search_modules, "", collection_filter=collection_namespace,
+            collections_path=cpath,
         )
         if not modules:
             return {"error": (
@@ -690,7 +699,9 @@ async def generate_collection_skills(
             if ctx:
                 await ctx.report_progress(progress=i, total=total)
             try:
-                raw_doc = await run_in_executor(parser.get_module_doc, module_name)
+                raw_doc = await run_in_executor(
+                    parser.get_module_doc, module_name, collections_path=cpath,
+                )
                 metadata = parser.extract_module_metadata(raw_doc)
                 metadata_list.append(metadata)
 
