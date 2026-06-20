@@ -110,7 +110,7 @@ ansible-know-mcp
 ```
 
 Connect from any MCP client using the streamable HTTP URL:
-`http://<host>:8080/mcp/`
+`http://<host>:8080/mcp`
 
 > **Security**: HTTP mode has no built-in authentication. Deploy behind a
 > reverse proxy with authentication/authorization, or use only on trusted
