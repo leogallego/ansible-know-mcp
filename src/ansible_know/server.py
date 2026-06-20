@@ -14,7 +14,7 @@ from importlib.metadata import version as pkg_version
 from typing import TYPE_CHECKING, Annotated, Any
 
 if TYPE_CHECKING:
-    from ansible_know.galaxy_config import GalaxyServerConfig
+    pass
 
 import httpx
 from fastmcp import Context, FastMCP
@@ -23,6 +23,7 @@ from mcp.types import ToolAnnotations
 
 from ansible_know.async_utils import run_in_executor
 from ansible_know.errors import AnsibleDocError, ValidationError, collection_hint, maybe_add_hint
+from ansible_know.state import LifespanContext, ServerState
 from ansible_know.validation import (
     sanitize_error,
     truncate_response,
@@ -39,8 +40,11 @@ from ansible_know.validation import (
 logger = logging.getLogger("ansible_know")
 
 _VERSION = pkg_version("ansible-know-mcp")
-_version_info: dict[str, Any] | None = None
-_galaxy_servers: list[GalaxyServerConfig] | None = None
+
+# Module-level reference for resource functions that don't receive FastMCP
+# Context. Set once in lifespan; consolidates the former _version_info and
+# _galaxy_servers globals into a single typed object.
+_server_state: ServerState | None = None
 
 
 def _is_stable(v: str) -> bool:
@@ -83,11 +87,16 @@ async def _check_pypi_version(client: httpx.AsyncClient) -> dict[str, Any] | Non
 
 @lifespan
 async def app_lifespan(server):
-    global _version_info, _galaxy_servers
+    global _server_state
+    from ansible_know.collections import CollectionManager
     from ansible_know.galaxy_config import load_galaxy_servers
 
     galaxy_servers = await run_in_executor(load_galaxy_servers)
-    _galaxy_servers = galaxy_servers
+    state = ServerState(
+        collection_manager=CollectionManager(),
+        galaxy_servers=galaxy_servers,
+    )
+    _server_state = state
     for gs in galaxy_servers:
         auth_type = "token" if gs.token else ("basic" if gs.username else "none")
         logger.info("Galaxy server: %s (%s, auth=%s)", gs.name, gs.url, auth_type)
@@ -96,13 +105,8 @@ async def app_lifespan(server):
         timeout=httpx.Timeout(10.0, read=120.0),
         verify=True,
     ) as client:
-        _version_info = await _check_pypi_version(client)
-        yield {
-            "http_client": client,
-            "version_info": _version_info,
-            "upgrade_warned": False,
-            "galaxy_servers": galaxy_servers,
-        }
+        state.version_info = await _check_pypi_version(client)
+        yield LifespanContext(http_client=client, state=state)
 
 mcp = FastMCP(
     name="Ansible Know",
@@ -126,29 +130,36 @@ def _galaxy_factory():
     return GalaxyClient.from_config
 
 
-def _get_lifespan_resources(
-    ctx: Context | None,
-) -> tuple[httpx.AsyncClient | None, list[GalaxyServerConfig] | None]:
-    """Extract http_client and galaxy_servers from the lifespan context."""
+def _get_state(ctx: Context | None) -> ServerState:
+    """Return ServerState from ctx, fall back to module-level, or create ephemeral."""
+    if ctx is not None:
+        return ctx.lifespan_context["state"]
+    if _server_state is not None:
+        return _server_state
+    from ansible_know.collections import CollectionManager
+    return ServerState(collection_manager=CollectionManager())
+
+
+def _get_http_client(ctx: Context | None) -> httpx.AsyncClient | None:
+    """Extract http_client from the lifespan context."""
     if ctx is None:
-        return None, None
-    lc = ctx.lifespan_context
-    return lc.get("http_client"), lc.get("galaxy_servers")
+        return None
+    return ctx.lifespan_context["http_client"]
 
 
 async def _maybe_warn_upgrade(ctx: Context | None) -> None:
     if ctx is None:
         return
-    lc = ctx.lifespan_context
-    info = lc.get("version_info")
-    if lc.get("upgrade_warned") or not info or not info.get("outdated"):
+    state = _get_state(ctx)
+    if state.upgrade_warned or not state.version_info or not state.version_info.get("outdated"):
         return
+    info = state.version_info
     await ctx.warning(
         f"ansible-know-mcp {info['installed']} is outdated; "
         f"latest is {info['latest']}. "
         f"Upgrade: {info['upgrade_command']}"
     )
-    lc["upgrade_warned"] = True
+    state.upgrade_warned = True
 
 
 # --- Discovery tools (read-only) ---
@@ -158,6 +169,7 @@ async def _maybe_warn_upgrade(ctx: Context | None) -> None:
 async def search_modules(
     keyword: Annotated[str, "Search term to match against module names and descriptions"],
     namespace: Annotated[str | None, "Optional collection namespace filter (e.g. 'community.docker')"] = None,
+    ctx: Context | None = None,
 ) -> dict[str, str]:
     """Find Ansible modules by keyword in name or description. Returns up to 50 matches as {fqcn: short_description}.
 
@@ -172,12 +184,13 @@ async def search_modules(
         return {"error": str(exc)}
 
     try:
-        from ansible_know import collections, parser
+        from ansible_know import parser
         from ansible_know.config import SEARCH_MODULES_LIMIT
 
+        state = _get_state(ctx)
         results = await run_in_executor(
             parser.search_modules, keyword, collection_filter=namespace,
-            collections_path=collections.get_collections_path(),
+            collections_path=state.collection_manager.get_collections_path(),
         )
         if len(results) > SEARCH_MODULES_LIMIT:
             results = dict(list(results.items())[:SEARCH_MODULES_LIMIT])
@@ -210,10 +223,13 @@ async def get_module_doc(
     try:
         from ansible_know import parser, resolution
 
-        http_client, galaxy_servers = _get_lifespan_resources(ctx)
+        state = _get_state(ctx)
+        http_client = _get_http_client(ctx)
         raw_doc, galaxy_meta = await resolution.resolve_module_doc(
-            module_name, http_client=http_client, galaxy_servers=galaxy_servers,
+            module_name, http_client=http_client, galaxy_servers=state.galaxy_servers or None,
             client_factory=_galaxy_factory(),
+            missing_collections=state.missing_collections,
+            collections_path=state.collection_manager.get_collections_path(),
         )
         metadata = parser.extract_module_metadata(raw_doc)
         if galaxy_meta:
@@ -255,10 +271,13 @@ async def get_role_doc(
     try:
         from ansible_know import resolution
 
-        http_client, galaxy_servers = _get_lifespan_resources(ctx)
+        state = _get_state(ctx)
+        http_client = _get_http_client(ctx)
         return await resolution.resolve_role_doc(
-            role_name, http_client=http_client, galaxy_servers=galaxy_servers,
+            role_name, http_client=http_client, galaxy_servers=state.galaxy_servers or None,
             client_factory=_galaxy_factory(),
+            missing_collections=state.missing_collections,
+            collections_path=state.collection_manager.get_collections_path(),
         )
     except Exception as exc:
         logger.warning("get_role_doc failed: %s", exc)
@@ -328,9 +347,10 @@ async def search_collections(
     try:
         from ansible_know import resolution
 
-        http_client, galaxy_servers = _get_lifespan_resources(ctx)
+        state = _get_state(ctx)
+        http_client = _get_http_client(ctx)
         return await resolution.search_galaxy_collections(
-            query, tags=tags, http_client=http_client, galaxy_servers=galaxy_servers,
+            query, tags=tags, http_client=http_client, galaxy_servers=state.galaxy_servers or None,
             client_factory=_galaxy_factory(),
         )
     except Exception as exc:
@@ -355,16 +375,17 @@ async def get_collection_manifest(
         return {"error": str(exc)}
 
     try:
-        from ansible_know import collection_manifest, collections, parser
+        from ansible_know import collection_manifest, parser
 
-        installed_version = collections.list_installed().get(collection_namespace)
+        state = _get_state(None)
+        installed_version = state.collection_manager.list_installed().get(collection_namespace)
         cached = collection_manifest.load_cached_manifest(
             collection_namespace, installed_version=installed_version,
         )
         if cached:
             return cached
 
-        cpath = collections.get_collections_path()
+        cpath = state.collection_manager.get_collections_path()
 
         modules = await run_in_executor(
             parser.search_modules, "", collection_filter=collection_namespace,
@@ -451,12 +472,11 @@ async def ensure_collection(
         return {"error": str(exc)}
 
     try:
-        from ansible_know import collections, resolution
-
+        state = _get_state(None)
         result = await run_in_executor(
-            collections.ensure_collection, collection_fqcn=collection_namespace, version=version,
+            state.collection_manager.ensure_collection, collection_fqcn=collection_namespace, version=version,
         )
-        resolution.clear_missing_namespace(collection_namespace)
+        state.clear_missing_namespace(collection_namespace)
         logger.info(
             "ensure_collection result: namespace=%s version=%s status=%s",
             result["namespace"], result["version"], result["status"],
@@ -561,10 +581,13 @@ async def generate_skill(
         if ctx:
             await ctx.report_progress(progress=0, total=100)
 
-        http_client, galaxy_servers = _get_lifespan_resources(ctx)
+        state = _get_state(ctx)
+        http_client = _get_http_client(ctx)
         raw_doc, galaxy_meta = await resolution.resolve_module_doc(
-            module_name, http_client=http_client, galaxy_servers=galaxy_servers,
+            module_name, http_client=http_client, galaxy_servers=state.galaxy_servers or None,
             client_factory=_galaxy_factory(),
+            missing_collections=state.missing_collections,
+            collections_path=state.collection_manager.get_collections_path(),
         )
         metadata = parser.extract_module_metadata(raw_doc)
         if galaxy_meta:
@@ -622,10 +645,13 @@ async def generate_role_skill(
         if ctx:
             await ctx.report_progress(progress=0, total=100)
 
-        http_client, galaxy_servers = _get_lifespan_resources(ctx)
+        state = _get_state(ctx)
+        http_client = _get_http_client(ctx)
         metadata = await resolution.resolve_role_doc(
-            role_name, http_client=http_client, galaxy_servers=galaxy_servers,
+            role_name, http_client=http_client, galaxy_servers=state.galaxy_servers or None,
             client_factory=_galaxy_factory(),
+            missing_collections=state.missing_collections,
+            collections_path=state.collection_manager.get_collections_path(),
         )
 
         if metadata.get("doc_source") == "unavailable":
@@ -674,10 +700,11 @@ async def generate_collection_skills(
         return {"error": str(exc)}
 
     try:
-        from ansible_know import collection_manifest, collections, parser, skills
+        from ansible_know import collection_manifest, parser, skills
         from ansible_know.config import SKILLS_DIR
 
-        cpath = collections.get_collections_path()
+        state = _get_state(ctx)
+        cpath = state.collection_manager.get_collections_path()
         modules = await run_in_executor(
             parser.search_modules, "", collection_filter=collection_namespace,
             collections_path=cpath,
@@ -782,9 +809,8 @@ def resource_skill_content(skill_name: str) -> str:
     description="List collections installed in this session via ensure_collection",
 )
 def resource_installed_collections() -> str:
-    from ansible_know import collections
-
-    return json.dumps(collections.list_installed(), indent=2)
+    installed = _server_state.collection_manager.list_installed() if _server_state else {}
+    return json.dumps(installed, indent=2)
 
 
 @mcp.resource(
@@ -793,8 +819,9 @@ def resource_installed_collections() -> str:
     description="Installed and latest version info with upgrade status",
 )
 def resource_server_version() -> str:
-    if _version_info:
-        return json.dumps(_version_info, indent=2)
+    version_info = _server_state.version_info if _server_state else None
+    if version_info:
+        return json.dumps(version_info, indent=2)
     return json.dumps(
         {
             "installed": _VERSION,
@@ -817,7 +844,7 @@ def resource_server_version() -> str:
 def resource_galaxy_servers() -> str:
     from ansible_know.galaxy_config import load_galaxy_servers
 
-    servers = _galaxy_servers or load_galaxy_servers()
+    servers = (_server_state.galaxy_servers if _server_state else None) or load_galaxy_servers()
     return json.dumps([
         {
             "name": s.name,
