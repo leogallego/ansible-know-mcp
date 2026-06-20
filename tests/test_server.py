@@ -14,15 +14,6 @@ from tests.conftest import (
 )
 
 
-@pytest.fixture(autouse=True)
-def reset_negative_cache_global():
-    """Clear the negative cache before each test to prevent test pollution."""
-    from ansible_know import resolution
-    resolution._missing_collections.clear()
-    yield
-    resolution._missing_collections.clear()
-
-
 @pytest.fixture
 def mock_ansible_doc():
     with patch("ansible_know.parser._run_ansible_doc") as mock:
@@ -307,9 +298,6 @@ class TestEnsureCollectionTool:
         mock_result.returncode = 0
         with patch("ansible_know.collections._find_ansible_galaxy", return_value="/usr/bin/ansible-galaxy"):
             with patch("subprocess.run", return_value=mock_result):
-                import ansible_know.collections as col
-                col._installed = {}
-                col._tmp_dir = None
                 from ansible_know.server import ensure_collection
                 result = await ensure_collection("netbox.netbox")
         assert result["status"] == "installed"
@@ -336,9 +324,6 @@ class TestEnsureCollectionTool:
         mock_result.returncode = 0
         with patch("ansible_know.collections._find_ansible_galaxy", return_value="/usr/bin/ansible-galaxy"):
             with patch("subprocess.run", return_value=mock_result):
-                import ansible_know.collections as col
-                col._installed = {}
-                col._tmp_dir = None
                 from ansible_know.server import ensure_collection
                 result = await ensure_collection("netbox.netbox", version="3.9.0")
         assert result["status"] == "installed"
@@ -570,17 +555,34 @@ class TestResourceFunctions:
         assert "invalid" in result.lower() or "expected" in result.lower()
 
     def test_resource_installed_collections_empty(self):
-        with patch("ansible_know.collections.list_installed", return_value={}):
-            from ansible_know.server import resource_installed_collections
-            result = json.loads(resource_installed_collections())
+        import ansible_know.server as srv
+        from ansible_know.collections import CollectionManager
+        from ansible_know.state import ServerState
+
+        state = ServerState(collection_manager=CollectionManager())
+        old = srv._server_state
+        try:
+            srv._server_state = state
+            result = json.loads(srv.resource_installed_collections())
+        finally:
+            srv._server_state = old
         assert result == {}
 
     def test_resource_installed_collections_with_data(self):
-        installed = {"netbox.netbox": "4.1.0", "ansible.utils": "5.0.0"}
-        with patch("ansible_know.collections.list_installed", return_value=installed):
-            from ansible_know.server import resource_installed_collections
-            result = json.loads(resource_installed_collections())
-        assert result == installed
+        import ansible_know.server as srv
+        from ansible_know.collections import CollectionManager
+        from ansible_know.state import ServerState
+
+        cm = CollectionManager()
+        state = ServerState(collection_manager=cm)
+        old = srv._server_state
+        try:
+            srv._server_state = state
+            with patch.object(cm, "list_installed", return_value={"netbox.netbox": "4.1.0", "ansible.utils": "5.0.0"}):
+                result = json.loads(srv.resource_installed_collections())
+        finally:
+            srv._server_state = old
+        assert result == {"netbox.netbox": "4.1.0", "ansible.utils": "5.0.0"}
 
     def test_resource_doc_sources(self):
         from ansible_know.server import resource_doc_sources
@@ -758,35 +760,41 @@ class TestCheckPypiVersion:
 class TestMaybeWarnUpgrade:
     @pytest.mark.asyncio
     async def test_warns_when_outdated(self):
+        from ansible_know.collections import CollectionManager
         from ansible_know.server import _maybe_warn_upgrade
+        from ansible_know.state import ServerState
 
-        mock_ctx = MagicMock()
-        mock_ctx.lifespan_context = {
-            "version_info": {
+        state = ServerState(
+            collection_manager=CollectionManager(),
+            version_info={
                 "installed": "0.3.2", "latest": "0.4.0",
                 "outdated": True, "upgrade_command": "uvx --upgrade ansible-know-mcp",
             },
-            "upgrade_warned": False,
-        }
+        )
+        mock_ctx = MagicMock()
+        mock_ctx.lifespan_context = {"state": state, "http_client": None}
         mock_ctx.warning = AsyncMock()
 
         await _maybe_warn_upgrade(mock_ctx)
         mock_ctx.warning.assert_called_once()
         assert "outdated" in mock_ctx.warning.call_args[0][0]
-        assert mock_ctx.lifespan_context["upgrade_warned"] is True
+        assert state.upgrade_warned is True
 
     @pytest.mark.asyncio
     async def test_warns_only_once(self):
+        from ansible_know.collections import CollectionManager
         from ansible_know.server import _maybe_warn_upgrade
+        from ansible_know.state import ServerState
 
-        mock_ctx = MagicMock()
-        mock_ctx.lifespan_context = {
-            "version_info": {
+        state = ServerState(
+            collection_manager=CollectionManager(),
+            version_info={
                 "installed": "0.3.2", "latest": "0.4.0",
                 "outdated": True, "upgrade_command": "uvx --upgrade ansible-know-mcp",
             },
-            "upgrade_warned": False,
-        }
+        )
+        mock_ctx = MagicMock()
+        mock_ctx.lifespan_context = {"state": state, "http_client": None}
         mock_ctx.warning = AsyncMock()
 
         await _maybe_warn_upgrade(mock_ctx)
@@ -795,16 +803,19 @@ class TestMaybeWarnUpgrade:
 
     @pytest.mark.asyncio
     async def test_no_warn_when_current(self):
+        from ansible_know.collections import CollectionManager
         from ansible_know.server import _maybe_warn_upgrade
+        from ansible_know.state import ServerState
 
-        mock_ctx = MagicMock()
-        mock_ctx.lifespan_context = {
-            "version_info": {
+        state = ServerState(
+            collection_manager=CollectionManager(),
+            version_info={
                 "installed": "0.3.2", "latest": "0.3.2",
                 "outdated": False, "upgrade_command": "uvx --upgrade ansible-know-mcp",
             },
-            "upgrade_warned": False,
-        }
+        )
+        mock_ctx = MagicMock()
+        mock_ctx.lifespan_context = {"state": state, "http_client": None}
         mock_ctx.warning = AsyncMock()
 
         await _maybe_warn_upgrade(mock_ctx)
@@ -812,13 +823,16 @@ class TestMaybeWarnUpgrade:
 
     @pytest.mark.asyncio
     async def test_no_warn_when_check_failed(self):
+        from ansible_know.collections import CollectionManager
         from ansible_know.server import _maybe_warn_upgrade
+        from ansible_know.state import ServerState
 
+        state = ServerState(
+            collection_manager=CollectionManager(),
+            version_info=None,
+        )
         mock_ctx = MagicMock()
-        mock_ctx.lifespan_context = {
-            "version_info": None,
-            "upgrade_warned": False,
-        }
+        mock_ctx.lifespan_context = {"state": state, "http_client": None}
         mock_ctx.warning = AsyncMock()
 
         await _maybe_warn_upgrade(mock_ctx)
@@ -833,32 +847,43 @@ class TestMaybeWarnUpgrade:
 class TestServerVersionResource:
     def test_returns_installed_version_without_pypi_check(self):
         import ansible_know.server as srv
-        old = srv._version_info
+        from ansible_know.collections import CollectionManager
+        from ansible_know.state import ServerState
+
+        state = ServerState(collection_manager=CollectionManager())
+        old = srv._server_state
         try:
-            srv._version_info = None
+            srv._server_state = state
             result = json.loads(srv.resource_server_version())
             assert result["installed"] == srv._VERSION
             assert result["latest"] is None
             assert result["outdated"] is None
         finally:
-            srv._version_info = old
+            srv._server_state = old
 
     def test_returns_pypi_info_when_available(self):
         import ansible_know.server as srv
-        old = srv._version_info
-        try:
-            srv._version_info = {
+        from ansible_know.collections import CollectionManager
+        from ansible_know.state import ServerState
+
+        state = ServerState(
+            collection_manager=CollectionManager(),
+            version_info={
                 "installed": "0.3.2",
                 "latest": "0.4.0",
                 "outdated": True,
                 "upgrade_command": "uvx --upgrade ansible-know-mcp",
-            }
+            },
+        )
+        old = srv._server_state
+        try:
+            srv._server_state = state
             result = json.loads(srv.resource_server_version())
             assert result["installed"] == "0.3.2"
             assert result["latest"] == "0.4.0"
             assert result["outdated"] is True
         finally:
-            srv._version_info = old
+            srv._server_state = old
 
 
 class TestSearchCollectionsTool:
@@ -931,10 +956,14 @@ class TestSearchCollectionsTool:
 class TestLifespanHttpClient:
     @pytest.mark.asyncio
     async def test_get_module_doc_passes_lifespan_http_client(self, mock_ansible_doc):
+        from ansible_know.collections import CollectionManager
+        from ansible_know.state import ServerState
+
         mock_ansible_doc.return_value = json.dumps(SAMPLE_MODULE_DOC)
         mock_client = AsyncMock()
+        state = ServerState(collection_manager=CollectionManager())
         mock_ctx = MagicMock()
-        mock_ctx.lifespan_context = {"http_client": mock_client, "galaxy_servers": None}
+        mock_ctx.lifespan_context = {"http_client": mock_client, "state": state}
 
         with patch("ansible_know.resolution.resolve_module_doc") as mock_resolve:
             mock_resolve.return_value = (SAMPLE_MODULE_DOC, None)
@@ -944,14 +973,18 @@ class TestLifespanHttpClient:
         args, kwargs = mock_resolve.call_args
         assert args == ("ansible.builtin.package",)
         assert kwargs["http_client"] is mock_client
-        assert kwargs["galaxy_servers"] is None
+        assert kwargs["galaxy_servers"] == []
         assert kwargs["client_factory"] is not None
 
     @pytest.mark.asyncio
     async def test_search_collections_passes_lifespan_http_client(self):
+        from ansible_know.collections import CollectionManager
+        from ansible_know.state import ServerState
+
         mock_client = AsyncMock()
+        state = ServerState(collection_manager=CollectionManager())
         mock_ctx = MagicMock()
-        mock_ctx.lifespan_context = {"http_client": mock_client, "galaxy_servers": None}
+        mock_ctx.lifespan_context = {"http_client": mock_client, "state": state}
 
         mock_result = {"query": "test", "count": 0, "collections": []}
         with patch("ansible_know.galaxy.GalaxyClient.from_config") as mock_from_config:
@@ -967,20 +1000,23 @@ class TestLifespanHttpClient:
 
     @pytest.mark.asyncio
     async def test_validate_certs_false_skips_shared_client(self):
+        from ansible_know.collections import CollectionManager
         from ansible_know.galaxy_config import GalaxyServerConfig
+        from ansible_know.state import ServerState
 
         mock_client = AsyncMock()
-        mock_ctx = MagicMock()
         server = GalaxyServerConfig(
             name="private_hub",
             url="https://hub.internal.com/api/galaxy",
             token="secret",
             validate_certs=False,
         )
-        mock_ctx.lifespan_context = {
-            "http_client": mock_client,
-            "galaxy_servers": [server],
-        }
+        state = ServerState(
+            collection_manager=CollectionManager(),
+            galaxy_servers=[server],
+        )
+        mock_ctx = MagicMock()
+        mock_ctx.lifespan_context = {"http_client": mock_client, "state": state}
 
         mock_result = {"query": "test", "count": 0, "collections": []}
         with patch("ansible_know.galaxy.GalaxyClient.from_config") as mock_from_config:
@@ -996,19 +1032,22 @@ class TestLifespanHttpClient:
 
     @pytest.mark.asyncio
     async def test_validate_certs_true_uses_shared_client(self):
+        from ansible_know.collections import CollectionManager
         from ansible_know.galaxy_config import GalaxyServerConfig
+        from ansible_know.state import ServerState
 
         mock_client = AsyncMock()
-        mock_ctx = MagicMock()
         server = GalaxyServerConfig(
             name="public_galaxy",
             url="https://galaxy.ansible.com",
             validate_certs=True,
         )
-        mock_ctx.lifespan_context = {
-            "http_client": mock_client,
-            "galaxy_servers": [server],
-        }
+        state = ServerState(
+            collection_manager=CollectionManager(),
+            galaxy_servers=[server],
+        )
+        mock_ctx = MagicMock()
+        mock_ctx.lifespan_context = {"http_client": mock_client, "state": state}
 
         mock_result = {"query": "test", "count": 0, "collections": []}
         with patch("ansible_know.galaxy.GalaxyClient.from_config") as mock_from_config:
@@ -1088,8 +1127,15 @@ class TestGetRoleDocTool:
 
     @pytest.mark.asyncio
     async def test_cached_missing_collection_skips_local(self, mock_ansible_doc):
-        from ansible_know import resolution
-        resolution._missing_collections.add("some.col")
+        from ansible_know.collections import CollectionManager
+        from ansible_know.state import ServerState
+
+        state = ServerState(collection_manager=CollectionManager())
+        state.missing_collections.add("some.col")
+
+        mock_ctx = MagicMock()
+        mock_ctx.lifespan_context = {"state": state, "http_client": None}
+        mock_ctx.warning = AsyncMock()
 
         galaxy_role_meta = {
             "role_name": "some.col.role",
@@ -1105,12 +1151,12 @@ class TestGetRoleDocTool:
             return_value=(galaxy_role_meta, galaxy_meta),
         ):
             from ansible_know.server import get_role_doc
-            result = await get_role_doc("some.col.role")
+            result = await get_role_doc("some.col.role", ctx=mock_ctx)
 
         mock_ansible_doc.assert_not_called()
         assert result["doc_source"] == "galaxy_readme"
 
-        assert "ansible.builtin" not in resolution._missing_collections
+        assert "ansible.builtin" not in state.missing_collections
 
 
 class TestGenerateRoleSkillTool:

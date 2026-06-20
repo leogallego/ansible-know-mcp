@@ -11,13 +11,10 @@ from tests.conftest import SAMPLE_MODULE_DOC, SAMPLE_ROLE_DOC
 FACTORY = GalaxyClient.from_config
 
 
-@pytest.fixture(autouse=True)
-def reset_negative_cache():
-    """Clear the negative cache before each test."""
-    from ansible_know import resolution
-    resolution._missing_collections.clear()
-    yield
-    resolution._missing_collections.clear()
+@pytest.fixture
+def missing():
+    """Provide a fresh missing-collections set for each test."""
+    return set()
 
 
 @pytest.fixture
@@ -30,15 +27,17 @@ class TestResolveModuleDoc:
     """Tests migrated from test_server.py::TestResolveModuleDoc + new cases."""
 
     @pytest.mark.asyncio
-    async def test_local_success_no_galaxy(self, mock_ansible_doc):
+    async def test_local_success_no_galaxy(self, mock_ansible_doc, missing):
         mock_ansible_doc.return_value = json.dumps(SAMPLE_MODULE_DOC)
         from ansible_know.resolution import resolve_module_doc
-        raw_doc, galaxy_meta = await resolve_module_doc("ansible.builtin.package")
+        raw_doc, galaxy_meta = await resolve_module_doc(
+            "ansible.builtin.package", missing_collections=missing,
+        )
         assert "ansible.builtin.package" in raw_doc
         assert galaxy_meta is None
 
     @pytest.mark.asyncio
-    async def test_non_missing_collection_error_not_retried(self, mock_ansible_doc):
+    async def test_non_missing_collection_error_not_retried(self, mock_ansible_doc, missing):
         from ansible_know.errors import AnsibleDocError
         mock_ansible_doc.side_effect = AnsibleDocError("ansible-doc timed out")
 
@@ -48,10 +47,12 @@ class TestResolveModuleDoc:
         ):
             from ansible_know.resolution import resolve_module_doc
             with pytest.raises(AnsibleDocError, match="timed out"):
-                await resolve_module_doc("ansible.builtin.copy")
+                await resolve_module_doc(
+                    "ansible.builtin.copy", missing_collections=missing,
+                )
 
     @pytest.mark.asyncio
-    async def test_galaxy_fallback_on_missing_collection(self, mock_ansible_doc):
+    async def test_galaxy_fallback_on_missing_collection(self, mock_ansible_doc, missing):
         from ansible_know.errors import CollectionNotFoundError
         mock_ansible_doc.side_effect = CollectionNotFoundError(
             "ansible-doc failed (exit 1): netbox.netbox.netbox_device has no attribute"
@@ -76,14 +77,16 @@ class TestResolveModuleDoc:
         ):
             from ansible_know.resolution import resolve_module_doc
             raw_doc, meta = await resolve_module_doc(
-                "netbox.netbox.netbox_device", client_factory=FACTORY,
+                "netbox.netbox.netbox_device",
+                client_factory=FACTORY,
+                missing_collections=missing,
             )
 
         assert raw_doc == galaxy_doc
         assert meta["doc_source"] == "galaxy"
 
     @pytest.mark.asyncio
-    async def test_both_fail_raises_local_error(self, mock_ansible_doc):
+    async def test_both_fail_raises_local_error(self, mock_ansible_doc, missing):
         from ansible_know.errors import CollectionNotFoundError, GalaxyError
         mock_ansible_doc.side_effect = CollectionNotFoundError(
             "ansible-doc failed (exit 1): some.col.mod was not found"
@@ -95,21 +98,27 @@ class TestResolveModuleDoc:
         ):
             from ansible_know.resolution import resolve_module_doc
             with pytest.raises(CollectionNotFoundError, match="was not found"):
-                await resolve_module_doc("some.col.mod", client_factory=FACTORY)
+                await resolve_module_doc(
+                    "some.col.mod",
+                    client_factory=FACTORY,
+                    missing_collections=missing,
+                )
 
 
 class TestResolveRoleDoc:
 
     @pytest.mark.asyncio
-    async def test_local_success(self, mock_ansible_doc):
+    async def test_local_success(self, mock_ansible_doc, missing):
         mock_ansible_doc.return_value = json.dumps(SAMPLE_ROLE_DOC)
         from ansible_know.resolution import resolve_role_doc
-        result = await resolve_role_doc("fedora.linux_system_roles.gfs2")
+        result = await resolve_role_doc(
+            "fedora.linux_system_roles.gfs2", missing_collections=missing,
+        )
         assert result["content_type"] == "role"
         assert result["doc_source"] == "local"
 
     @pytest.mark.asyncio
-    async def test_galaxy_fallback_on_empty_doc(self, mock_ansible_doc):
+    async def test_galaxy_fallback_on_empty_doc(self, mock_ansible_doc, missing):
         mock_ansible_doc.return_value = "{}"
         galaxy_role_meta = {
             "role_name": "fedora.linux_system_roles.timesync",
@@ -125,14 +134,16 @@ class TestResolveRoleDoc:
         ):
             from ansible_know.resolution import resolve_role_doc
             result = await resolve_role_doc(
-                "fedora.linux_system_roles.timesync", client_factory=FACTORY,
+                "fedora.linux_system_roles.timesync",
+                client_factory=FACTORY,
+                missing_collections=missing,
             )
 
         assert result["doc_source"] == "galaxy_readme"
         assert result["content_type"] == "role"
 
     @pytest.mark.asyncio
-    async def test_graceful_degradation(self, mock_ansible_doc):
+    async def test_graceful_degradation(self, mock_ansible_doc, missing):
         mock_ansible_doc.return_value = "{}"
         from ansible_know.errors import GalaxyError
 
@@ -142,7 +153,9 @@ class TestResolveRoleDoc:
         ):
             from ansible_know.resolution import resolve_role_doc
             result = await resolve_role_doc(
-                "some.col.missing_role", client_factory=FACTORY,
+                "some.col.missing_role",
+                client_factory=FACTORY,
+                missing_collections=missing,
             )
 
         assert result["doc_source"] == "unavailable"
@@ -153,9 +166,8 @@ class TestNegativeCache:
     """Tests migrated from test_server.py::TestNegativeCache."""
 
     @pytest.mark.asyncio
-    async def test_skips_local_on_cache_hit(self, mock_ansible_doc):
-        from ansible_know import resolution
-        resolution._missing_collections.add("netbox.netbox")
+    async def test_skips_local_on_cache_hit(self, mock_ansible_doc, missing):
+        missing.add("netbox.netbox")
 
         galaxy_doc = {
             "netbox.netbox.netbox_device": {
@@ -173,16 +185,18 @@ class TestNegativeCache:
             "ansible_know.galaxy.GalaxyClient.fetch_module_doc",
             return_value=(galaxy_doc, galaxy_meta),
         ):
-            raw_doc, meta = await resolution.resolve_module_doc(
-                "netbox.netbox.netbox_device", client_factory=FACTORY,
+            from ansible_know.resolution import resolve_module_doc
+            raw_doc, meta = await resolve_module_doc(
+                "netbox.netbox.netbox_device",
+                client_factory=FACTORY,
+                missing_collections=missing,
             )
 
         mock_ansible_doc.assert_not_called()
         assert meta["doc_source"] == "galaxy"
 
     @pytest.mark.asyncio
-    async def test_populates_cache_on_collection_not_found(self, mock_ansible_doc):
-        from ansible_know import resolution
+    async def test_populates_cache_on_collection_not_found(self, mock_ansible_doc, missing):
         from ansible_know.errors import CollectionNotFoundError, GalaxyError
 
         mock_ansible_doc.side_effect = CollectionNotFoundError("netbox.netbox has no attribute")
@@ -191,35 +205,41 @@ class TestNegativeCache:
             "ansible_know.galaxy.GalaxyClient.fetch_module_doc",
             side_effect=GalaxyError("not found"),
         ):
+            from ansible_know.resolution import resolve_module_doc
             with pytest.raises(CollectionNotFoundError):
-                await resolution.resolve_module_doc(
-                    "netbox.netbox.netbox_device", client_factory=FACTORY,
+                await resolve_module_doc(
+                    "netbox.netbox.netbox_device",
+                    client_factory=FACTORY,
+                    missing_collections=missing,
                 )
 
-        assert "netbox.netbox" in resolution._missing_collections
+        assert "netbox.netbox" in missing
 
     @pytest.mark.asyncio
-    async def test_does_not_cache_non_collection_errors(self, mock_ansible_doc):
-        from ansible_know import resolution
+    async def test_does_not_cache_non_collection_errors(self, mock_ansible_doc, missing):
         from ansible_know.errors import AnsibleDocError
 
         mock_ansible_doc.side_effect = AnsibleDocError("ansible-doc timed out")
 
+        from ansible_know.resolution import resolve_module_doc
         with pytest.raises(AnsibleDocError):
-            await resolution.resolve_module_doc("ansible.builtin.copy")
+            await resolve_module_doc(
+                "ansible.builtin.copy", missing_collections=missing,
+            )
 
-        assert "ansible.builtin" not in resolution._missing_collections
+        assert "ansible.builtin" not in missing
 
     def test_clear_missing_namespace(self):
-        from ansible_know import resolution
-        resolution._missing_collections.add("netbox.netbox")
-        resolution.clear_missing_namespace("netbox.netbox")
-        assert "netbox.netbox" not in resolution._missing_collections
+        from ansible_know.collections import CollectionManager
+        from ansible_know.state import ServerState
+        state = ServerState(collection_manager=CollectionManager())
+        state.missing_collections.add("netbox.netbox")
+        state.clear_missing_namespace("netbox.netbox")
+        assert "netbox.netbox" not in state.missing_collections
 
     @pytest.mark.asyncio
-    async def test_role_skips_local_on_cache_hit(self, mock_ansible_doc):
-        from ansible_know import resolution
-        resolution._missing_collections.add("some.col")
+    async def test_role_skips_local_on_cache_hit(self, mock_ansible_doc, missing):
+        missing.add("some.col")
 
         galaxy_role_meta = {
             "role_name": "some.col.role",
@@ -233,8 +253,11 @@ class TestNegativeCache:
             "ansible_know.galaxy.GalaxyClient.fetch_role_doc",
             return_value=(galaxy_role_meta, galaxy_meta),
         ):
-            result = await resolution.resolve_role_doc(
-                "some.col.role", client_factory=FACTORY,
+            from ansible_know.resolution import resolve_role_doc
+            result = await resolve_role_doc(
+                "some.col.role",
+                client_factory=FACTORY,
+                missing_collections=missing,
             )
 
         mock_ansible_doc.assert_not_called()
