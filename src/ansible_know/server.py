@@ -935,7 +935,13 @@ def find_collection(platform_or_use_case: str) -> str:
 
 def main():
     """Entry point for the MCP server."""
-    mcp.run()
+    from ansible_know.cli import parse_args
+
+    config = parse_args()
+    kwargs: dict[str, Any] = {}
+    if config.transport == "http":
+        kwargs.update(host=config.host, port=config.port)
+    mcp.run(transport=config.transport, **kwargs)
 
 
 if __name__ == "__main__":
