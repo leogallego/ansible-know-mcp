@@ -868,65 +868,6 @@ class TestModuleWithoutDocStrings:
         assert modules["test.col.has_docs"] == "Has docs"
 
 
-class TestTransformEdgeCases:
-    def test_missing_doc_strings(self):
-        entry = {"content_type": "module", "content_name": "test"}
-        result = GalaxyClient._transform_to_ansible_doc_format("ns.col.test", entry)
-        doc = result["ns.col.test"]["doc"]
-        assert doc["short_description"] == ""
-        assert doc["options"] == {}
-
-    def test_missing_short_description(self):
-        entry = {
-            "doc_strings": {
-                "doc": {"description": ["Some desc"], "options": []},
-                "examples": "",
-                "return": [],
-                "metadata": {},
-            }
-        }
-        result = GalaxyClient._transform_to_ansible_doc_format("ns.col.mod", entry)
-        assert result["ns.col.mod"]["doc"]["short_description"] == ""
-
-    def test_options_list_with_non_dict_items(self):
-        entry = {
-            "doc_strings": {
-                "doc": {
-                    "short_description": "Test",
-                    "options": [
-                        {"name": "valid", "type": "str"},
-                        "not_a_dict",
-                        42,
-                    ],
-                },
-                "examples": "",
-                "return": [],
-                "metadata": {},
-            }
-        }
-        result = GalaxyClient._transform_to_ansible_doc_format("ns.col.mod", entry)
-        opts = result["ns.col.mod"]["doc"]["options"]
-        assert "valid" in opts
-        assert len(opts) == 1
-
-    def test_option_without_name_key(self):
-        entry = {
-            "doc_strings": {
-                "doc": {
-                    "short_description": "Test",
-                    "options": [
-                        {"type": "str", "required": True},
-                    ],
-                },
-                "examples": "",
-                "return": [],
-                "metadata": {},
-            }
-        }
-        result = GalaxyClient._transform_to_ansible_doc_format("ns.col.mod", entry)
-        assert result["ns.col.mod"]["doc"]["options"] == {}
-
-
 class TestUnicodeQueries:
     @pytest.mark.asyncio
     async def test_unicode_search_collections(self):

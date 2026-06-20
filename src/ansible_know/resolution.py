@@ -104,11 +104,12 @@ async def resolve_module_doc(
     Returns (raw_doc, galaxy_meta_or_none). Raises on non-missing-collection
     errors and when both local and Galaxy lookups fail.
     """
-    from ansible_know import parser
+    from ansible_know import collections, parser
     from ansible_know.errors import CollectionNotFoundError, GalaxyError
 
     servers = _get_servers(galaxy_servers)
     namespace = ".".join(module_name.split(".")[:2]) if "." in module_name else None
+    cpath = collections.get_collections_path()
 
     async def _fetch_from_galaxy(client):
         return await client.fetch_module_doc(module_name)
@@ -129,7 +130,9 @@ async def resolve_module_doc(
             ) from galaxy_exc
 
     try:
-        raw_doc = await run_in_executor(parser.get_module_doc, module_name)
+        raw_doc = await run_in_executor(
+            parser.get_module_doc, module_name, collections_path=cpath,
+        )
         return raw_doc, None
     except CollectionNotFoundError as local_exc:
         if namespace:
@@ -157,17 +160,20 @@ async def resolve_role_doc(
 
     Returns the complete tool response dict including doc_source and content_type.
     """
-    from ansible_know import parser
+    from ansible_know import collections, parser
     from ansible_know.errors import CollectionNotFoundError, GalaxyError
 
     servers = _get_servers(galaxy_servers)
     namespace = ".".join(role_name.split(".")[:2]) if "." in role_name else None
+    cpath = collections.get_collections_path()
 
     local_doc: dict[str, Any] = {}
 
     if not (namespace and namespace in _missing_collections):
         try:
-            local_doc = await run_in_executor(parser.get_role_doc, role_name)
+            local_doc = await run_in_executor(
+                parser.get_role_doc, role_name, collections_path=cpath,
+            )
         except CollectionNotFoundError:
             if namespace:
                 _missing_collections.add(namespace)

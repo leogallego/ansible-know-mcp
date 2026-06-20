@@ -338,45 +338,6 @@ class GalaxyClient:
                 return item
         return None
 
-    @staticmethod
-    def _transform_to_ansible_doc_format(
-        fqcn: str, entry: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Convert a Galaxy docs-blob content entry to ansible-doc --json format."""
-        ds = entry.get("doc_strings", {})
-        raw_doc = ds.get("doc", {})
-
-        raw_options = raw_doc.get("options", [])
-        if isinstance(raw_options, list):
-            options_dict: dict[str, Any] = {}
-            for opt in raw_options:
-                if not isinstance(opt, dict):
-                    continue
-                opt_copy = dict(opt)
-                opt_name = opt_copy.pop("name", None)
-                if opt_name:
-                    options_dict[opt_name] = opt_copy
-        else:
-            options_dict = raw_options
-
-        doc_section = {
-            "short_description": raw_doc.get("short_description", ""),
-            "description": raw_doc.get("description", []),
-            "options": options_dict,
-            "author": raw_doc.get("author", []),
-            "notes": raw_doc.get("notes", []),
-            "version_added": raw_doc.get("version_added", ""),
-        }
-
-        return {
-            fqcn: {
-                "doc": doc_section,
-                "examples": ds.get("examples", ""),
-                "return": ds.get("return", []),
-                "metadata": ds.get("metadata", {}),
-            }
-        }
-
     async def fetch_module_doc(
         self, module_name: str, version: str | None = None,
     ) -> tuple[dict[str, Any], DocProvenance]:
@@ -397,7 +358,8 @@ class GalaxyClient:
                 f"{namespace}.{name} {resolved_version} docs-blob."
             )
 
-        doc = self._transform_to_ansible_doc_format(module_name, module_entry)
+        from ansible_know.parser import transform_galaxy_to_ansible_doc_format
+        doc = transform_galaxy_to_ansible_doc_format(module_name, module_entry)
 
         meta: DocProvenance = {
             "doc_source": "galaxy",
