@@ -86,11 +86,35 @@ Add to `.vscode/mcp.json` in your workspace:
 
 ### Any MCP client
 
-The server communicates over stdio:
+The server communicates over stdio by default:
 
 ```bash
 uvx ansible-know-mcp
 ```
+
+### HTTP Transport
+
+Run as a standalone HTTP server for shared/remote access:
+
+```bash
+# HTTP on default port (8080)
+ansible-know-mcp --transport http
+
+# Custom host and port
+ansible-know-mcp --transport http --host 10.0.0.1 --port 9090
+
+# Via environment variables (useful for containers)
+export ANSIBLE_KNOW_TRANSPORT=http
+export ANSIBLE_KNOW_PORT=8080
+ansible-know-mcp
+```
+
+Connect from any MCP client using the streamable HTTP URL:
+`http://<host>:8080/mcp/`
+
+> **Security**: HTTP mode has no built-in authentication. Deploy behind a
+> reverse proxy with authentication/authorization, or use only on trusted
+> networks.
 
 ### Full stack
 
