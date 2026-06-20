@@ -37,7 +37,7 @@ class ServerConfig:
     port: int        # only relevant for http
 ```
 
-Exports:
+Exports (`__all__`):
 - `ServerConfig` — frozen dataclass with validated transport config
 - `parse_args(argv: list[str] | None = None) -> ServerConfig` — argparse
   with env var defaults, validates transport and port
@@ -162,6 +162,10 @@ ansible-know-mcp
 
 Connect from any MCP client using the HTTP streamable transport URL:
 `http://<host>:8080/mcp/`
+
+> **Security**: HTTP mode has no built-in authentication. Deploy behind a
+> reverse proxy with authentication/authorization, or use only on trusted
+> networks.
 \`\`\`
 
 ### pyproject.toml
