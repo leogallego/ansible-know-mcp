@@ -31,7 +31,6 @@ __all__ = [
 ]
 
 
-
 def _select_http_client(
     http_client: httpx.AsyncClient | None,
     server: GalaxyServerConfig,
@@ -71,7 +70,7 @@ def _get_servers(
     galaxy_servers: list[GalaxyServerConfig] | None,
 ) -> list[GalaxyServerConfig]:
     """Return explicit servers or fall back to ansible.cfg discovery."""
-    if galaxy_servers is not None:
+    if galaxy_servers:
         return galaxy_servers
     from ansible_know.galaxy_config import load_galaxy_servers
     return load_galaxy_servers()

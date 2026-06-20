@@ -40,3 +40,7 @@ class TestLifespanContext:
     def test_is_typed_dict(self):
         assert "http_client" in LifespanContext.__annotations__
         assert "state" in LifespanContext.__annotations__
+
+    def test_required_keys(self):
+        assert "http_client" in LifespanContext.__required_keys__
+        assert "state" in LifespanContext.__required_keys__

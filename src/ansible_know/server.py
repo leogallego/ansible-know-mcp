@@ -223,7 +223,7 @@ async def get_module_doc(
         state = _get_state(ctx)
         http_client = _get_http_client(ctx)
         raw_doc, galaxy_meta = await resolution.resolve_module_doc(
-            module_name, http_client=http_client, galaxy_servers=state.galaxy_servers or None,
+            module_name, http_client=http_client, galaxy_servers=state.galaxy_servers,
             client_factory=_galaxy_factory(),
             missing_collections=state.missing_collections,
             collections_path=state.collection_manager.get_collections_path(),
@@ -271,7 +271,7 @@ async def get_role_doc(
         state = _get_state(ctx)
         http_client = _get_http_client(ctx)
         return await resolution.resolve_role_doc(
-            role_name, http_client=http_client, galaxy_servers=state.galaxy_servers or None,
+            role_name, http_client=http_client, galaxy_servers=state.galaxy_servers,
             client_factory=_galaxy_factory(),
             missing_collections=state.missing_collections,
             collections_path=state.collection_manager.get_collections_path(),
@@ -347,7 +347,7 @@ async def search_collections(
         state = _get_state(ctx)
         http_client = _get_http_client(ctx)
         return await resolution.search_galaxy_collections(
-            query, tags=tags, http_client=http_client, galaxy_servers=state.galaxy_servers or None,
+            query, tags=tags, http_client=http_client, galaxy_servers=state.galaxy_servers,
             client_factory=_galaxy_factory(),
         )
     except Exception as exc:
@@ -358,6 +358,7 @@ async def search_collections(
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_collection_manifest(
     collection_namespace: Annotated[str, "Collection namespace (e.g. 'netbox.netbox')"],
+    ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Get collection-level manifest with per-module summaries.
 
@@ -371,10 +372,11 @@ async def get_collection_manifest(
     except ValidationError as exc:
         return {"error": str(exc)}
 
+    await _maybe_warn_upgrade(ctx)
     try:
         from ansible_know import collection_manifest, parser
 
-        state = _get_state(None)
+        state = _get_state(ctx)
         installed_version = state.collection_manager.list_installed().get(collection_namespace)
         cached = collection_manifest.load_cached_manifest(
             collection_namespace, installed_version=installed_version,
@@ -444,6 +446,7 @@ async def ensure_collection(
         str | None,
         "Optional version (e.g. '4.1.0'). If omitted, installs latest and pins the resolved version.",
     ] = None,
+    ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Install a collection to a temporary directory for this session.
 
@@ -461,6 +464,7 @@ async def ensure_collection(
     On failure returns {"error": str}.
     """
     logger.info("ensure_collection namespace=%r version=%r", collection_namespace, version)
+    await _maybe_warn_upgrade(ctx)
     try:
         validate_namespace(collection_namespace)
         if version:
@@ -469,7 +473,7 @@ async def ensure_collection(
         return {"error": str(exc)}
 
     try:
-        state = _get_state(None)
+        state = _get_state(ctx)
         result = await run_in_executor(
             state.collection_manager.ensure_collection, collection_fqcn=collection_namespace, version=version,
         )
@@ -581,7 +585,7 @@ async def generate_skill(
         state = _get_state(ctx)
         http_client = _get_http_client(ctx)
         raw_doc, galaxy_meta = await resolution.resolve_module_doc(
-            module_name, http_client=http_client, galaxy_servers=state.galaxy_servers or None,
+            module_name, http_client=http_client, galaxy_servers=state.galaxy_servers,
             client_factory=_galaxy_factory(),
             missing_collections=state.missing_collections,
             collections_path=state.collection_manager.get_collections_path(),
@@ -645,7 +649,7 @@ async def generate_role_skill(
         state = _get_state(ctx)
         http_client = _get_http_client(ctx)
         metadata = await resolution.resolve_role_doc(
-            role_name, http_client=http_client, galaxy_servers=state.galaxy_servers or None,
+            role_name, http_client=http_client, galaxy_servers=state.galaxy_servers,
             client_factory=_galaxy_factory(),
             missing_collections=state.missing_collections,
             collections_path=state.collection_manager.get_collections_path(),

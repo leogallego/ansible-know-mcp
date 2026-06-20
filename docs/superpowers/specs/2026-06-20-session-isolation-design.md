@@ -119,8 +119,9 @@ The `_VERSION_PARSE_RE` compiled regex stays at module level (it's a constant).
 
 The `_missing_collections` module-level set is deleted.
 
-`resolve_module_doc()` and `resolve_role_doc()` gain a `missing_collections: set[str] | None = None` parameter.
-When `None`, they behave as if the set is empty (no negative caching — safe default).
+`resolve_module_doc()` and `resolve_role_doc()` gain two new parameters:
+- `missing_collections: set[str] | None = None` — when `None`, they behave as if the set is empty (no negative caching — safe default).
+- `collections_path: str | None = None` — replaces the internal `collections.get_collections_path()` call, breaking the Domain → External Access import dependency.
 
 `clear_missing_namespace()` is removed from `resolution.py`.
 The equivalent is `state.clear_missing_namespace()` called from `server.py`.

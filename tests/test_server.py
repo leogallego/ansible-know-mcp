@@ -574,12 +574,12 @@ class TestResourceFunctions:
         from ansible_know.state import ServerState
 
         cm = CollectionManager()
-        cm._installed = {"netbox.netbox": "4.1.0", "ansible.utils": "5.0.0"}
         state = ServerState(collection_manager=cm)
         old = srv._server_state
         try:
             srv._server_state = state
-            result = json.loads(srv.resource_installed_collections())
+            with patch.object(cm, "list_installed", return_value={"netbox.netbox": "4.1.0", "ansible.utils": "5.0.0"}):
+                result = json.loads(srv.resource_installed_collections())
         finally:
             srv._server_state = old
         assert result == {"netbox.netbox": "4.1.0", "ansible.utils": "5.0.0"}
@@ -973,7 +973,7 @@ class TestLifespanHttpClient:
         args, kwargs = mock_resolve.call_args
         assert args == ("ansible.builtin.package",)
         assert kwargs["http_client"] is mock_client
-        assert kwargs["galaxy_servers"] is None
+        assert kwargs["galaxy_servers"] == []
         assert kwargs["client_factory"] is not None
 
     @pytest.mark.asyncio
