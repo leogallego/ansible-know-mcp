@@ -11,10 +11,7 @@ import json
 import logging
 import os
 from importlib.metadata import version as pkg_version
-from typing import TYPE_CHECKING, Annotated, Any
-
-if TYPE_CHECKING:
-    pass
+from typing import Annotated, Any
 
 import httpx
 from fastmcp import Context, FastMCP
