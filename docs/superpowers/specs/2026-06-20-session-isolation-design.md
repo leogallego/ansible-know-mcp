@@ -64,8 +64,8 @@ class CollectionManager:
 
 `state.py` holds `ServerState` and `LifespanContext` only. It imports
 `CollectionManager` under `TYPE_CHECKING` to avoid a Foundation → External Access
-runtime dependency. At runtime, `ServerState.collection_manager` is set by
-the lifespan in `server.py`, not by `state.py` importing `collections.py`.
+runtime dependency. `collection_manager` is a required field with no default —
+the lifespan in `server.py` must construct and pass it explicitly.
 
 ```python
 from __future__ import annotations
@@ -78,6 +78,8 @@ if TYPE_CHECKING:
     from ansible_know.collections import CollectionManager
     from ansible_know.galaxy_config import GalaxyServerConfig
 
+__all__ = ["ServerState", "LifespanContext"]
+
 
 @dataclass
 class ServerState:
@@ -87,7 +89,7 @@ class ServerState:
     accessed by tool handlers via _get_state(ctx).
     """
 
-    collection_manager: CollectionManager = field(default_factory=lambda: _default_collection_manager())
+    collection_manager: CollectionManager
     missing_collections: set[str] = field(default_factory=set)
     version_info: dict[str, Any] | None = None
     galaxy_servers: list[GalaxyServerConfig] = field(default_factory=list)
@@ -95,11 +97,6 @@ class ServerState:
 
     def clear_missing_namespace(self, namespace: str) -> None:
         self.missing_collections.discard(namespace)
-
-
-def _default_collection_manager():
-    from ansible_know.collections import CollectionManager
-    return CollectionManager()
 
 
 class LifespanContext(TypedDict):
@@ -128,16 +125,22 @@ When `None`, they behave as if the set is empty (no negative caching — safe de
 `clear_missing_namespace()` is removed from `resolution.py`.
 The equivalent is `state.clear_missing_namespace()` called from `server.py`.
 
+`__all__` is updated to remove `clear_missing_namespace`.
+
 ### Changes to `server.py`
 
 **Lifespan:**
 ```python
 @lifespan
 async def app_lifespan(server):
+    from ansible_know.collections import CollectionManager
     from ansible_know.galaxy_config import load_galaxy_servers
 
-    state = ServerState()
-    state.galaxy_servers = await run_in_executor(load_galaxy_servers)
+    galaxy_servers = await run_in_executor(load_galaxy_servers)
+    state = ServerState(
+        collection_manager=CollectionManager(),
+        galaxy_servers=galaxy_servers,
+    )
     # ... log galaxy servers ...
 
     async with httpx.AsyncClient(...) as client:
@@ -149,7 +152,8 @@ async def app_lifespan(server):
 ```python
 def _get_state(ctx: Context | None) -> ServerState:
     if ctx is None:
-        return ServerState()
+        from ansible_know.collections import CollectionManager
+        return ServerState(collection_manager=CollectionManager())
     return ctx.lifespan_context["state"]
 
 def _get_http_client(ctx: Context | None) -> httpx.AsyncClient | None:
