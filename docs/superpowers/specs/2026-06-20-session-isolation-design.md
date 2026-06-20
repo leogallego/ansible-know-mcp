@@ -148,13 +148,15 @@ async def app_lifespan(server):
         yield LifespanContext(http_client=client, state=state)
 ```
 
-**State access helper:**
+**State access helper (three-tier fallback):**
 ```python
 def _get_state(ctx: Context | None) -> ServerState:
-    if ctx is None:
-        from ansible_know.collections import CollectionManager
-        return ServerState(collection_manager=CollectionManager())
-    return ctx.lifespan_context["state"]
+    if ctx is not None:
+        return ctx.lifespan_context["state"]
+    if _server_state is not None:
+        return _server_state
+    from ansible_know.collections import CollectionManager
+    return ServerState(collection_manager=CollectionManager())
 
 def _get_http_client(ctx: Context | None) -> httpx.AsyncClient | None:
     if ctx is None:

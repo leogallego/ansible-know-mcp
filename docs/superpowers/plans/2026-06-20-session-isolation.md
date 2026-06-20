@@ -440,6 +440,9 @@ from ansible_know.state import LifespanContext, ServerState
 
 **Module globals:** Replace `_version_info` and `_galaxy_servers` with:
 ```python
+# Module-level reference for resource functions that don't receive FastMCP
+# Context. Set once in lifespan; consolidates the former _version_info and
+# _galaxy_servers globals into a single typed object.
 _server_state: ServerState | None = None
 ```
 
@@ -472,10 +475,13 @@ async def app_lifespan(server):
 **Replace `_get_lifespan_resources` and add new helpers:**
 ```python
 def _get_state(ctx: Context | None) -> ServerState:
-    if ctx is None:
-        from ansible_know.collections import CollectionManager
-        return ServerState(collection_manager=CollectionManager())
-    return ctx.lifespan_context["state"]
+    """Return ServerState from ctx, fall back to module-level, or create ephemeral."""
+    if ctx is not None:
+        return ctx.lifespan_context["state"]
+    if _server_state is not None:
+        return _server_state
+    from ansible_know.collections import CollectionManager
+    return ServerState(collection_manager=CollectionManager())
 
 
 def _get_http_client(ctx: Context | None) -> httpx.AsyncClient | None:
@@ -483,6 +489,11 @@ def _get_http_client(ctx: Context | None) -> httpx.AsyncClient | None:
         return None
     return ctx.lifespan_context["http_client"]
 ```
+
+The three-tier fallback: (1) ctx-based is primary (tool handlers in production),
+(2) `_server_state` for resource functions and edge cases where lifespan has run
+but no ctx is available, (3) ephemeral instance only in pure unit tests with no
+lifespan.
 
 Delete `_get_lifespan_resources()`.
 
@@ -582,10 +593,14 @@ Assisted-by: Claude Opus 4.6 <noreply@anthropic.com>"
 - [ ] **Step 1: Search for remaining references to old patterns**
 
 ```bash
-grep -rn "_missing_collections\|_get_lifespan_resources\|_version_info\|_galaxy_servers" src/ansible_know/ tests/
+grep -rn "_missing_collections\|_get_lifespan_resources\|_version_info\|_galaxy_servers" src/ tests/
+grep -rn "from ansible_know.collections import ensure_collection\|from ansible_know.collections import get_collections_path\|from ansible_know.collections import list_installed" .
+grep -rn "collections\.ensure_collection\|collections\.get_collections_path\|collections\.list_installed" src/ tests/
 ```
 
-Expected: No hits except `_server_state` in `server.py` and the `_version_info` type in `state.py`.
+Expected: No hits for old module-level function imports. No hits for `_missing_collections`,
+`_get_lifespan_resources`. `_version_info` only in `state.py` type annotation context.
+`_server_state` in `server.py` only.
 
 - [ ] **Step 2: Run full test suite**
 
