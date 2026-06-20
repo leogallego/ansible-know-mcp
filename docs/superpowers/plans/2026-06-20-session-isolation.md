@@ -8,6 +8,17 @@
 
 **Tech Stack:** Python 3.11+, dataclasses, TypedDict, pytest, FastMCP
 
+## Skills
+
+**Load at session start (before any task):**
+- `superpowers:test-driven-development` — all tasks follow TDD (write failing test → implement → verify)
+- `superpowers:verification-before-completion` — run full suite before claiming any task is done
+
+**Load per task:**
+- Tasks 1–4: no additional skills needed (TDD skill covers the workflow)
+- Task 5 (final verification): `superpowers:verification-before-completion`
+- Task 6 (PR): `superpowers:requesting-code-review` and local skill `skills/pr-architecture-review` (read `skills/pr-architecture-review/SKILL.md` and apply its checklist against the final diff)
+
 ## Global Constraints
 
 - Layer dependency: Foundation has zero runtime imports from upper layers
@@ -635,3 +646,47 @@ git commit -m "refactor: clean up remaining references to old state patterns
 
 Assisted-by: Claude Opus 4.6 <noreply@anthropic.com>"
 ```
+
+---
+
+### Task 6: PR architecture review and submission
+
+**Skills:** Load `superpowers:requesting-code-review`. Read local skill `skills/pr-architecture-review/SKILL.md` and apply its full checklist.
+
+- [ ] **Step 1: Run PR architecture review**
+
+Read `skills/pr-architecture-review/SKILL.md` and apply every step against the full diff:
+
+```bash
+git diff main...HEAD
+```
+
+Check all 8 steps from the skill:
+1. Identify changed files and affected layers
+2. Check layer dependency rules (no new violations)
+3. Check type contracts (TypedDict usage, exception types)
+4. Check async/sync boundary (run_in_executor wrapping)
+5. Check state management (thread safety, BoundedCache usage)
+6. Check public API surface (__all__, ToolAnnotations)
+7. PEP 8 and Python standards
+8. Security review (input validation, path traversal, error sanitization)
+
+Fix any findings in-place. Commit fixes if needed.
+
+- [ ] **Step 2: Push and open PR**
+
+```bash
+git push -u origin worktree-issue-68-session-isolation
+```
+
+Open PR against `main` with:
+- Title: `refactor: encapsulate server state for session isolation (#68)`
+- Body: summary of changes, violations addressed (V-S3, V-T1, V-E4, V-S2), test results
+- Reference: Closes #68
+
+- [ ] **Step 3: Post review summary on PR**
+
+Post a comment on the PR with:
+- Architecture review results (findings, what was fixed, what was deferred)
+- Test verification results (test count, pass/fail)
+- Violations addressed vs remaining
