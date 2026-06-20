@@ -31,6 +31,7 @@
 - Existing test behavior must not change (438 passing, 57 skipped)
 - Run tests with `.venv/bin/pytest tests/ -v --tb=short`
 - Run lint with `.venv/bin/ruff check src/ tests/`
+- **Sandbox mode:** auto-allow, auto-edit. Never prefix commands with env var assignments (e.g. `FOO=bar command`) — use `export` on a separate line or pass via other means. Use `.venv/bin/` prefixed binaries directly, never `source activate`. These patterns trigger unnecessary permission prompts in sandboxed environments.
 
 ---
 
