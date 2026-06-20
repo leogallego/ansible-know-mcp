@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ansible Know - MCP Server for AI Agents</title>
+<meta name="description" content="Module and role discovery, documentation, and skill generation for AI agents via the Model Context Protocol.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --green: #00FF41;
+    --green-dim: #00cc33;
+    --dim: #0a3a0a;
+    --bg: #0A0A0A;
+    --card-bg: #0f1a0f;
+    --border: #1a3a1a;
+    --muted: #3a6a3a;
+    --text: #b0e0b0;
+    --glow: 0 0 10px rgba(0, 255, 65, 0.4), 0 0 20px rgba(0, 255, 65, 0.2);
+  }
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: 'IBM Plex Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    font-size: 15px;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 9999;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 255, 65, 0.03) 2px,
+      rgba(0, 255, 65, 0.03) 4px
+    );
+  }
+
+  a {
+    color: var(--green);
+    text-decoration: none;
+    transition: text-shadow 0.2s;
+  }
+  a:hover {
+    text-shadow: var(--glow);
+  }
+
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 2rem;
+  }
+
+  /* ---- HERO ---- */
+  .hero {
+    text-align: center;
+    padding: 5rem 2rem 3rem;
+  }
+
+  .hero-title {
+    font-family: 'VT323', monospace;
+    font-size: 4.5rem;
+    color: var(--green);
+    letter-spacing: 0.15em;
+    margin-bottom: 0.5rem;
+    text-shadow: 0 0 20px rgba(0, 255, 65, 0.3);
+  }
+
+  .cursor {
+    display: inline-block;
+    width: 3px;
+    height: 0.85em;
+    background: var(--green);
+    margin-left: 6px;
+    vertical-align: baseline;
+    animation: blink 1s step-end infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  .hero-tagline {
+    font-size: 1.05rem;
+    color: var(--text);
+    max-width: 640px;
+    margin: 1.5rem auto 2.5rem;
+    line-height: 1.8;
+  }
+
+  .hero-install {
+    display: inline-block;
+    background: var(--dim);
+    border: 1px solid var(--border);
+    padding: 0.75rem 2rem;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 1.05rem;
+    color: var(--green);
+    cursor: pointer;
+    transition: box-shadow 0.2s, border-color 0.2s;
+    position: relative;
+  }
+  .hero-install:hover {
+    border-color: var(--green);
+    box-shadow: var(--glow);
+  }
+  .hero-install .prompt {
+    color: var(--muted);
+    margin-right: 0.5rem;
+    user-select: none;
+  }
+  .hero-install.copied::after {
+    content: 'Copied!';
+    position: absolute;
+    top: -2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.8rem;
+    color: var(--green);
+    background: var(--bg);
+    padding: 0.15rem 0.6rem;
+    border: 1px solid var(--border);
+  }
+
+  .badges {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1.25rem;
+    margin-top: 3rem;
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+  .badges span {
+    padding: 0.3rem 0.75rem;
+    border: 1px solid var(--border);
+  }
+
+  /* ---- TERMINAL DEMO ---- */
+  .terminal-section {
+    padding: 3rem 0 0;
+  }
+
+  .terminal {
+    max-width: 780px;
+    margin: 0 auto;
+    border: 1px solid var(--border);
+    background: #050505;
+    overflow: hidden;
+  }
+
+  .terminal-titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 1rem;
+    background: #111;
+    border-bottom: 1px solid var(--border);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.8rem;
+  }
+  .terminal-icon { color: var(--green); font-weight: 700; }
+  .terminal-title-text { color: var(--muted); }
+  .terminal-close { color: var(--muted); opacity: 0.5; cursor: default; }
+
+  .terminal-body {
+    display: flex;
+    flex-direction: column;
+    font-size: 0.88rem;
+    line-height: 1.9;
+    height: 480px;
+    position: relative;
+  }
+
+  .sim-output {
+    flex: 1;
+    overflow: hidden;
+    padding: 1.5rem 1.5rem 0.5rem;
+    position: relative;
+  }
+
+  .sim-inner { transition: transform 0.35s ease-out; }
+
+  .sim-input {
+    padding: 0.5rem 1.5rem 1rem;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.88rem;
+  }
+
+  .sim-input .input-prompt {
+    color: var(--muted);
+    user-select: none;
+  }
+
+  .sim-input .input-text {
+    color: #fff;
+    font-weight: 700;
+    flex: 1;
+  }
+
+  .sim-input .input-cursor {
+    display: inline-block;
+    width: 8px;
+    height: 1.1em;
+    background: var(--green);
+    animation: blink 0.8s step-end infinite;
+    vertical-align: text-bottom;
+  }
+
+  .sim-line { white-space: pre-wrap; }
+  .t-user { color: #fff; font-weight: 700; }
+  .t-narrative { color: #e0a050; font-style: italic; }
+  .t-tool { color: var(--green); }
+  .t-result { color: var(--text); }
+  .t-success { color: var(--green); font-weight: 700; }
+  .t-status { color: var(--muted); opacity: 0.5; }
+  .t-blank { display: block; height: 1rem; }
+
+  .demo-breadcrumb {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0;
+    margin-top: 1.5rem;
+    font-family: 'VT323', monospace;
+    font-size: 1.1rem;
+    letter-spacing: 0.05em;
+  }
+  .demo-step {
+    color: var(--muted);
+    padding: 0.25rem 0.75rem;
+    transition: color 0.3s, text-shadow 0.3s;
+  }
+  .demo-step.active {
+    color: var(--green);
+    text-shadow: 0 0 10px rgba(0, 255, 65, 0.3);
+  }
+  .demo-arrow {
+    color: var(--muted);
+    opacity: 0.4;
+    padding: 0 0.25rem;
+    font-size: 0.9rem;
+  }
+
+  /* ---- SECTIONS ---- */
+  .section {
+    padding: 6rem 0;
+  }
+
+  .section-header {
+    font-family: 'VT323', monospace;
+    font-size: 2rem;
+    color: var(--green);
+    letter-spacing: 0.1em;
+    margin-bottom: 2.5rem;
+    text-transform: uppercase;
+  }
+
+  .section-subtitle {
+    color: var(--text);
+    font-size: 0.95rem;
+    margin-top: -1.5rem;
+    margin-bottom: 2.5rem;
+    line-height: 1.7;
+  }
+
+  /* ---- TOOLS ---- */
+  .tool-group {
+    margin-bottom: 2rem;
+  }
+  .tool-group-label {
+    font-size: 0.8rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 0.75rem;
+  }
+  .tool-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .chip {
+    display: inline-block;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.82rem;
+    padding: 0.35rem 0.75rem;
+    border: 1px solid var(--border);
+    color: var(--text);
+    background: var(--dim);
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .chip:hover {
+    border-color: var(--green);
+    box-shadow: 0 0 8px rgba(0, 255, 65, 0.2);
+    color: var(--green);
+  }
+
+  .tools-footer {
+    margin-top: 2rem;
+    font-size: 0.85rem;
+    color: var(--muted);
+  }
+  .tools-footer a {
+    color: var(--green-dim);
+  }
+
+  /* ---- CONNECT CARDS ---- */
+  .connect-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+  }
+
+  .connect-card {
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    padding: 1.5rem;
+    transition: border-color 0.2s;
+  }
+  .connect-card:hover {
+    border-color: var(--green-dim);
+  }
+
+  .connect-card-title {
+    font-family: 'VT323', monospace;
+    font-size: 1.3rem;
+    color: var(--green);
+    margin-bottom: 1rem;
+  }
+
+  .connect-card pre {
+    background: #050505;
+    border: 1px solid var(--border);
+    padding: 0.85rem 1rem;
+    font-size: 0.78rem;
+    line-height: 1.6;
+    overflow-x: auto;
+    color: var(--green-dim);
+    cursor: pointer;
+    transition: border-color 0.2s;
+    position: relative;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .connect-card pre:hover {
+    border-color: var(--green);
+  }
+  .connect-card pre.copied::after {
+    content: 'Copied!';
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--green);
+    background: var(--bg);
+    padding: 0.1rem 0.5rem;
+    border: 1px solid var(--border);
+  }
+
+  .connect-card-note {
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin-top: 0.75rem;
+    font-style: italic;
+  }
+
+  /* ---- ECOSYSTEM ---- */
+  .ecosystem-cards {
+    display: flex;
+    gap: 0;
+    align-items: stretch;
+  }
+
+  .eco-card {
+    flex: 1;
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    padding: 1.75rem 1.5rem;
+    text-align: center;
+    transition: border-color 0.2s;
+  }
+  .eco-card.active {
+    border-color: var(--green);
+    box-shadow: 0 0 15px rgba(0, 255, 65, 0.15);
+    background: var(--dim);
+  }
+
+  .eco-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.75rem;
+    font-family: 'VT323', monospace;
+    font-size: 1.8rem;
+    color: var(--muted);
+  }
+
+  .eco-phase {
+    font-size: 0.75rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    margin-bottom: 0.5rem;
+  }
+
+  .eco-name {
+    font-family: 'VT323', monospace;
+    font-size: 1.4rem;
+    color: var(--green);
+    margin-bottom: 0.75rem;
+  }
+
+  .eco-desc {
+    font-size: 0.82rem;
+    color: var(--text);
+    line-height: 1.6;
+  }
+
+  /* ---- FOOTER ---- */
+  .footer {
+    margin-top: 6rem;
+    padding: 3rem 0;
+    border-top: 1px solid var(--border);
+    text-align: center;
+  }
+
+  .footer-links {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    margin-bottom: 1.5rem;
+    font-size: 0.9rem;
+  }
+
+  .footer-meta {
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+
+  /* ---- RESPONSIVE ---- */
+  @media (max-width: 768px) {
+    .hero {
+      padding: 5rem 1.5rem 3.5rem;
+    }
+    .hero-title {
+      font-size: 2.8rem;
+    }
+    .hero-tagline {
+      font-size: 0.95rem;
+    }
+    .hero-install {
+      font-size: 0.9rem;
+      padding: 0.6rem 1.25rem;
+    }
+    .badges {
+      gap: 0.75rem;
+    }
+    .connect-grid {
+      grid-template-columns: 1fr;
+    }
+    .ecosystem-cards {
+      flex-direction: column;
+    }
+    .eco-arrow {
+      padding: 0.5rem 0;
+      transform: rotate(90deg);
+    }
+    .container {
+      padding: 0 1.25rem;
+    }
+    .terminal-body {
+      padding: 1.25rem;
+      font-size: 0.78rem;
+    }
+    .section {
+      padding: 4rem 0;
+    }
+  }
+
+  @media (max-width: 600px) {
+    .hero-title {
+      font-size: 2.2rem;
+      letter-spacing: 0.08em;
+    }
+    .badges span {
+      font-size: 0.78rem;
+    }
+    .section-header {
+      font-size: 1.6rem;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- ======== HERO ======== -->
+<section class="hero">
+  <div class="container">
+    <h1 class="hero-title">ANSIBLE KNOW<span class="cursor"></span></h1>
+    <p class="hero-tagline">Module and role discovery, documentation, and skill generation for AI agents via the Model Context Protocol.</p>
+    <pre class="hero-install" title="Click to copy"><code><span class="prompt">$</span> uvx ansible-know-mcp</code></pre>
+    <div class="badges">
+      <span>12 tools</span>
+      <span>6 resources</span>
+      <span>4 prompts</span>
+      <span>Python 3.10+</span>
+      <span>GPL-3.0</span>
+    </div>
+  </div>
+</section>
+
+<!-- ======== TERMINAL DEMO ======== -->
+<section class="terminal-section">
+  <div class="container">
+    <div class="terminal">
+      <div class="terminal-titlebar">
+        <span class="terminal-icon">&gt;_</span>
+        <span class="terminal-title-text">ansible-know-mcp</span>
+        <span class="terminal-close">[x]</span>
+      </div>
+      <div class="terminal-body">
+        <div class="sim-output"><div class="sim-inner" id="sim"></div></div>
+        <div class="sim-input">
+          <span class="input-prompt">&gt;</span>
+          <span class="input-text" id="sim-input"></span>
+          <span class="input-cursor"></span>
+        </div>
+      </div>
+    </div>
+    <div class="demo-breadcrumb">
+      <span class="demo-step" id="bc-discover">DISCOVER</span>
+      <span class="demo-arrow">&rarr;</span>
+      <span class="demo-step" id="bc-learn">LEARN</span>
+      <span class="demo-arrow">&rarr;</span>
+      <span class="demo-step" id="bc-skill">SKILL</span>
+      <span class="demo-arrow">&rarr;</span>
+      <span class="demo-step" id="bc-build">BUILD</span>
+      <span class="demo-arrow">&rarr;</span>
+      <span class="demo-step" id="bc-run">RUN</span>
+    </div>
+  </div>
+</section>
+
+<!-- ======== TOOLS ======== -->
+<section class="section">
+  <div class="container">
+    <h2 class="section-header">// Tools</h2>
+
+    <div class="tool-group">
+      <div class="tool-group-label">Discovery</div>
+      <div class="tool-chips">
+        <span class="chip">search_collections</span>
+        <span class="chip">get_module_doc</span>
+        <span class="chip">get_role_doc</span>
+        <span class="chip">search_modules</span>
+        <span class="chip">search_docs</span>
+        <span class="chip">get_collection_manifest</span>
+        <span class="chip">ensure_collection</span>
+      </div>
+    </div>
+
+    <div class="tool-group">
+      <div class="tool-group-label">Skills</div>
+      <div class="tool-chips">
+        <span class="chip">generate_skill</span>
+        <span class="chip">generate_role_skill</span>
+        <span class="chip">generate_collection_skills</span>
+        <span class="chip">list_skills</span>
+        <span class="chip">get_skill</span>
+      </div>
+    </div>
+
+    <p class="tools-footer">+ 6 resources &middot; 4 prompts &middot; <a href="https://github.com/leogallego/ansible-know-mcp#readme">Full docs &rarr;</a></p>
+  </div>
+</section>
+
+<!-- ======== CONNECT ======== -->
+<section class="section" style="padding-top: 0;">
+  <div class="container">
+    <h2 class="section-header">// Connect</h2>
+
+    <div class="connect-grid">
+      <div class="connect-card">
+        <div class="connect-card-title">Claude Code</div>
+        <pre><code>claude mcp add ansible-know -- uvx ansible-know-mcp</code></pre>
+      </div>
+
+      <div class="connect-card">
+        <div class="connect-card-title">VS Code / Cursor</div>
+        <pre><code>{"mcpServers":{"ansible-know":{"command":"uvx","args":["ansible-know-mcp"]}}}</code></pre>
+      </div>
+
+      <div class="connect-card">
+        <div class="connect-card-title">Remote Endpoint</div>
+        <pre><code>https://know.ansible.ar/mcp</code></pre>
+        <p class="connect-card-note">Coming soon &mdash; hosted on Hugging Face Spaces</p>
+      </div>
+
+      <div class="connect-card">
+        <div class="connect-card-title">MCP Inspector</div>
+        <pre><code>npx @modelcontextprotocol/inspector@latest</code></pre>
+        <p class="connect-card-note">Interactive tool testing and debugging</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======== ECOSYSTEM ======== -->
+<section class="section">
+  <div class="container">
+    <h2 class="section-header">// Ecosystem</h2>
+    <p class="section-subtitle">Three complementary MCP servers covering the full Ansible lifecycle:</p>
+
+    <div class="ecosystem-cards">
+      <div class="eco-card active">
+        <div class="eco-phase">Learn</div>
+        <div class="eco-name">Ansible Know</div>
+        <p class="eco-desc">Discover modules, read docs, generate skills</p>
+      </div>
+      <div class="eco-arrow">&rarr;</div>
+      <div class="eco-card">
+        <div class="eco-phase">Build</div>
+        <div class="eco-name">Ansible Devtools</div>
+        <p class="eco-desc">Lint, navigate, create content</p>
+      </div>
+      <div class="eco-arrow">&rarr;</div>
+      <div class="eco-card">
+        <div class="eco-phase">Deploy</div>
+        <div class="eco-name">AAP MCP</div>
+        <p class="eco-desc">Run playbooks, manage automation</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======== FOOTER ======== -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-links">
+      <a href="https://github.com/leogallego/ansible-know-mcp">GitHub</a>
+      <a href="https://pypi.org/project/ansible-know-mcp/">PyPI</a>
+    </div>
+    <p class="footer-meta">GPL-3.0-or-later &middot; Leonardo Gallego</p>
+  </div>
+</footer>
+
+<script>
+/* Copy to clipboard */
+document.querySelectorAll('pre').forEach(function(block) {
+  block.addEventListener('click', function() {
+    var code = block.querySelector('code');
+    var text = code ? code.textContent : block.textContent;
+    navigator.clipboard.writeText(text.trim());
+    block.classList.add('copied');
+    setTimeout(function() { block.classList.remove('copied'); }, 1500);
+  });
+});
+
+/* Terminal simulation */
+var steps = [
+  // DISCOVER — user asks, agent works
+  { cls: 't-user', text: '> I need to create an AWS EC2 instance with Ansible', typing: true, delay: 1800, phase: 'discover' },
+  { cls: 't-blank', delay: 800 },
+  { cls: 't-narrative', text: 'Let me find the right collection and module.', delay: 800 },
+  { cls: 't-blank', delay: 400 },
+  { cls: 't-tool', text: '  * search_collections("aws ec2")', delay: 400 },
+  { cls: 't-result', text: '    amazon.aws          12.3M downloads', delay: 120 },
+  { cls: 't-result', text: '    community.aws        8.1M downloads', delay: 120 },
+  { cls: 't-blank', delay: 400 },
+  // LEARN — look up module and docs
+  { cls: 't-tool', text: '  * search_modules("ec2_instance")', delay: 400, phase: 'learn' },
+  { cls: 't-result', text: '    amazon.aws.ec2_instance — Create & manage EC2 instances', delay: 120 },
+  { cls: 't-blank', delay: 400 },
+  { cls: 't-tool', text: '  → get_module_doc("amazon.aws.ec2_instance")', delay: 400 },
+  { cls: 't-result', text: '    name, image_id, instance_type, state, key_name, tags...', delay: 120 },
+  { cls: 't-blank', delay: 400 },
+  // SKILL — generate and load
+  { cls: 't-tool', text: '  → generate_skill("amazon.aws.ec2_instance")', delay: 400, phase: 'skill' },
+  { cls: 't-success', text: '    Loaded skill: amazon.aws.ec2_instance (12 params, 3 examples)', delay: 200 },
+  { cls: 't-blank', delay: 1200 },
+  // Agent asks for details, then scroll it to top, then pause for user to read
+  { cls: 't-narrative', text: 'I need a few details — instance type, AMI, name, and target group?', delay: 400 },
+  { cls: 't-scroll-top', delay: 600 },
+  { cls: 't-blank', delay: 1200 },
+  // BUILD — user responds, playbook written
+  { cls: 't-user', text: '> t3.micro, Fedora Linux 44, web-server, group web_servers', typing: true, delay: 1800, phase: 'build' },
+  { cls: 't-blank', delay: 400 },
+  { cls: 't-narrative', text: 'Generating playbook...', delay: 400 },
+  { cls: 't-blank', delay: 400 },
+  { cls: 't-result', text: '  ---', delay: 80 },
+  { cls: 't-result', text: '  - name: Create EC2 instance', delay: 80 },
+  { cls: 't-result', text: '    hosts: web_servers', delay: 80 },
+  { cls: 't-result', text: '    tasks:', delay: 80 },
+  { cls: 't-result', text: '      - name: Launch web-server', delay: 80 },
+  { cls: 't-result', text: '        amazon.aws.ec2_instance:', delay: 80 },
+  { cls: 't-result', text: '          name: web-server', delay: 80 },
+  { cls: 't-result', text: '          image_id: ami-0e1ce3e0dfa9f6170', delay: 80 },
+  { cls: 't-result', text: '          instance_type: t3.micro', delay: 80 },
+  { cls: 't-result', text: '          state: running', delay: 80 },
+  { cls: 't-blank', delay: 200 },
+  { cls: 't-result', text: '  Wrote deploy_ec2.yml (1 play, 1 task)', delay: 200 },
+  { cls: 't-blank', delay: 800 },
+  // Agent asks to run — scroll to top first
+  { cls: 't-narrative', text: 'Ready to run. Which environment?', delay: 400 },
+  { cls: 't-scroll-top', delay: 600 },
+  { cls: 't-blank', delay: 1200 },
+  // RUN — user picks env, playbook runs
+  { cls: 't-user', text: '> devel', typing: true, delay: 600, phase: 'run' },
+  { cls: 't-blank', delay: 120 },
+  { cls: 't-tool', text: '  → ansible_navigator("deploy_ec2.yml -i inventory/devel")', delay: 120 },
+  { cls: 't-blank', delay: 120 },
+  { cls: 't-result', text: '  PLAY [Create EC2 instance] ***********************', delay: 120 },
+  { cls: 't-result', text: '  TASK [Launch web-server] *************************', delay: 120 },
+  { cls: 't-success', text: '  changed: [web01.devel.example.com]', delay: 120 },
+  { cls: 't-blank', delay: 120 },
+  { cls: 't-result', text: '  PLAY RECAP ****************************************', delay: 120 },
+  { cls: 't-success', text: '  web01.devel.example.com : ok=1  changed=1  failed=0', delay: 120 },
+  { cls: 't-blank', delay: 120 },
+  { cls: 't-status', text: '~ Done', delay: 2000 },
+];
+
+function runSim() {
+  var inner = document.getElementById('sim');
+  var output = inner.parentElement;
+  var inputEl = document.getElementById('sim-input');
+  var bodyH = output.clientHeight;
+  inner.innerHTML = '';
+  inner.style.transform = 'translateY(0)';
+  inputEl.textContent = '';
+  var pinOffset = null;
+  document.querySelectorAll('.demo-step').forEach(function(s) { s.classList.remove('active'); });
+
+  var i = 0;
+  function next() {
+    if (i >= steps.length) {
+      setTimeout(runSim, 3000);
+      return;
+    }
+    var s = steps[i++];
+    setTimeout(function() {
+      if (s.phase) {
+        document.querySelectorAll('.demo-step').forEach(function(el) { el.classList.remove('active'); });
+        var bc = document.getElementById('bc-' + s.phase);
+        if (bc) bc.classList.add('active');
+      }
+      if (s.cls === 't-scroll-top') {
+        var lastLine = inner.lastElementChild;
+        if (lastLine) {
+          pinOffset = lastLine.offsetTop + 8;
+          inner.style.transform = 'translateY(-' + pinOffset + 'px)';
+        }
+        next();
+        return;
+      }
+      if (s.typing) {
+        var rawText = s.text.replace(/^> /, '');
+        inputEl.textContent = '';
+        typeInput(inputEl, rawText, 0, function() {
+          setTimeout(function() {
+            inputEl.textContent = '';
+            var el = document.createElement('div');
+            el.className = 'sim-line t-user';
+            el.textContent = '> ' + rawText;
+            el.style.opacity = '0';
+            inner.appendChild(el);
+            requestAnimationFrame(function() {
+              el.style.transition = 'opacity 0.15s';
+              el.style.opacity = '1';
+            });
+            scrollOutput();
+            next();
+          }, 200);
+        });
+        return;
+      }
+      var el = document.createElement('div');
+      if (s.cls === 't-blank') {
+        el.className = 't-blank';
+        inner.appendChild(el);
+      } else {
+        el.className = 'sim-line';
+        el.innerHTML = '<span class="' + s.cls + '">' + esc(s.text) + '</span>';
+        el.style.opacity = '0';
+        inner.appendChild(el);
+        requestAnimationFrame(function() {
+          el.style.transition = 'opacity 0.25s';
+          el.style.opacity = '1';
+        });
+      }
+      scrollOutput();
+      next();
+    }, s.delay);
+  }
+
+  function scrollOutput() {
+    if (pinOffset !== null) {
+      var contentBelow = inner.scrollHeight - pinOffset - bodyH;
+      if (contentBelow > 0) {
+        inner.style.transform = 'translateY(-' + (pinOffset + contentBelow) + 'px)';
+      }
+    } else {
+      var overflow = inner.scrollHeight - bodyH;
+      if (overflow > 0) {
+        inner.style.transform = 'translateY(-' + overflow + 'px)';
+      }
+    }
+  }
+
+  next();
+}
+
+function typeInput(el, text, i, cb) {
+  if (i <= text.length) {
+    el.textContent = text.substring(0, i);
+    if (i < text.length) {
+      setTimeout(function() { typeInput(el, text, i + 1, cb); }, 25);
+    } else if (cb) {
+      cb();
+    }
+  }
+}
+
+function esc(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+runSim();
+</script>
+
+</body>
+</html>
