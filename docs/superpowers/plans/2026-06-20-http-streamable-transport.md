@@ -207,10 +207,11 @@ def parse_args(argv: list[str] | None = None) -> ServerConfig:
         default=os.environ.get("ANSIBLE_KNOW_HOST", _DEFAULT_HOST),
         help=f"Bind address for HTTP transport (default: {_DEFAULT_HOST}, env: ANSIBLE_KNOW_HOST)",
     )
+    env_port = os.environ.get("ANSIBLE_KNOW_PORT")
     parser.add_argument(
         "--port",
         type=_port_in_range,
-        default=_port_in_range(os.environ.get("ANSIBLE_KNOW_PORT", str(_DEFAULT_PORT))),
+        default=env_port if env_port is not None else str(_DEFAULT_PORT),
         help=f"Listen port for HTTP transport (default: {_DEFAULT_PORT}, env: ANSIBLE_KNOW_PORT)",
     )
 
@@ -268,24 +269,22 @@ from unittest.mock import patch
 
 class TestMainWiring:
     def test_main_stdio_default(self):
-        with patch("ansible_know.server.mcp") as mock_mcp:
+        with patch("ansible_know.server.mcp") as mock_mcp, \
+             patch("ansible_know.cli.parse_args") as mock_parse:
+            mock_parse.return_value = ServerConfig(transport="stdio", host="0.0.0.0", port=8080)
             from ansible_know.server import main
-            with patch("ansible_know.cli.parse_args") as mock_parse:
-                mock_parse.return_value = ServerConfig(transport="stdio", host="0.0.0.0", port=8080)
-                with patch("ansible_know.server.parse_args", mock_parse):
-                    main()
-                mock_mcp.run.assert_called_once_with(transport="stdio")
+            main()
+            mock_mcp.run.assert_called_once_with(transport="stdio")
 
     def test_main_http_passes_host_port(self):
-        with patch("ansible_know.server.mcp") as mock_mcp:
+        with patch("ansible_know.server.mcp") as mock_mcp, \
+             patch("ansible_know.cli.parse_args") as mock_parse:
+            mock_parse.return_value = ServerConfig(transport="http", host="10.0.0.1", port=9090)
             from ansible_know.server import main
-            with patch("ansible_know.cli.parse_args") as mock_parse:
-                mock_parse.return_value = ServerConfig(transport="http", host="10.0.0.1", port=9090)
-                with patch("ansible_know.server.parse_args", mock_parse):
-                    main()
-                mock_mcp.run.assert_called_once_with(
-                    transport="http", host="10.0.0.1", port=9090,
-                )
+            main()
+            mock_mcp.run.assert_called_once_with(
+                transport="http", host="10.0.0.1", port=9090,
+            )
 ```
 
 - [ ] **Step 2: Run the new tests to verify they fail**
@@ -395,6 +394,7 @@ from __future__ import annotations
 
 import asyncio
 import socket
+import threading
 import time
 
 import httpx
@@ -415,38 +415,32 @@ async def test_http_transport_starts_and_responds():
     from ansible_know.server import mcp
 
     port = _find_free_port()
-    server_task = None
 
-    try:
-        server_task = asyncio.create_task(
-            asyncio.to_thread(mcp.run, transport="http", host="127.0.0.1", port=port)
-        )
-        await asyncio.sleep(2)
+    server_thread = threading.Thread(
+        target=mcp.run,
+        kwargs={"transport": "http", "host": "127.0.0.1", "port": port},
+        daemon=True,
+    )
+    server_thread.start()
+    await asyncio.sleep(2)
 
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"http://127.0.0.1:{port}/mcp/",
-                json={
-                    "jsonrpc": "2.0",
-                    "id": 1,
-                    "method": "initialize",
-                    "params": {
-                        "protocolVersion": "2025-03-26",
-                        "capabilities": {},
-                        "clientInfo": {"name": "test", "version": "0.1.0"},
-                    },
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"http://127.0.0.1:{port}/mcp/",
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": {},
+                    "clientInfo": {"name": "test", "version": "0.1.0"},
                 },
-                headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream"},
-                timeout=10.0,
-            )
-            assert resp.status_code == 200
-    finally:
-        if server_task and not server_task.done():
-            server_task.cancel()
-            try:
-                await server_task
-            except (asyncio.CancelledError, Exception):
-                pass
+            },
+            headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream"},
+            timeout=10.0,
+        )
+        assert resp.status_code == 200
 ```
 
 - [ ] **Step 2: Verify the test is skipped without `--run-integration`**
