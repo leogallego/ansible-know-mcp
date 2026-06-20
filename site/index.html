@@ -331,8 +331,11 @@
   /* ---- CONNECT CARDS ---- */
   .connect-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1.5rem;
+    grid-template-columns: 1fr;
+    gap: 1.25rem;
+    max-width: 540px;
+    margin-left: auto;
+    margin-right: auto;
   }
 
   .connect-card {
@@ -350,21 +353,22 @@
     font-size: 1.3rem;
     color: var(--green);
     margin-bottom: 1rem;
+    text-align: center;
   }
 
   .connect-card pre {
     background: #050505;
     border: 1px solid var(--border);
-    padding: 0.85rem 1rem;
-    font-size: 0.78rem;
-    line-height: 1.6;
+    padding: 1rem 1.25rem;
+    font-size: 0.9rem;
+    line-height: 1.7;
     overflow-x: auto;
     color: var(--green-dim);
     cursor: pointer;
     transition: border-color 0.2s;
     position: relative;
     white-space: pre-wrap;
-    word-break: break-all;
+    word-break: break-word;
   }
   .connect-card pre:hover {
     border-color: var(--green);
@@ -386,6 +390,7 @@
     color: var(--muted);
     margin-top: 0.75rem;
     font-style: italic;
+    text-align: center;
   }
 
   /* ---- ECOSYSTEM ---- */
@@ -605,13 +610,20 @@
 
     <div class="connect-grid">
       <div class="connect-card">
-        <div class="connect-card-title">Claude Code</div>
-        <pre><code>claude mcp add ansible-know -- uvx ansible-know-mcp</code></pre>
+        <div class="connect-card-title">VS Code / Cursor</div>
+        <pre><code>{
+  "mcpServers": {
+    "ansible-know": {
+      "command": "uvx",
+      "args": ["ansible-know-mcp"]
+    }
+  }
+}</code></pre>
       </div>
 
       <div class="connect-card">
-        <div class="connect-card-title">VS Code / Cursor</div>
-        <pre><code>{"mcpServers":{"ansible-know":{"command":"uvx","args":["ansible-know-mcp"]}}}</code></pre>
+        <div class="connect-card-title">Claude Code</div>
+        <pre><code>claude mcp add ansible-know -- uvx ansible-know-mcp</code></pre>
       </div>
 
       <div class="connect-card">
