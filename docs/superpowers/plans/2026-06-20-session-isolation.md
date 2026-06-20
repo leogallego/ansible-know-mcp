@@ -13,11 +13,14 @@
 **Load at session start (before any task):**
 - `superpowers:test-driven-development` — all tasks follow TDD (write failing test → implement → verify)
 - `superpowers:verification-before-completion` — run full suite before claiming any task is done
+- `pep8-naming` — naming conventions for new classes, methods, module-level names
+- `pep8-type-annotations` — type annotation formatting for TypedDict, dataclass fields
 
 **Load per task:**
-- Tasks 1–4: no additional skills needed (TDD skill covers the workflow)
-- Task 5 (final verification): `superpowers:verification-before-completion`
-- Task 6 (PR): `superpowers:requesting-code-review` and local skill `skills/pr-architecture-review` (read `skills/pr-architecture-review/SKILL.md` and apply its checklist against the final diff)
+- Tasks 1–2 (new classes): local skill `skills/python-contract-docstrings` (read SKILL.md, apply to `CollectionManager` and `ServerState` — document contracts, input invariants, errors)
+- Tasks 1–2 (new types): local skill `skills/python-tighten-types` (read SKILL.md, apply to `state.py` and `collections.py` — verify annotations are tight, no loose `dict[str, Any]` where TypedDict exists)
+- Task 5 (final verification): `superpowers:verification-before-completion` + local skill `skills/python-pre-mortem` (read SKILL.md, apply to the new state wiring — spot fragile assumptions, implicit coupling)
+- Task 6 (PR): `superpowers:requesting-code-review`, `pep8-review`, and local skill `skills/pr-architecture-review` (read SKILL.md, apply its 8-step checklist against the final diff)
 
 ## Global Constraints
 
