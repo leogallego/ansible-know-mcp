@@ -28,19 +28,8 @@ __all__ = [
     "resolve_module_doc",
     "resolve_role_doc",
     "search_galaxy_collections",
-    "clear_missing_namespace",
 ]
 
-# Negative cache: namespaces that failed local ansible-doc lookup.
-# Skips retrying local resolution for known-missing collections,
-# going straight to Galaxy fallback. Cleared per-namespace on
-# successful ensure_collection().
-#
-# Thread safety: only mutated from the asyncio event loop thread
-# (add/discard in coroutines); executor callbacks (parser calls)
-# never touch it. Under CPython, set.add/discard/`in` are also
-# GIL-atomic, so even an accidental cross-thread read is safe.
-_missing_collections: set[str] = set()
 
 
 def _select_http_client(
@@ -88,33 +77,30 @@ def _get_servers(
     return load_galaxy_servers()
 
 
-def clear_missing_namespace(namespace: str) -> None:
-    """Remove a namespace from the negative cache."""
-    _missing_collections.discard(namespace)
-
-
 async def resolve_module_doc(
     module_name: str,
     http_client: httpx.AsyncClient | None = None,
     galaxy_servers: list[GalaxyServerConfig] | None = None,
     client_factory: GalaxyClientFactory | None = None,
+    missing_collections: set[str] | None = None,
+    collections_path: str | None = None,
 ) -> tuple[dict[str, Any], DocProvenance | None]:
     """Try local ansible-doc, fall back to Galaxy if the collection is missing.
 
     Returns (raw_doc, galaxy_meta_or_none). Raises on non-missing-collection
     errors and when both local and Galaxy lookups fail.
     """
-    from ansible_know import collections, parser
+    from ansible_know import parser
     from ansible_know.errors import CollectionNotFoundError, GalaxyError
 
     servers = _get_servers(galaxy_servers)
     namespace = ".".join(module_name.split(".")[:2]) if "." in module_name else None
-    cpath = collections.get_collections_path()
+    cpath = collections_path
 
     async def _fetch_from_galaxy(client):
         return await client.fetch_module_doc(module_name)
 
-    if namespace and namespace in _missing_collections:
+    if namespace and missing_collections is not None and namespace in missing_collections:
         if client_factory is None:
             raise CollectionNotFoundError(
                 f"Collection '{namespace}' not installed locally"
@@ -135,8 +121,8 @@ async def resolve_module_doc(
         )
         return raw_doc, None
     except CollectionNotFoundError as local_exc:
-        if namespace:
-            _missing_collections.add(namespace)
+        if namespace and missing_collections is not None:
+            missing_collections.add(namespace)
         if client_factory is None:
             raise
         logger.info("Collection not installed, trying Galaxy: %s", local_exc)
@@ -155,28 +141,30 @@ async def resolve_role_doc(
     http_client: httpx.AsyncClient | None = None,
     galaxy_servers: list[GalaxyServerConfig] | None = None,
     client_factory: GalaxyClientFactory | None = None,
+    missing_collections: set[str] | None = None,
+    collections_path: str | None = None,
 ) -> dict[str, Any]:
     """Try local ansible-doc -t role, fall back to Galaxy readme_html.
 
     Returns the complete tool response dict including doc_source and content_type.
     """
-    from ansible_know import collections, parser
+    from ansible_know import parser
     from ansible_know.errors import CollectionNotFoundError, GalaxyError
 
     servers = _get_servers(galaxy_servers)
     namespace = ".".join(role_name.split(".")[:2]) if "." in role_name else None
-    cpath = collections.get_collections_path()
+    cpath = collections_path
 
     local_doc: dict[str, Any] = {}
 
-    if not (namespace and namespace in _missing_collections):
+    if not (namespace and missing_collections is not None and namespace in missing_collections):
         try:
             local_doc = await run_in_executor(
                 parser.get_role_doc, role_name, collections_path=cpath,
             )
         except CollectionNotFoundError:
-            if namespace:
-                _missing_collections.add(namespace)
+            if namespace and missing_collections is not None:
+                missing_collections.add(namespace)
             local_doc = {}
         except AnsibleDocError as exc:
             logger.warning("Local role doc failed for %s: %s", role_name, exc)
