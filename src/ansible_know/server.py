@@ -88,11 +88,12 @@ async def _check_pypi_version(client: httpx.AsyncClient) -> dict[str, Any] | Non
 @lifespan
 async def app_lifespan(server):
     global _shared_state, _session_manager
+    from ansible_know.collections import CollectionManager
     from ansible_know.galaxy_config import load_galaxy_servers
 
     galaxy_servers = await run_in_executor(load_galaxy_servers)
     shared = SharedState(galaxy_servers=galaxy_servers)
-    sessions = SessionManager(shared)
+    sessions = SessionManager(shared, collection_factory=CollectionManager)
     _shared_state = shared
     _session_manager = sessions
     for gs in galaxy_servers:

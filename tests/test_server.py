@@ -572,10 +572,11 @@ class TestResourceFunctions:
 
     def test_resource_installed_collections_empty(self):
         import ansible_know.server as srv
+        from ansible_know.collections import CollectionManager
         from ansible_know.state import SessionManager, SharedState
 
         shared = SharedState()
-        sessions = SessionManager(shared)
+        sessions = SessionManager(shared, collection_factory=CollectionManager)
         old = srv._session_manager
         try:
             srv._session_manager = sessions
@@ -1261,11 +1262,12 @@ class TestGetCollectionManifestWithRoles:
 class TestPeriodicVersionCheck:
     @pytest.mark.asyncio
     async def test_updates_version_on_new_release(self):
+        from ansible_know.collections import CollectionManager
         from ansible_know.server import _periodic_version_check
         from ansible_know.state import SessionManager, SharedState
 
         shared = SharedState(version_info={"installed": "0.3.0", "latest": "0.3.0", "outdated": False})
-        sessions = SessionManager(shared)
+        sessions = SessionManager(shared, collection_factory=CollectionManager)
         new_info = {"installed": "0.3.0", "latest": "0.4.0", "outdated": True}
 
         call_count = 0
@@ -1285,11 +1287,12 @@ class TestPeriodicVersionCheck:
 
     @pytest.mark.asyncio
     async def test_skips_when_check_returns_none(self):
+        from ansible_know.collections import CollectionManager
         from ansible_know.server import _periodic_version_check
         from ansible_know.state import SessionManager, SharedState
 
         shared = SharedState(version_info={"installed": "0.3.0", "latest": "0.3.0", "outdated": False})
-        sessions = SessionManager(shared)
+        sessions = SessionManager(shared, collection_factory=CollectionManager)
 
         call_count = 0
 
@@ -1309,11 +1312,12 @@ class TestPeriodicVersionCheck:
 
     @pytest.mark.asyncio
     async def test_no_update_when_same_version(self):
+        from ansible_know.collections import CollectionManager
         from ansible_know.server import _periodic_version_check
         from ansible_know.state import SessionManager, SharedState
 
         shared = SharedState(version_info={"installed": "0.3.0", "latest": "0.3.0", "outdated": False})
-        sessions = SessionManager(shared)
+        sessions = SessionManager(shared, collection_factory=CollectionManager)
         same_info = {"installed": "0.3.0", "latest": "0.3.0", "outdated": False}
 
         call_count = 0
@@ -1339,11 +1343,12 @@ class TestPeriodicVersionCheck:
 class TestGetStateSessionIsolation:
     @pytest.mark.asyncio
     async def test_different_sessions_get_different_state(self):
+        from ansible_know.collections import CollectionManager
         from ansible_know.server import _get_state
         from ansible_know.state import SessionManager, SharedState
 
         shared = SharedState()
-        sessions = SessionManager(shared)
+        sessions = SessionManager(shared, collection_factory=CollectionManager)
 
         ctx_a = MagicMock()
         ctx_a.lifespan_context = {"shared": shared, "sessions": sessions, "http_client": None}
@@ -1359,11 +1364,12 @@ class TestGetStateSessionIsolation:
 
     @pytest.mark.asyncio
     async def test_same_session_gets_same_state(self):
+        from ansible_know.collections import CollectionManager
         from ansible_know.server import _get_state
         from ansible_know.state import SessionManager, SharedState
 
         shared = SharedState()
-        sessions = SessionManager(shared)
+        sessions = SessionManager(shared, collection_factory=CollectionManager)
 
         ctx = MagicMock()
         ctx.lifespan_context = {"shared": shared, "sessions": sessions, "http_client": None}
