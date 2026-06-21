@@ -23,6 +23,7 @@ from mcp.types import ToolAnnotations
 from ansible_know.async_utils import run_in_executor
 from ansible_know.errors import AnsibleDocError, ValidationError, collection_hint, maybe_add_hint
 from ansible_know.state import LifespanContext, ServerState, SessionManager, SharedState
+from ansible_know.types import VersionInfo
 from ansible_know.validation import (
     sanitize_error,
     truncate_response,
@@ -60,7 +61,7 @@ def _parse_version(v: str) -> tuple[int, ...]:
     return tuple(int(x) for x in match.group(1).split("."))
 
 
-async def _check_pypi_version(client: httpx.AsyncClient) -> dict[str, Any] | None:
+async def _check_pypi_version(client: httpx.AsyncClient) -> VersionInfo | None:
     if os.environ.get("ANSIBLE_KNOW_SKIP_UPDATE_CHECK", "").strip() in ("1", "true", "yes"):
         return None
     try:

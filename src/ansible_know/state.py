@@ -10,13 +10,14 @@ import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
     import httpx
 
     from ansible_know.collections import CollectionManager
     from ansible_know.galaxy_config import GalaxyServerConfig
+    from ansible_know.types import VersionInfo
 
 __all__ = [
     "LifespanContext",
@@ -38,7 +39,6 @@ class ServerState:
 
     collection_manager: CollectionManager
     missing_collections: set[str] = field(default_factory=set)
-    version_info: dict[str, Any] | None = None
     galaxy_servers: list[GalaxyServerConfig] = field(default_factory=list)
     upgrade_warned: bool = False
 
@@ -56,7 +56,7 @@ class SharedState:
     """
 
     galaxy_servers: list[GalaxyServerConfig] = field(default_factory=list)
-    version_info: dict[str, Any] | None = None
+    version_info: VersionInfo | None = None
 
 
 class SessionManager:
@@ -93,7 +93,6 @@ class SessionManager:
                 self._sessions[session_id] = ServerState(
                     collection_manager=self._collection_factory(),
                     galaxy_servers=self._shared.galaxy_servers,
-                    version_info=self._shared.version_info,
                 )
                 logger.debug("Created session state for %s", session_id)
             return self._sessions[session_id]
@@ -106,13 +105,12 @@ class SessionManager:
             state.collection_manager.cleanup()
             logger.debug("Removed session state for %s", session_id)
 
-    async def on_version_update(self, new_info: dict[str, Any] | None) -> None:
+    async def on_version_update(self, new_info: VersionInfo | None) -> None:
         """Update version info and reset upgrade_warned for all sessions."""
         async with self._lock:
             self._shared.version_info = new_info
-            for session in self._sessions.values():
-                session.version_info = new_info
-                if new_info and new_info.get("outdated"):
+            if new_info and new_info.get("outdated"):
+                for session in self._sessions.values():
                     session.upgrade_warned = False
 
     @property

@@ -1339,6 +1339,34 @@ class TestPeriodicVersionCheck:
         # But shared.version_info should still be refreshed
         assert shared.version_info["latest"] == "0.3.0"
 
+    @pytest.mark.asyncio
+    async def test_continues_after_unexpected_error(self):
+        from ansible_know.collections import CollectionManager
+        from ansible_know.server import _periodic_version_check
+        from ansible_know.state import SessionManager, SharedState
+
+        original_info = {"installed": "0.3.0", "latest": "0.3.0", "outdated": False}
+        shared = SharedState(version_info=dict(original_info))
+        sessions = SessionManager(shared, collection_factory=CollectionManager)
+
+        call_count = 0
+
+        async def fake_sleep(_):
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:
+                raise asyncio.CancelledError
+
+        with patch(
+            "ansible_know.server._check_pypi_version",
+            side_effect=RuntimeError("network exploded"),
+        ):
+            with patch("asyncio.sleep", side_effect=fake_sleep):
+                with pytest.raises(asyncio.CancelledError):
+                    await _periodic_version_check(AsyncMock(), shared, sessions)
+
+        assert shared.version_info == original_info
+
 
 class TestGetStateSessionIsolation:
     @pytest.mark.asyncio

@@ -14,7 +14,6 @@ class TestServerState:
         state = ServerState(collection_manager=mgr)
         assert state.collection_manager is mgr
         assert state.missing_collections == set()
-        assert state.version_info is None
         assert state.galaxy_servers == []
         assert state.upgrade_warned is False
 
@@ -90,18 +89,16 @@ class TestSessionManager:
         assert state.galaxy_servers is servers
 
     @pytest.mark.asyncio
-    async def test_on_version_update_propagates_to_sessions(self):
+    async def test_on_version_update_updates_shared(self):
         shared = SharedState()
         mgr = SessionManager(shared, collection_factory=CollectionManager)
-        state_a = await mgr.get_or_create("a")
-        state_b = await mgr.get_or_create("b")
+        await mgr.get_or_create("a")
+        await mgr.get_or_create("b")
 
         new_info = {"installed": "0.4.0", "latest": "0.4.0", "outdated": False}
         await mgr.on_version_update(new_info)
 
         assert shared.version_info is new_info
-        assert state_a.version_info is new_info
-        assert state_b.version_info is new_info
 
     @pytest.mark.asyncio
     async def test_on_version_update_resets_upgrade_warned(self):
@@ -179,5 +176,4 @@ class TestSessionManager:
         await mgr.on_version_update(None)
 
         assert shared.version_info is None
-        assert state.version_info is None
         assert state.upgrade_warned is True
