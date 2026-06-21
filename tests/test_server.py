@@ -1,5 +1,6 @@
 """Tests for ansible_know.server MCP tools."""
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -12,6 +13,21 @@ from tests.conftest import (
     SAMPLE_ROLE_DOC,
     SAMPLE_ROLE_LIST,
 )
+
+
+def _make_mock_ctx(state, shared, http_client=None):
+    """Build a mock FastMCP Context with session-based state."""
+    mock_ctx = MagicMock()
+    sessions = MagicMock()
+    sessions.get_or_create = AsyncMock(return_value=state)
+    mock_ctx.lifespan_context = {
+        "shared": shared,
+        "sessions": sessions,
+        "http_client": http_client,
+    }
+    mock_ctx.session_id = "test-session"
+    mock_ctx.warning = AsyncMock()
+    return mock_ctx
 
 
 @pytest.fixture
@@ -556,32 +572,29 @@ class TestResourceFunctions:
 
     def test_resource_installed_collections_empty(self):
         import ansible_know.server as srv
-        from ansible_know.collections import CollectionManager
-        from ansible_know.state import ServerState
+        from ansible_know.state import SessionManager, SharedState
 
-        state = ServerState(collection_manager=CollectionManager())
-        old = srv._server_state
+        shared = SharedState()
+        sessions = SessionManager(shared)
+        old = srv._session_manager
         try:
-            srv._server_state = state
+            srv._session_manager = sessions
             result = json.loads(srv.resource_installed_collections())
         finally:
-            srv._server_state = old
+            srv._session_manager = old
         assert result == {}
 
     def test_resource_installed_collections_with_data(self):
         import ansible_know.server as srv
-        from ansible_know.collections import CollectionManager
-        from ansible_know.state import ServerState
 
-        cm = CollectionManager()
-        state = ServerState(collection_manager=cm)
-        old = srv._server_state
+        mock_manager = MagicMock()
+        mock_manager.all_installed_collections = {"netbox.netbox": "4.1.0", "ansible.utils": "5.0.0"}
+        old = srv._session_manager
         try:
-            srv._server_state = state
-            with patch.object(cm, "list_installed", return_value={"netbox.netbox": "4.1.0", "ansible.utils": "5.0.0"}):
-                result = json.loads(srv.resource_installed_collections())
+            srv._session_manager = mock_manager
+            result = json.loads(srv.resource_installed_collections())
         finally:
-            srv._server_state = old
+            srv._session_manager = old
         assert result == {"netbox.netbox": "4.1.0", "ansible.utils": "5.0.0"}
 
     def test_resource_doc_sources(self):
@@ -762,18 +775,15 @@ class TestMaybeWarnUpgrade:
     async def test_warns_when_outdated(self):
         from ansible_know.collections import CollectionManager
         from ansible_know.server import _maybe_warn_upgrade
-        from ansible_know.state import ServerState
+        from ansible_know.state import ServerState, SharedState
 
-        state = ServerState(
-            collection_manager=CollectionManager(),
-            version_info={
-                "installed": "0.3.2", "latest": "0.4.0",
-                "outdated": True, "upgrade_command": "uvx --upgrade ansible-know-mcp",
-            },
-        )
-        mock_ctx = MagicMock()
-        mock_ctx.lifespan_context = {"state": state, "http_client": None}
-        mock_ctx.warning = AsyncMock()
+        version_info = {
+            "installed": "0.3.2", "latest": "0.4.0",
+            "outdated": True, "upgrade_command": "uvx --upgrade ansible-know-mcp",
+        }
+        state = ServerState(collection_manager=CollectionManager())
+        shared = SharedState(version_info=version_info)
+        mock_ctx = _make_mock_ctx(state, shared)
 
         await _maybe_warn_upgrade(mock_ctx)
         mock_ctx.warning.assert_called_once()
@@ -784,18 +794,15 @@ class TestMaybeWarnUpgrade:
     async def test_warns_only_once(self):
         from ansible_know.collections import CollectionManager
         from ansible_know.server import _maybe_warn_upgrade
-        from ansible_know.state import ServerState
+        from ansible_know.state import ServerState, SharedState
 
-        state = ServerState(
-            collection_manager=CollectionManager(),
-            version_info={
-                "installed": "0.3.2", "latest": "0.4.0",
-                "outdated": True, "upgrade_command": "uvx --upgrade ansible-know-mcp",
-            },
-        )
-        mock_ctx = MagicMock()
-        mock_ctx.lifespan_context = {"state": state, "http_client": None}
-        mock_ctx.warning = AsyncMock()
+        version_info = {
+            "installed": "0.3.2", "latest": "0.4.0",
+            "outdated": True, "upgrade_command": "uvx --upgrade ansible-know-mcp",
+        }
+        state = ServerState(collection_manager=CollectionManager())
+        shared = SharedState(version_info=version_info)
+        mock_ctx = _make_mock_ctx(state, shared)
 
         await _maybe_warn_upgrade(mock_ctx)
         await _maybe_warn_upgrade(mock_ctx)
@@ -805,18 +812,15 @@ class TestMaybeWarnUpgrade:
     async def test_no_warn_when_current(self):
         from ansible_know.collections import CollectionManager
         from ansible_know.server import _maybe_warn_upgrade
-        from ansible_know.state import ServerState
+        from ansible_know.state import ServerState, SharedState
 
-        state = ServerState(
-            collection_manager=CollectionManager(),
-            version_info={
-                "installed": "0.3.2", "latest": "0.3.2",
-                "outdated": False, "upgrade_command": "uvx --upgrade ansible-know-mcp",
-            },
-        )
-        mock_ctx = MagicMock()
-        mock_ctx.lifespan_context = {"state": state, "http_client": None}
-        mock_ctx.warning = AsyncMock()
+        version_info = {
+            "installed": "0.3.2", "latest": "0.3.2",
+            "outdated": False, "upgrade_command": "uvx --upgrade ansible-know-mcp",
+        }
+        state = ServerState(collection_manager=CollectionManager())
+        shared = SharedState(version_info=version_info)
+        mock_ctx = _make_mock_ctx(state, shared)
 
         await _maybe_warn_upgrade(mock_ctx)
         mock_ctx.warning.assert_not_called()
@@ -825,15 +829,11 @@ class TestMaybeWarnUpgrade:
     async def test_no_warn_when_check_failed(self):
         from ansible_know.collections import CollectionManager
         from ansible_know.server import _maybe_warn_upgrade
-        from ansible_know.state import ServerState
+        from ansible_know.state import ServerState, SharedState
 
-        state = ServerState(
-            collection_manager=CollectionManager(),
-            version_info=None,
-        )
-        mock_ctx = MagicMock()
-        mock_ctx.lifespan_context = {"state": state, "http_client": None}
-        mock_ctx.warning = AsyncMock()
+        state = ServerState(collection_manager=CollectionManager())
+        shared = SharedState(version_info=None)
+        mock_ctx = _make_mock_ctx(state, shared)
 
         await _maybe_warn_upgrade(mock_ctx)
         mock_ctx.warning.assert_not_called()
@@ -847,27 +847,24 @@ class TestMaybeWarnUpgrade:
 class TestServerVersionResource:
     def test_returns_installed_version_without_pypi_check(self):
         import ansible_know.server as srv
-        from ansible_know.collections import CollectionManager
-        from ansible_know.state import ServerState
+        from ansible_know.state import SharedState
 
-        state = ServerState(collection_manager=CollectionManager())
-        old = srv._server_state
+        shared = SharedState()
+        old = srv._shared_state
         try:
-            srv._server_state = state
+            srv._shared_state = shared
             result = json.loads(srv.resource_server_version())
             assert result["installed"] == srv._VERSION
             assert result["latest"] is None
             assert result["outdated"] is None
         finally:
-            srv._server_state = old
+            srv._shared_state = old
 
     def test_returns_pypi_info_when_available(self):
         import ansible_know.server as srv
-        from ansible_know.collections import CollectionManager
-        from ansible_know.state import ServerState
+        from ansible_know.state import SharedState
 
-        state = ServerState(
-            collection_manager=CollectionManager(),
+        shared = SharedState(
             version_info={
                 "installed": "0.3.2",
                 "latest": "0.4.0",
@@ -875,15 +872,15 @@ class TestServerVersionResource:
                 "upgrade_command": "uvx --upgrade ansible-know-mcp",
             },
         )
-        old = srv._server_state
+        old = srv._shared_state
         try:
-            srv._server_state = state
+            srv._shared_state = shared
             result = json.loads(srv.resource_server_version())
             assert result["installed"] == "0.3.2"
             assert result["latest"] == "0.4.0"
             assert result["outdated"] is True
         finally:
-            srv._server_state = old
+            srv._shared_state = old
 
 
 class TestSearchCollectionsTool:
@@ -957,13 +954,13 @@ class TestLifespanHttpClient:
     @pytest.mark.asyncio
     async def test_get_module_doc_passes_lifespan_http_client(self, mock_ansible_doc):
         from ansible_know.collections import CollectionManager
-        from ansible_know.state import ServerState
+        from ansible_know.state import ServerState, SharedState
 
         mock_ansible_doc.return_value = json.dumps(SAMPLE_MODULE_DOC)
         mock_client = AsyncMock()
         state = ServerState(collection_manager=CollectionManager())
-        mock_ctx = MagicMock()
-        mock_ctx.lifespan_context = {"http_client": mock_client, "state": state}
+        shared = SharedState()
+        mock_ctx = _make_mock_ctx(state, shared, http_client=mock_client)
 
         with patch("ansible_know.resolution.resolve_module_doc") as mock_resolve:
             mock_resolve.return_value = (SAMPLE_MODULE_DOC, None)
@@ -979,12 +976,12 @@ class TestLifespanHttpClient:
     @pytest.mark.asyncio
     async def test_search_collections_passes_lifespan_http_client(self):
         from ansible_know.collections import CollectionManager
-        from ansible_know.state import ServerState
+        from ansible_know.state import ServerState, SharedState
 
         mock_client = AsyncMock()
         state = ServerState(collection_manager=CollectionManager())
-        mock_ctx = MagicMock()
-        mock_ctx.lifespan_context = {"http_client": mock_client, "state": state}
+        shared = SharedState()
+        mock_ctx = _make_mock_ctx(state, shared, http_client=mock_client)
 
         mock_result = {"query": "test", "count": 0, "collections": []}
         with patch("ansible_know.galaxy.GalaxyClient.from_config") as mock_from_config:
@@ -1002,7 +999,7 @@ class TestLifespanHttpClient:
     async def test_validate_certs_false_skips_shared_client(self):
         from ansible_know.collections import CollectionManager
         from ansible_know.galaxy_config import GalaxyServerConfig
-        from ansible_know.state import ServerState
+        from ansible_know.state import ServerState, SharedState
 
         mock_client = AsyncMock()
         server = GalaxyServerConfig(
@@ -1015,8 +1012,8 @@ class TestLifespanHttpClient:
             collection_manager=CollectionManager(),
             galaxy_servers=[server],
         )
-        mock_ctx = MagicMock()
-        mock_ctx.lifespan_context = {"http_client": mock_client, "state": state}
+        shared = SharedState()
+        mock_ctx = _make_mock_ctx(state, shared, http_client=mock_client)
 
         mock_result = {"query": "test", "count": 0, "collections": []}
         with patch("ansible_know.galaxy.GalaxyClient.from_config") as mock_from_config:
@@ -1034,7 +1031,7 @@ class TestLifespanHttpClient:
     async def test_validate_certs_true_uses_shared_client(self):
         from ansible_know.collections import CollectionManager
         from ansible_know.galaxy_config import GalaxyServerConfig
-        from ansible_know.state import ServerState
+        from ansible_know.state import ServerState, SharedState
 
         mock_client = AsyncMock()
         server = GalaxyServerConfig(
@@ -1046,8 +1043,8 @@ class TestLifespanHttpClient:
             collection_manager=CollectionManager(),
             galaxy_servers=[server],
         )
-        mock_ctx = MagicMock()
-        mock_ctx.lifespan_context = {"http_client": mock_client, "state": state}
+        shared = SharedState()
+        mock_ctx = _make_mock_ctx(state, shared, http_client=mock_client)
 
         mock_result = {"query": "test", "count": 0, "collections": []}
         with patch("ansible_know.galaxy.GalaxyClient.from_config") as mock_from_config:
@@ -1128,14 +1125,12 @@ class TestGetRoleDocTool:
     @pytest.mark.asyncio
     async def test_cached_missing_collection_skips_local(self, mock_ansible_doc):
         from ansible_know.collections import CollectionManager
-        from ansible_know.state import ServerState
+        from ansible_know.state import ServerState, SharedState
 
         state = ServerState(collection_manager=CollectionManager())
         state.missing_collections.add("some.col")
-
-        mock_ctx = MagicMock()
-        mock_ctx.lifespan_context = {"state": state, "http_client": None}
-        mock_ctx.warning = AsyncMock()
+        shared = SharedState()
+        mock_ctx = _make_mock_ctx(state, shared)
 
         galaxy_role_meta = {
             "role_name": "some.col.role",
@@ -1261,3 +1256,130 @@ class TestGetCollectionManifestWithRoles:
             from ansible_know.server import search_collections
             result = await search_collections("linux")
         assert result["collections"][0]["role_count"] == 43
+
+
+class TestPeriodicVersionCheck:
+    @pytest.mark.asyncio
+    async def test_updates_version_on_new_release(self):
+        from ansible_know.server import _periodic_version_check
+        from ansible_know.state import SessionManager, SharedState
+
+        shared = SharedState(version_info={"installed": "0.3.0", "latest": "0.3.0", "outdated": False})
+        sessions = SessionManager(shared)
+        new_info = {"installed": "0.3.0", "latest": "0.4.0", "outdated": True}
+
+        call_count = 0
+
+        async def fake_sleep(_):
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:
+                raise asyncio.CancelledError
+
+        with patch("ansible_know.server._check_pypi_version", return_value=new_info):
+            with patch("asyncio.sleep", side_effect=fake_sleep):
+                with pytest.raises(asyncio.CancelledError):
+                    await _periodic_version_check(AsyncMock(), sessions)
+
+        assert shared.version_info["latest"] == "0.4.0"
+
+    @pytest.mark.asyncio
+    async def test_skips_when_check_returns_none(self):
+        from ansible_know.server import _periodic_version_check
+        from ansible_know.state import SessionManager, SharedState
+
+        shared = SharedState(version_info={"installed": "0.3.0", "latest": "0.3.0", "outdated": False})
+        sessions = SessionManager(shared)
+
+        call_count = 0
+
+        async def fake_sleep(_):
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:
+                raise asyncio.CancelledError
+
+        with patch("ansible_know.server._check_pypi_version", return_value=None):
+            with patch("asyncio.sleep", side_effect=fake_sleep):
+                with pytest.raises(asyncio.CancelledError):
+                    await _periodic_version_check(AsyncMock(), sessions)
+
+        # version_info unchanged when check returns None
+        assert shared.version_info["latest"] == "0.3.0"
+
+    @pytest.mark.asyncio
+    async def test_no_update_when_same_version(self):
+        from ansible_know.server import _periodic_version_check
+        from ansible_know.state import SessionManager, SharedState
+
+        shared = SharedState(version_info={"installed": "0.3.0", "latest": "0.3.0", "outdated": False})
+        sessions = SessionManager(shared)
+        same_info = {"installed": "0.3.0", "latest": "0.3.0", "outdated": False}
+
+        call_count = 0
+
+        async def fake_sleep(_):
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:
+                raise asyncio.CancelledError
+
+        with patch("ansible_know.server._check_pypi_version", return_value=same_info):
+            with patch("asyncio.sleep", side_effect=fake_sleep):
+                with patch.object(sessions, "on_version_update", new_callable=AsyncMock) as mock_update:
+                    with pytest.raises(asyncio.CancelledError):
+                        await _periodic_version_check(AsyncMock(), sessions)
+
+        # Same version: on_version_update should NOT be called
+        mock_update.assert_not_called()
+        # But shared.version_info should still be refreshed
+        assert shared.version_info["latest"] == "0.3.0"
+
+
+class TestGetStateSessionIsolation:
+    @pytest.mark.asyncio
+    async def test_different_sessions_get_different_state(self):
+        from ansible_know.server import _get_state
+        from ansible_know.state import SessionManager, SharedState
+
+        shared = SharedState()
+        sessions = SessionManager(shared)
+
+        ctx_a = MagicMock()
+        ctx_a.lifespan_context = {"shared": shared, "sessions": sessions, "http_client": None}
+        ctx_a.session_id = "session-a"
+
+        ctx_b = MagicMock()
+        ctx_b.lifespan_context = {"shared": shared, "sessions": sessions, "http_client": None}
+        ctx_b.session_id = "session-b"
+
+        state_a = await _get_state(ctx_a)
+        state_b = await _get_state(ctx_b)
+        assert state_a is not state_b
+
+    @pytest.mark.asyncio
+    async def test_same_session_gets_same_state(self):
+        from ansible_know.server import _get_state
+        from ansible_know.state import SessionManager, SharedState
+
+        shared = SharedState()
+        sessions = SessionManager(shared)
+
+        ctx = MagicMock()
+        ctx.lifespan_context = {"shared": shared, "sessions": sessions, "http_client": None}
+        ctx.session_id = "session-x"
+
+        state_1 = await _get_state(ctx)
+        state_2 = await _get_state(ctx)
+        assert state_1 is state_2
+
+    @pytest.mark.asyncio
+    async def test_none_ctx_returns_ephemeral(self):
+        from ansible_know.server import _get_state
+
+        state = await _get_state(None)
+        assert state is not None
+        assert state.collection_manager is not None
+        # Each call returns a new ephemeral instance
+        state_2 = await _get_state(None)
+        assert state is not state_2
