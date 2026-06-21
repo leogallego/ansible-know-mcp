@@ -446,7 +446,8 @@ async def get_collection_manifest(
 
         state = await _get_state(ctx)
         installed_version = state.collection_manager.list_installed().get(collection_namespace)
-        cached = collection_manifest.load_cached_manifest(
+        cached = await run_in_executor(
+            collection_manifest.load_cached_manifest,
             collection_namespace, installed_version=installed_version,
         )
         if cached:
@@ -495,7 +496,8 @@ async def get_collection_manifest(
                 "entry_points": entry_points,
             })
 
-        return collection_manifest.generate_manifest(
+        return await run_in_executor(
+            collection_manifest.generate_manifest,
             collection_namespace, metadata_list,
             roles_metadata=roles_metadata,
             collection_version=installed_version,
@@ -595,7 +597,8 @@ async def list_skills(
             return results
 
         if collection:
-            collection_dir = SKILLS_DIR / collection
+            collection_dir = (SKILLS_DIR / collection).resolve()
+            validate_path_containment(collection_dir, SKILLS_DIR)
             if not collection_dir.is_dir():
                 return results
             for sub_dir in sorted(collection_dir.iterdir()):
@@ -805,7 +808,7 @@ async def generate_collection_skills(
     """Batch generate skills for an entire collection.
 
     Generates/updates the collection MANIFEST.json as a byproduct.
-    Returns {"succeeded": int, "failed": int, "total": int, "manifest": dict},
+    Returns {"succeeded": int, "failed": int, "total": int, "manifest": dict, "codex": str},
     or {"error": str} on failure.
     """
     logger.info("generate_collection_skills namespace=%r install_to=%r", collection_namespace, install_to)
@@ -860,7 +863,8 @@ async def generate_collection_skills(
                 logger.warning("Skill generation failed for %s: %s", module_name, exc)
                 failed += 1
 
-        manifest = collection_manifest.generate_manifest(
+        manifest = await run_in_executor(
+            collection_manifest.generate_manifest,
             collection_namespace, metadata_list, skills_dir=base_dir,
             collection_version=installed_version,
         )
@@ -906,6 +910,9 @@ def resource_skills_list() -> str:
             skill_md = skill_dir / "SKILL.md"
             if skill_md.exists():
                 skills_list.append(skill_dir.name)
+            for sub_dir in sorted(skill_dir.iterdir()) if skill_dir.is_dir() else []:
+                if sub_dir.is_dir() and (sub_dir / "SKILL.md").exists():
+                    skills_list.append(f"{skill_dir.name}.{sub_dir.name}")
     return json.dumps(skills_list, indent=2)
 
 

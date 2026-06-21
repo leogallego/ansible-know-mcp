@@ -67,9 +67,6 @@ def _module_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-_template_context = _module_template_context
-
-
 def _examples_contain_play(examples: str) -> bool:
     """Check if examples YAML already defines a full play."""
     if not examples:
