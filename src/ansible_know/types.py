@@ -72,6 +72,17 @@ class SkillEntry(TypedDict):
     path: str
 
 
+class CollectionSkillContext(TypedDict):
+    """Template context for collection-level codex skill rendering."""
+
+    collection_namespace: str
+    collection_version: str | None
+    modules_by_tag: dict[str, list[dict[str, Any]]]
+    all_api: bool
+    common_params: list[dict[str, Any]]
+    module_count: int
+
+
 class _CollectionInfoBase(TypedDict):
     """Required fields for a collection search result entry."""
 

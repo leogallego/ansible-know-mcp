@@ -121,6 +121,28 @@ class TestListSkillsTool:
         result = await list_skills()
         assert result == []
 
+    @pytest.mark.asyncio
+    async def test_returns_top_level_skills(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+        codex_dir = tmp_path / "netbox.netbox"
+        codex_dir.mkdir()
+        (codex_dir / "SKILL.md").write_text("---\nname: netbox.netbox\ndescription: Codex\n---\n")
+        from ansible_know.server import list_skills
+        result = await list_skills()
+        assert len(result) == 1
+        assert result[0]["name"] == "netbox.netbox"
+
+    @pytest.mark.asyncio
+    async def test_returns_collection_skills_with_filter(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+        mod_dir = tmp_path / "netbox.netbox" / "netbox_device"
+        mod_dir.mkdir(parents=True)
+        (mod_dir / "SKILL.md").write_text("---\nname: netbox.netbox.netbox_device\ndescription: Device\n---\n")
+        from ansible_know.server import list_skills
+        result = await list_skills(collection="netbox.netbox")
+        assert len(result) == 1
+        assert result[0]["name"] == "netbox.netbox.netbox_device"
+
 
 class TestGetSkillTool:
     @pytest.mark.asyncio
@@ -131,6 +153,36 @@ class TestGetSkillTool:
         assert "error" in result
         assert "not found" in result["error"].lower()
 
+    @pytest.mark.asyncio
+    async def test_reads_nested_skill(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+        nested = tmp_path / "netbox.netbox" / "netbox_device"
+        nested.mkdir(parents=True)
+        (nested / "SKILL.md").write_text("nested skill content")
+        from ansible_know.server import get_skill
+        result = await get_skill("netbox.netbox.netbox_device")
+        assert result == "nested skill content"
+
+    @pytest.mark.asyncio
+    async def test_reads_codex_by_namespace(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+        codex_dir = tmp_path / "netbox.netbox"
+        codex_dir.mkdir(parents=True)
+        (codex_dir / "SKILL.md").write_text("codex content")
+        from ansible_know.server import get_skill
+        result = await get_skill("netbox.netbox")
+        assert result == "codex content"
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_flat_layout(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+        flat = tmp_path / "ansible.builtin.copy"
+        flat.mkdir(parents=True)
+        (flat / "SKILL.md").write_text("flat skill content")
+        from ansible_know.server import get_skill
+        result = await get_skill("ansible.builtin.copy")
+        assert result == "flat skill content"
+
 
 class TestGenerateSkillTool:
     @pytest.mark.asyncio
@@ -140,7 +192,7 @@ class TestGenerateSkillTool:
         from ansible_know.server import generate_skill
         result = await generate_skill("ansible.builtin.package")
         assert "ansible.builtin.package" in result
-        assert (tmp_path / "ansible.builtin.package" / "SKILL.md").exists()
+        assert (tmp_path / "ansible.builtin" / "package" / "SKILL.md").exists()
 
 
 class TestGenerateCollectionSkillsTool:
@@ -158,6 +210,8 @@ class TestGenerateCollectionSkillsTool:
         result = await generate_collection_skills("ansible.builtin", install_to=str(tmp_path))
         assert result["total"] == 4
         assert result["succeeded"] + result["failed"] == 4
+        assert result["codex"] == "ansible.builtin"
+        assert (tmp_path / "ansible.builtin" / "SKILL.md").exists()
 
 
 class TestFQCNValidation:
@@ -248,6 +302,24 @@ class TestQueryValidation:
     async def test_rejects_long_query(self):
         from ansible_know.server import search_docs
         result = await search_docs("a" * 501)
+        assert "error" in result
+
+
+class TestSkillNameValidation:
+    @pytest.mark.asyncio
+    async def test_get_skill_accepts_namespace(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+        codex_dir = tmp_path / "netbox.netbox"
+        codex_dir.mkdir()
+        (codex_dir / "SKILL.md").write_text("codex")
+        from ansible_know.server import get_skill
+        result = await get_skill("netbox.netbox")
+        assert result == "codex"
+
+    @pytest.mark.asyncio
+    async def test_get_skill_rejects_single_segment(self):
+        from ansible_know.server import get_skill
+        result = await get_skill("copy")
         assert "error" in result
 
 
@@ -539,7 +611,7 @@ class TestGalaxyDocsFallback:
             result = await generate_skill("netbox.netbox.netbox_device")
 
         assert "netbox.netbox.netbox_device" in result
-        assert (tmp_path / "netbox.netbox.netbox_device" / "SKILL.md").exists()
+        assert (tmp_path / "netbox.netbox" / "netbox_device" / "SKILL.md").exists()
 
 
 class TestResourceFunctions:
@@ -551,18 +623,36 @@ class TestResourceFunctions:
 
     def test_resource_skills_list_with_skills(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
-        skill_dir = tmp_path / "ansible.builtin.copy"
+        skill_dir = tmp_path / "ansible.builtin"
         skill_dir.mkdir()
-        (skill_dir / "SKILL.md").write_text("# Copy skill")
+        (skill_dir / "SKILL.md").write_text("# Codex skill")
         from ansible_know.server import resource_skills_list
         result = json.loads(resource_skills_list())
-        assert "ansible.builtin.copy" in result
+        assert "ansible.builtin" in result
 
     def test_resource_skill_content_not_found(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
         from ansible_know.server import resource_skill_content
         result = resource_skill_content("ansible.builtin.copy")
         assert "not found" in result.lower()
+
+    def test_resource_skill_content_reads_nested(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+        nested = tmp_path / "ansible.builtin" / "copy"
+        nested.mkdir(parents=True)
+        (nested / "SKILL.md").write_text("nested content")
+        from ansible_know.server import resource_skill_content
+        result = resource_skill_content("ansible.builtin.copy")
+        assert result == "nested content"
+
+    def test_resource_skill_content_reads_codex(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+        codex_dir = tmp_path / "netbox.netbox"
+        codex_dir.mkdir()
+        (codex_dir / "SKILL.md").write_text("codex content")
+        from ansible_know.server import resource_skill_content
+        result = resource_skill_content("netbox.netbox")
+        assert result == "codex content"
 
     def test_resource_skill_content_invalid_fqcn(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
@@ -1163,9 +1253,9 @@ class TestGenerateRoleSkillTool:
         from ansible_know.server import generate_role_skill
         result = await generate_role_skill("fedora.linux_system_roles.gfs2")
         assert "fedora.linux_system_roles.gfs2" in result
-        assert (tmp_path / "fedora.linux_system_roles.gfs2" / "SKILL.md").exists()
-        assert (tmp_path / "fedora.linux_system_roles.gfs2" / "assets" / "playbook.yml").exists()
-        assert not (tmp_path / "fedora.linux_system_roles.gfs2" / "scripts").exists()
+        assert (tmp_path / "fedora.linux_system_roles" / "gfs2" / "SKILL.md").exists()
+        assert (tmp_path / "fedora.linux_system_roles" / "gfs2" / "assets" / "playbook.yml").exists()
+        assert not (tmp_path / "fedora.linux_system_roles" / "gfs2" / "scripts").exists()
 
     @pytest.mark.asyncio
     async def test_validation_error(self):
@@ -1208,7 +1298,7 @@ class TestGenerateRoleSkillTool:
             result = await generate_role_skill("fedora.linux_system_roles.timesync")
 
         assert "fedora.linux_system_roles.timesync" in result
-        assert (tmp_path / "fedora.linux_system_roles.timesync" / "SKILL.md").exists()
+        assert (tmp_path / "fedora.linux_system_roles" / "timesync" / "SKILL.md").exists()
 
 
 class TestGetCollectionManifestWithRoles:

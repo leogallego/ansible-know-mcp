@@ -4,11 +4,16 @@
 from ansible_know.parser import extract_module_metadata
 from ansible_know.skills import (
     _build_example_args,
+    _collection_template_context,
     _extract_example_values,
     _role_template_context,
     module_to_skill_name,
+    render_collection_skill,
+    render_module_skill,
     render_role_skill,
     render_skill,
+    write_collection_skill_package,
+    write_module_skill_package,
     write_role_skill_package,
     write_skill_package,
 )
@@ -20,6 +25,14 @@ class TestModuleToSkillName:
 
     def test_preserves_collection_prefix(self):
         assert module_to_skill_name("netbox.netbox.netbox_device") == "netbox.netbox.netbox_device"
+
+
+class TestBackwardCompatAliases:
+    def test_render_skill_is_render_module_skill(self):
+        assert render_skill is render_module_skill
+
+    def test_write_skill_package_is_write_module_skill_package(self):
+        assert write_skill_package is write_module_skill_package
 
 
 class TestExtractExampleValues:
@@ -66,10 +79,10 @@ class TestBuildExampleArgs:
         assert "opt1=val1" in result
 
 
-class TestRenderSkill:
+class TestRenderModuleSkill:
     def test_renders_system_module(self, sample_module_doc):
         metadata = extract_module_metadata(sample_module_doc)
-        content = render_skill(metadata)
+        content = render_module_skill(metadata)
         assert "ansible.builtin.package" in content
         assert "Generic OS package manager" in content
         assert "## Parameters" in content
@@ -77,15 +90,15 @@ class TestRenderSkill:
 
     def test_renders_api_module(self, sample_api_module_doc):
         metadata = extract_module_metadata(sample_api_module_doc)
-        content = render_skill(metadata)
+        content = render_module_skill(metadata)
         assert "connection: local" in content.lower() or "connection:" in content.lower() or "API" in content
 
 
-class TestWriteSkillPackage:
+class TestWriteModuleSkillPackage:
     def test_writes_full_package(self, tmp_path, sample_module_doc):
         metadata = extract_module_metadata(sample_module_doc)
         output_dir = tmp_path / "ansible.builtin.package"
-        write_skill_package(output_dir, metadata)
+        write_module_skill_package(output_dir, metadata)
 
         assert (output_dir / "SKILL.md").exists()
         assert (output_dir / "scripts" / "run.sh").exists()
@@ -98,7 +111,7 @@ class TestWriteSkillPackage:
     def test_scripts_are_executable(self, tmp_path, sample_module_doc):
         metadata = extract_module_metadata(sample_module_doc)
         output_dir = tmp_path / "test_skill"
-        write_skill_package(output_dir, metadata)
+        write_module_skill_package(output_dir, metadata)
 
         import os
         run_sh = output_dir / "scripts" / "run.sh"
@@ -201,3 +214,97 @@ class TestWriteRoleSkillPackage:
 
         playbook_content = (output_dir / "assets" / "playbook.yml").read_text()
         assert "fedora.linux_system_roles.timesync" in playbook_content
+
+
+class TestCollectionTemplateContext:
+    def test_groups_modules_by_tag(self, sample_api_module_doc):
+        metadata = extract_module_metadata(sample_api_module_doc)
+        ctx = _collection_template_context("netbox.netbox", [metadata])
+
+        assert ctx["collection_namespace"] == "netbox.netbox"
+        assert ctx["module_count"] == 1
+        assert isinstance(ctx["modules_by_tag"], dict)
+        found = False
+        for modules in ctx["modules_by_tag"].values():
+            for m in modules:
+                if m["fqcn"] == "netbox.netbox.netbox_device":
+                    found = True
+        assert found
+
+    def test_all_api_detection(self, sample_api_module_doc):
+        metadata = extract_module_metadata(sample_api_module_doc)
+        ctx = _collection_template_context("netbox.netbox", [metadata])
+        assert ctx["all_api"] is True
+
+    def test_all_api_false_for_mixed(self, sample_module_doc, sample_api_module_doc):
+        meta1 = extract_module_metadata(sample_module_doc)
+        meta2 = extract_module_metadata(sample_api_module_doc)
+        ctx = _collection_template_context("mixed.collection", [meta1, meta2])
+        assert ctx["all_api"] is False
+
+    def test_common_params_detection(self, sample_api_module_doc):
+        metadata = extract_module_metadata(sample_api_module_doc)
+        ctx = _collection_template_context("netbox.netbox", [metadata])
+        common_names = [p["name"] for p in ctx["common_params"]]
+        assert "data" in common_names or "netbox_url" in common_names
+
+    def test_empty_metadata_list(self):
+        ctx = _collection_template_context("empty.collection", [])
+        assert ctx["module_count"] == 0
+        assert ctx["all_api"] is False
+        assert ctx["common_params"] == []
+        assert ctx["modules_by_tag"] == {}
+
+    def test_untagged_modules_go_to_other(self):
+        metadata = {
+            "module_name": "custom.collection.something_unique",
+            "short_description": "A unique module",
+            "params": [],
+            "examples": "",
+            "is_api_module": False,
+        }
+        ctx = _collection_template_context("custom.collection", [metadata])
+        assert "other" in ctx["modules_by_tag"]
+
+    def test_collection_version(self, sample_module_doc):
+        metadata = extract_module_metadata(sample_module_doc)
+        ctx = _collection_template_context("ansible.builtin", [metadata], collection_version="2.15.0")
+        assert ctx["collection_version"] == "2.15.0"
+
+
+class TestRenderCollectionSkill:
+    def test_renders_codex(self, sample_api_module_doc):
+        metadata = extract_module_metadata(sample_api_module_doc)
+        content = render_collection_skill("netbox.netbox", [metadata], collection_version="4.1.0")
+
+        assert "netbox.netbox" in content
+        assert "Playbook Codex" in content
+        assert "Phase 1" in content
+        assert "Phase 2" in content
+        assert "Phase 5" in content
+        assert "v4.1.0" in content
+
+    def test_renders_api_connection_requirements(self, sample_api_module_doc):
+        metadata = extract_module_metadata(sample_api_module_doc)
+        content = render_collection_skill("netbox.netbox", [metadata])
+        assert "connection: local" in content
+
+    def test_renders_without_api_section_for_system_modules(self, sample_module_doc):
+        metadata = extract_module_metadata(sample_module_doc)
+        content = render_collection_skill("ansible.builtin", [metadata])
+        assert "connection: local" not in content
+
+
+class TestWriteCollectionSkillPackage:
+    def test_writes_skill_md_only(self, tmp_path, sample_api_module_doc):
+        metadata = extract_module_metadata(sample_api_module_doc)
+        output_dir = tmp_path / "netbox.netbox"
+        write_collection_skill_package(output_dir, "netbox.netbox", [metadata])
+
+        assert (output_dir / "SKILL.md").exists()
+        assert not (output_dir / "scripts").exists()
+        assert not (output_dir / "assets").exists()
+
+        content = (output_dir / "SKILL.md").read_text()
+        assert "netbox.netbox" in content
+        assert "Playbook Codex" in content

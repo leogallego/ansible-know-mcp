@@ -17,12 +17,13 @@ if TYPE_CHECKING:
     from ansible_know.types import ModuleMetadata
 
 __all__ = [
+    "derive_tags",
     "generate_manifest",
     "load_cached_manifest",
 ]
 
 
-def _derive_tags(fqcn: str, params: list[dict[str, Any]]) -> list[str]:
+def derive_tags(fqcn: str, params: list[dict[str, Any]]) -> list[str]:
     """Heuristically derive tags from module name segments and parameters."""
     parts = fqcn.split(".")
     module_short = parts[-1] if parts else fqcn
@@ -73,13 +74,15 @@ def generate_manifest(
     if skills_dir is None:
         skills_dir = SKILLS_DIR
 
+    collection_dir = skills_dir / collection_namespace
+
     modules_list = []
     for meta in modules_metadata:
         fqcn = meta["module_name"]
         params = meta["params"]
         required_params = [p["name"] for p in params if p.get("required")]
-        skill_dir = skills_dir / fqcn
-        has_skill = (skill_dir / "SKILL.md").exists()
+        short_name = fqcn.rsplit(".", 1)[-1]
+        has_skill = (collection_dir / short_name / "SKILL.md").exists()
 
         modules_list.append({
             "fqcn": fqcn,
@@ -88,14 +91,14 @@ def generate_manifest(
             "required_params": required_params,
             "is_api_module": meta["is_api_module"],
             "has_skill": has_skill,
-            "tags": _derive_tags(fqcn, params),
+            "tags": derive_tags(fqcn, params),
         })
 
     roles_list = []
     for role_meta in (roles_metadata or []):
         fqcn = role_meta["fqcn"]
-        skill_dir = skills_dir / fqcn
-        has_skill = (skill_dir / "SKILL.md").exists()
+        short_name = fqcn.rsplit(".", 1)[-1]
+        has_skill = (collection_dir / short_name / "SKILL.md").exists()
 
         roles_list.append({
             "fqcn": fqcn,
@@ -105,19 +108,21 @@ def generate_manifest(
             "has_skill": has_skill,
         })
 
+    has_codex = (collection_dir / "SKILL.md").exists()
+
     manifest = {
         "collection": collection_namespace,
         "collection_version": collection_version,
         "generated": datetime.now(timezone.utc).isoformat(),
         "module_count": len(modules_list),
         "role_count": len(roles_list),
+        "has_codex": has_codex,
         "modules": modules_list,
         "roles": roles_list,
     }
 
-    manifest_dir = skills_dir / collection_namespace.replace(".", "/")
-    manifest_dir.mkdir(parents=True, exist_ok=True)
-    manifest_path = manifest_dir / "MANIFEST.json"
+    collection_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = collection_dir / "MANIFEST.json"
     manifest_path.write_text(json.dumps(manifest, indent=2))
 
     return manifest
@@ -136,7 +141,7 @@ def load_cached_manifest(
     if skills_dir is None:
         skills_dir = SKILLS_DIR
 
-    manifest_path = skills_dir / collection_namespace.replace(".", "/") / "MANIFEST.json"
+    manifest_path = skills_dir / collection_namespace / "MANIFEST.json"
     if not manifest_path.exists():
         return None
 

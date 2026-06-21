@@ -3,7 +3,7 @@
 import json
 
 from ansible_know.collection_manifest import (
-    _derive_tags,
+    derive_tags,
     generate_manifest,
     load_cached_manifest,
 )
@@ -12,23 +12,23 @@ from ansible_know.parser import extract_module_metadata
 
 class TestDeriveTags:
     def test_ip_address_module(self):
-        tags = _derive_tags("netbox.netbox.ip_address", [])
+        tags = derive_tags("netbox.netbox.ip_address", [])
         assert "ipam" in tags
 
     def test_device_module(self):
-        tags = _derive_tags("netbox.netbox.device", [])
+        tags = derive_tags("netbox.netbox.device", [])
         assert "dcim" in tags
 
     def test_docker_module(self):
-        tags = _derive_tags("community.docker.docker_container", [])
+        tags = derive_tags("community.docker.docker_container", [])
         assert "containers" in tags
 
     def test_no_matching_tags(self):
-        tags = _derive_tags("custom.collection.something_unique", [])
+        tags = derive_tags("custom.collection.something_unique", [])
         assert tags == []
 
     def test_multiple_tags(self):
-        tags = _derive_tags("some.collection.docker_network", [])
+        tags = derive_tags("some.collection.docker_network", [])
         assert "containers" in tags
         assert "networking" in tags
 
@@ -53,14 +53,14 @@ class TestGenerateManifest:
         metadata = extract_module_metadata(sample_module_doc)
         generate_manifest("ansible.builtin", [metadata], skills_dir=tmp_path)
 
-        manifest_path = tmp_path / "ansible" / "builtin" / "MANIFEST.json"
+        manifest_path = tmp_path / "ansible.builtin" / "MANIFEST.json"
         assert manifest_path.exists()
 
         loaded = json.loads(manifest_path.read_text())
         assert loaded["collection"] == "ansible.builtin"
 
     def test_detects_existing_skills(self, tmp_path, sample_module_doc):
-        skill_dir = tmp_path / "ansible.builtin.package"
+        skill_dir = tmp_path / "ansible.builtin" / "package"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text("test")
 
@@ -74,6 +74,22 @@ class TestGenerateManifest:
         manifest = generate_manifest("netbox.netbox", [metadata], skills_dir=tmp_path)
 
         assert manifest["modules"][0]["is_api_module"] is True
+
+    def test_has_codex_false_by_default(self, tmp_path, sample_module_doc):
+        metadata = extract_module_metadata(sample_module_doc)
+        manifest = generate_manifest("ansible.builtin", [metadata], skills_dir=tmp_path)
+
+        assert manifest["has_codex"] is False
+
+    def test_has_codex_true_when_exists(self, tmp_path, sample_module_doc):
+        codex_dir = tmp_path / "ansible.builtin"
+        codex_dir.mkdir(parents=True)
+        (codex_dir / "SKILL.md").write_text("codex content")
+
+        metadata = extract_module_metadata(sample_module_doc)
+        manifest = generate_manifest("ansible.builtin", [metadata], skills_dir=tmp_path)
+
+        assert manifest["has_codex"] is True
 
 
 class TestGenerateManifestWithRoles:
@@ -124,7 +140,7 @@ class TestGenerateManifestWithRoles:
         assert manifest["roles"] == []
 
     def test_role_has_skill_detection(self, tmp_path):
-        skill_dir = tmp_path / "ansible.builtin.test_role"
+        skill_dir = tmp_path / "ansible.builtin" / "test_role"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text("test")
 

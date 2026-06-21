@@ -16,6 +16,7 @@ MAX_TAGS_LENGTH = 500
 
 _FQCN_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$")
 _NAMESPACE_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$")
+_SKILL_NAME_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)?$")
 _VERSION_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
 _TAGS_RE = re.compile(r"^[a-zA-Z0-9_,-]+$")
 _SENSITIVE_PREFIXES = ("/etc", "/usr", "/bin", "/sbin", "/boot", "/proc", "/sys", "/dev")
@@ -27,6 +28,14 @@ def validate_fqcn(name: str) -> None:
         raise ValidationError(
             "Invalid module name: expected format 'namespace.collection.module' "
             "with alphanumeric/underscore segments."
+        )
+
+
+def validate_skill_name(name: str) -> None:
+    if not name or not _SKILL_NAME_RE.match(name):
+        raise ValidationError(
+            "Invalid skill name: expected format 'namespace.collection' or "
+            "'namespace.collection.module' with alphanumeric/underscore segments."
         )
 
 

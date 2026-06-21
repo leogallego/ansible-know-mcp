@@ -13,6 +13,7 @@ import json
 import logging
 import os
 from importlib.metadata import version as pkg_version
+from pathlib import Path
 from typing import Annotated, Any
 
 import httpx
@@ -33,6 +34,7 @@ from ansible_know.validation import (
     validate_namespace,
     validate_path_containment,
     validate_query,
+    validate_skill_name,
     validate_tags,
     validate_version,
 )
@@ -557,34 +559,64 @@ async def ensure_collection(
 # --- Skill management tools ---
 
 
+def _extract_skill_description(skill_md: Path) -> str:
+    """Extract description from a SKILL.md frontmatter."""
+    content = skill_md.read_text()
+    for line in content.splitlines():
+        if line.startswith("description:"):
+            return line.partition(":")[2].strip().strip(">-").strip()
+    return ""
+
+
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
-async def list_skills() -> list[dict[str, str]] | dict[str, str]:
+async def list_skills(
+    collection: Annotated[
+        str | None,
+        "Optional collection namespace to list skills within (e.g. 'netbox.netbox'). "
+        "Without this, returns collection-level codex entries and standalone skills only.",
+    ] = None,
+) -> list[dict[str, str]] | dict[str, str]:
     """List all available generated skills. Returns name, description, path for each.
 
     Returns: [{"name": str, "description": str, "path": str}, ...] or {"error": str} on failure.
     """
-    logger.info("list_skills")
+    logger.info("list_skills collection=%r", collection)
+    if collection:
+        try:
+            validate_namespace(collection)
+        except ValidationError as exc:
+            return {"error": str(exc)}
+
     try:
         from ansible_know.config import SKILLS_DIR
 
-        results = []
+        results: list[dict[str, str]] = []
         if not SKILLS_DIR.exists():
             return results
 
-        for skill_dir in sorted(SKILLS_DIR.iterdir()):
-            skill_md = skill_dir / "SKILL.md"
-            if skill_md.exists():
-                content = skill_md.read_text()
-                description = ""
-                for line in content.splitlines():
-                    if line.startswith("description:"):
-                        description = line.partition(":")[2].strip().strip(">-").strip()
-                        break
-                results.append({
-                    "name": skill_dir.name,
-                    "description": description,
-                    "path": str(skill_dir),
-                })
+        if collection:
+            collection_dir = SKILLS_DIR / collection
+            if not collection_dir.is_dir():
+                return results
+            for sub_dir in sorted(collection_dir.iterdir()):
+                skill_md = sub_dir / "SKILL.md"
+                if sub_dir.is_dir() and skill_md.exists():
+                    results.append({
+                        "name": f"{collection}.{sub_dir.name}",
+                        "description": _extract_skill_description(skill_md),
+                        "path": str(sub_dir),
+                    })
+        else:
+            for skill_dir in sorted(SKILLS_DIR.iterdir()):
+                if not skill_dir.is_dir():
+                    continue
+                skill_md = skill_dir / "SKILL.md"
+                if skill_md.exists():
+                    results.append({
+                        "name": skill_dir.name,
+                        "description": _extract_skill_description(skill_md),
+                        "path": str(skill_dir),
+                    })
 
         return results
     except Exception as exc:
@@ -602,18 +634,33 @@ async def get_skill(
     """
     logger.info("get_skill name=%r", skill_name)
     try:
-        validate_fqcn(skill_name)
+        validate_skill_name(skill_name)
     except ValidationError as exc:
         return {"error": str(exc)}
 
     try:
         from ansible_know.config import SKILLS_DIR
 
-        skill_path = (SKILLS_DIR / skill_name / "SKILL.md").resolve()
-        validate_path_containment(skill_path, SKILLS_DIR)
-        if not skill_path.exists():
-            return {"error": f"Skill '{skill_name}' not found."}
-        return truncate_response(skill_path.read_text())
+        parts = skill_name.split(".")
+        if len(parts) >= 3:
+            namespace = ".".join(parts[:2])
+            short_name = ".".join(parts[2:])
+            nested_path = (SKILLS_DIR / namespace / short_name / "SKILL.md").resolve()
+            validate_path_containment(nested_path, SKILLS_DIR)
+            if nested_path.exists():
+                return truncate_response(nested_path.read_text())
+
+            flat_path = (SKILLS_DIR / skill_name / "SKILL.md").resolve()
+            validate_path_containment(flat_path, SKILLS_DIR)
+            if flat_path.exists():
+                return truncate_response(flat_path.read_text())
+        else:
+            skill_path = (SKILLS_DIR / skill_name / "SKILL.md").resolve()
+            validate_path_containment(skill_path, SKILLS_DIR)
+            if skill_path.exists():
+                return truncate_response(skill_path.read_text())
+
+        return {"error": f"Skill '{skill_name}' not found."}
     except ValidationError as exc:
         return {"error": str(exc)}
     except Exception as exc:
@@ -663,17 +710,19 @@ async def generate_skill(
         if ctx:
             await ctx.report_progress(progress=50, total=100)
 
-        skill_name = skills.module_to_skill_name(metadata["module_name"])
+        fqcn = metadata["module_name"]
+        namespace = ".".join(fqcn.split(".")[:2])
+        short_name = fqcn.rsplit(".", 1)[-1]
         base_dir = validate_install_path(install_to) if install_to else SKILLS_DIR
-        output_dir = base_dir / skill_name
+        output_dir = base_dir / namespace / short_name
 
-        await run_in_executor(skills.write_skill_package, output_dir, metadata)
+        await run_in_executor(skills.write_module_skill_package, output_dir, metadata)
         logger.info("generate_skill wrote to %s", output_dir)
 
         if ctx:
             await ctx.report_progress(progress=100, total=100)
 
-        return truncate_response(skills.render_skill(metadata))
+        return truncate_response(skills.render_module_skill(metadata))
     except ValidationError as exc:
         return {"error": str(exc)}
     except Exception as exc:
@@ -727,8 +776,10 @@ async def generate_role_skill(
         if ctx:
             await ctx.report_progress(progress=50, total=100)
 
+        namespace = ".".join(role_name.split(".")[:2])
+        short_name = role_name.rsplit(".", 1)[-1]
         base_dir = validate_install_path(install_to) if install_to else SKILLS_DIR
-        output_dir = base_dir / role_name
+        output_dir = base_dir / namespace / short_name
 
         await run_in_executor(skills.write_role_skill_package, output_dir, metadata)
         logger.info("generate_role_skill wrote to %s", output_dir)
@@ -789,6 +840,8 @@ async def generate_collection_skills(
 
         base_dir = validate_install_path(install_to) if install_to else SKILLS_DIR
 
+        installed_version = state.collection_manager.list_installed().get(collection_namespace)
+
         for i, module_name in enumerate(sorted(modules)):
             if ctx:
                 await ctx.report_progress(progress=i, total=total)
@@ -799,9 +852,9 @@ async def generate_collection_skills(
                 metadata = parser.extract_module_metadata(raw_doc)
                 metadata_list.append(metadata)
 
-                skill_name = skills.module_to_skill_name(metadata["module_name"])
-                output_dir = base_dir / skill_name
-                await run_in_executor(skills.write_skill_package, output_dir, metadata)
+                short_name = metadata["module_name"].rsplit(".", 1)[-1]
+                output_dir = base_dir / collection_namespace / short_name
+                await run_in_executor(skills.write_module_skill_package, output_dir, metadata)
                 succeeded += 1
             except Exception as exc:
                 logger.warning("Skill generation failed for %s: %s", module_name, exc)
@@ -809,6 +862,13 @@ async def generate_collection_skills(
 
         manifest = collection_manifest.generate_manifest(
             collection_namespace, metadata_list, skills_dir=base_dir,
+            collection_version=installed_version,
+        )
+
+        await run_in_executor(
+            skills.write_collection_skill_package,
+            base_dir / collection_namespace, collection_namespace,
+            metadata_list, installed_version,
         )
 
         if ctx:
@@ -820,6 +880,7 @@ async def generate_collection_skills(
             "failed": failed,
             "total": total,
             "manifest": manifest,
+            "codex": collection_namespace,
         }
     except ValidationError:
         raise
@@ -837,37 +898,59 @@ def resource_skills_list() -> str:
 
     from ansible_know.config import SKILLS_DIR
 
-    skills = []
+    skills_list: list[str] = []
     if SKILLS_DIR.exists():
         for skill_dir in sorted(SKILLS_DIR.iterdir()):
+            if not skill_dir.is_dir():
+                continue
             skill_md = skill_dir / "SKILL.md"
             if skill_md.exists():
-                skills.append(skill_dir.name)
-    return json.dumps(skills, indent=2)
+                skills_list.append(skill_dir.name)
+    return json.dumps(skills_list, indent=2)
 
 
 @mcp.resource(
     "skills://{skill_name}",
     name="Skill Content",
-    description="Read a generated skill's SKILL.md by FQCN",
+    description="Read a generated skill's SKILL.md by FQCN or collection namespace",
 )
 def resource_skill_content(skill_name: str) -> str:
     from ansible_know.config import SKILLS_DIR
 
     try:
-        validate_fqcn(skill_name)
+        validate_skill_name(skill_name)
     except ValidationError as exc:
         return str(exc)
 
-    skill_path = (SKILLS_DIR / skill_name / "SKILL.md").resolve()
-    try:
-        validate_path_containment(skill_path, SKILLS_DIR)
-    except ValidationError as exc:
-        return str(exc)
+    parts = skill_name.split(".")
+    if len(parts) >= 3:
+        namespace = ".".join(parts[:2])
+        short_name = ".".join(parts[2:])
+        nested_path = (SKILLS_DIR / namespace / short_name / "SKILL.md").resolve()
+        try:
+            validate_path_containment(nested_path, SKILLS_DIR)
+        except ValidationError as exc:
+            return str(exc)
+        if nested_path.exists():
+            return truncate_response(nested_path.read_text())
 
-    if not skill_path.exists():
-        return f"Skill '{skill_name}' not found."
-    return truncate_response(skill_path.read_text())
+        flat_path = (SKILLS_DIR / skill_name / "SKILL.md").resolve()
+        try:
+            validate_path_containment(flat_path, SKILLS_DIR)
+        except ValidationError as exc:
+            return str(exc)
+        if flat_path.exists():
+            return truncate_response(flat_path.read_text())
+    else:
+        skill_path = (SKILLS_DIR / skill_name / "SKILL.md").resolve()
+        try:
+            validate_path_containment(skill_path, SKILLS_DIR)
+        except ValidationError as exc:
+            return str(exc)
+        if skill_path.exists():
+            return truncate_response(skill_path.read_text())
+
+    return f"Skill '{skill_name}' not found."
 
 
 @mcp.resource(

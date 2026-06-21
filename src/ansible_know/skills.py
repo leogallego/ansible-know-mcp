@@ -1,7 +1,7 @@
 """Skill rendering and package writing.
 
 Extracted from ansibleclawed cli.py — generates SKILL.md skill packages
-from Ansible module metadata.
+from Ansible module, role, and collection metadata.
 """
 
 from __future__ import annotations
@@ -9,17 +9,25 @@ from __future__ import annotations
 import functools
 import logging
 import stat
+from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ansible_know.config import TEMPLATE_DIR
+
+if TYPE_CHECKING:
+    from ansible_know.types import CollectionSkillContext
 
 logger = logging.getLogger("ansible_know")
 
 __all__ = [
     "module_to_skill_name",
+    "render_collection_skill",
+    "render_module_skill",
     "render_role_skill",
     "render_skill",
+    "write_collection_skill_package",
+    "write_module_skill_package",
     "write_role_skill_package",
     "write_skill_package",
 ]
@@ -43,7 +51,7 @@ def module_to_skill_name(module_name: str) -> str:
     return module_name
 
 
-def _template_context(metadata: dict[str, Any]) -> dict[str, Any]:
+def _module_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
     """Build the shared template context from module metadata."""
     params = metadata["params"]
     example_args = _build_example_args(params, metadata.get("examples", ""))
@@ -59,6 +67,9 @@ def _template_context(metadata: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+_template_context = _module_template_context
+
+
 def _examples_contain_play(examples: str) -> bool:
     """Check if examples YAML already defines a full play."""
     if not examples:
@@ -66,19 +77,22 @@ def _examples_contain_play(examples: str) -> bool:
     return "hosts:" in examples and "tasks:" in examples
 
 
-def render_skill(metadata: dict[str, Any]) -> str:
+def render_module_skill(metadata: dict[str, Any]) -> str:
     """Render the SKILL.md template with the given module metadata."""
     logger.debug("Rendering skill for module %s", metadata.get("module_name", "?"))
     env = _get_template_env()
     template = env.get_template("SKILL.md.j2")
-    return template.render(**_template_context(metadata))
+    return template.render(**_module_template_context(metadata))
 
 
-def write_skill_package(output_dir: Path, metadata: dict[str, Any]) -> None:
+render_skill = render_module_skill
+
+
+def write_module_skill_package(output_dir: Path, metadata: dict[str, Any]) -> None:
     """Write the full skill package: SKILL.md + scripts + assets."""
     logger.debug("Writing skill package to %s for %s", output_dir, metadata.get("module_name", "?"))
     env = _get_template_env()
-    ctx = _template_context(metadata)
+    ctx = _module_template_context(metadata)
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -99,6 +113,9 @@ def write_skill_package(output_dir: Path, metadata: dict[str, Any]) -> None:
 
     playbook_template = env.get_template("playbook.yml.j2")
     (assets_dir / "playbook.yml").write_text(playbook_template.render(**ctx))
+
+
+write_skill_package = write_module_skill_package
 
 
 def _build_example_args(params: list[dict[str, Any]], examples_yaml: str = "") -> str:
@@ -187,3 +204,102 @@ def write_role_skill_package(output_dir: Path, metadata: dict[str, Any]) -> None
 
     playbook_template = env.get_template("role_playbook.yml.j2")
     (assets_dir / "playbook.yml").write_text(playbook_template.render(**ctx))
+
+
+# --- Collection codex skill ---
+
+
+def _collection_template_context(
+    namespace: str,
+    metadata_list: list[dict[str, Any]],
+    collection_version: str | None = None,
+) -> CollectionSkillContext:
+    """Build template context for a collection-level codex skill."""
+    from ansible_know.collection_manifest import derive_tags
+
+    modules_by_tag: dict[str, list[dict[str, Any]]] = {}
+    for meta in metadata_list:
+        fqcn = meta["module_name"]
+        short_name = fqcn.rsplit(".", 1)[-1]
+        params = meta["params"]
+        required_params = [p for p in params if p.get("required")]
+        tags = derive_tags(fqcn, params)
+
+        entry = {
+            "fqcn": fqcn,
+            "short_name": short_name,
+            "short_description": meta["short_description"],
+            "required_params": required_params,
+            "is_api_module": meta.get("is_api_module", False),
+        }
+
+        if not tags:
+            modules_by_tag.setdefault("other", []).append(entry)
+        else:
+            for tag in tags:
+                modules_by_tag.setdefault(tag, []).append(entry)
+
+    all_api = bool(metadata_list) and all(
+        m.get("is_api_module", False) for m in metadata_list
+    )
+
+    common_params = _find_common_params(metadata_list)
+
+    return {
+        "collection_namespace": namespace,
+        "collection_version": collection_version,
+        "modules_by_tag": modules_by_tag,
+        "all_api": all_api,
+        "common_params": common_params,
+        "module_count": len(metadata_list),
+    }
+
+
+def _find_common_params(metadata_list: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Find parameters shared by >80% of modules in a collection."""
+    if not metadata_list:
+        return []
+
+    threshold = len(metadata_list) * 0.8
+    param_counts: Counter[str] = Counter()
+    param_info: dict[str, dict[str, Any]] = {}
+
+    for meta in metadata_list:
+        for p in meta["params"]:
+            name = p["name"]
+            param_counts[name] += 1
+            if name not in param_info:
+                param_info[name] = p
+
+    return [
+        param_info[name]
+        for name, count in param_counts.most_common()
+        if count >= threshold
+    ]
+
+
+def render_collection_skill(
+    namespace: str,
+    metadata_list: list[dict[str, Any]],
+    collection_version: str | None = None,
+) -> str:
+    """Render the COLLECTION_SKILL.md.j2 template for a collection codex."""
+    logger.debug("Rendering collection skill for %s", namespace)
+    env = _get_template_env()
+    template = env.get_template("COLLECTION_SKILL.md.j2")
+    ctx = _collection_template_context(namespace, metadata_list, collection_version)
+    return template.render(**ctx)
+
+
+def write_collection_skill_package(
+    output_dir: Path,
+    namespace: str,
+    metadata_list: list[dict[str, Any]],
+    collection_version: str | None = None,
+) -> None:
+    """Write the collection codex skill package: SKILL.md only (no scripts/assets)."""
+    logger.debug("Writing collection skill package to %s for %s", output_dir, namespace)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    content = render_collection_skill(namespace, metadata_list, collection_version)
+    (output_dir / "SKILL.md").write_text(content)
