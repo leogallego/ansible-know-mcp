@@ -105,7 +105,7 @@ async def app_lifespan(server):
     ) as client:
         shared.version_info = await _check_pypi_version(client)
         check_task = asyncio.create_task(
-            _periodic_version_check(client, sessions)
+            _periodic_version_check(client, shared, sessions)
         )
         try:
             yield LifespanContext(
@@ -181,6 +181,7 @@ async def _maybe_warn_upgrade(ctx: Context | None) -> None:
 
 async def _periodic_version_check(
     client: httpx.AsyncClient,
+    shared: SharedState,
     sessions: SessionManager,
 ) -> None:
     """Re-check PyPI for updates periodically (non-blocking)."""
@@ -191,8 +192,8 @@ async def _periodic_version_check(
             if new_info is None:
                 continue
             old_latest = (
-                sessions._shared.version_info.get("latest")
-                if sessions._shared.version_info
+                shared.version_info.get("latest")
+                if shared.version_info
                 else None
             )
             if new_info.get("latest") != old_latest:
@@ -202,7 +203,7 @@ async def _periodic_version_check(
                     new_info.get("latest"),
                 )
             else:
-                sessions._shared.version_info = new_info
+                shared.version_info = new_info
         except asyncio.CancelledError:
             raise
         except Exception:

@@ -1279,7 +1279,7 @@ class TestPeriodicVersionCheck:
         with patch("ansible_know.server._check_pypi_version", return_value=new_info):
             with patch("asyncio.sleep", side_effect=fake_sleep):
                 with pytest.raises(asyncio.CancelledError):
-                    await _periodic_version_check(AsyncMock(), sessions)
+                    await _periodic_version_check(AsyncMock(), shared, sessions)
 
         assert shared.version_info["latest"] == "0.4.0"
 
@@ -1302,7 +1302,7 @@ class TestPeriodicVersionCheck:
         with patch("ansible_know.server._check_pypi_version", return_value=None):
             with patch("asyncio.sleep", side_effect=fake_sleep):
                 with pytest.raises(asyncio.CancelledError):
-                    await _periodic_version_check(AsyncMock(), sessions)
+                    await _periodic_version_check(AsyncMock(), shared, sessions)
 
         # version_info unchanged when check returns None
         assert shared.version_info["latest"] == "0.3.0"
@@ -1328,7 +1328,7 @@ class TestPeriodicVersionCheck:
             with patch("asyncio.sleep", side_effect=fake_sleep):
                 with patch.object(sessions, "on_version_update", new_callable=AsyncMock) as mock_update:
                     with pytest.raises(asyncio.CancelledError):
-                        await _periodic_version_check(AsyncMock(), sessions)
+                        await _periodic_version_check(AsyncMock(), shared, sessions)
 
         # Same version: on_version_update should NOT be called
         mock_update.assert_not_called()

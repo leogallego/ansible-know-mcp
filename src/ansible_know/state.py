@@ -98,10 +98,15 @@ class SessionManager:
                     session.upgrade_warned = False
 
     @property
+    def shared(self) -> SharedState:
+        """Read-only access to the process-wide shared state."""
+        return self._shared
+
+    @property
     def all_installed_collections(self) -> dict[str, str]:
         """Union of installed collections across all sessions."""
         result: dict[str, str] = {}
-        for session in self._sessions.values():
+        for session in list(self._sessions.values()):
             result.update(session.collection_manager.list_installed())
         return result
 
