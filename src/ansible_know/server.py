@@ -71,19 +71,20 @@ async def _check_pypi_version(client: httpx.AsyncClient) -> VersionInfo | None:
             headers={"Accept": "application/json"},
         )
         resp.raise_for_status()
-        latest = resp.json().get("info", {}).get("version", "")
-        if not latest or not _is_stable(latest):
-            return None
-        outdated = _parse_version(latest) > _parse_version(_VERSION)
-        return {
-            "installed": _VERSION,
-            "latest": latest,
-            "outdated": outdated,
-            "upgrade_command": "uvx --upgrade ansible-know-mcp",
-        }
-    except Exception:
+        data = resp.json()
+    except (httpx.HTTPError, ValueError):
         logger.debug("PyPI version check failed (non-blocking)")
         return None
+    latest = data.get("info", {}).get("version", "")
+    if not latest or not _is_stable(latest):
+        return None
+    outdated = _parse_version(latest) > _parse_version(_VERSION)
+    return {
+        "installed": _VERSION,
+        "latest": latest,
+        "outdated": outdated,
+        "upgrade_command": "uvx --upgrade ansible-know-mcp",
+    }
 
 
 @lifespan
@@ -189,27 +190,24 @@ async def _periodic_version_check(
     """Re-check PyPI for updates periodically (non-blocking)."""
     while True:
         await asyncio.sleep(_VERSION_CHECK_INTERVAL)
-        try:
-            new_info = await _check_pypi_version(client)
-            if new_info is None:
-                continue
-            old_latest = (
-                shared.version_info.get("latest")
-                if shared.version_info
-                else None
+        if client.is_closed:
+            return
+        new_info = await _check_pypi_version(client)
+        if new_info is None:
+            continue
+        old_latest = (
+            shared.version_info.get("latest")
+            if shared.version_info
+            else None
+        )
+        if new_info.get("latest") != old_latest:
+            await sessions.on_version_update(new_info)
+            logger.info(
+                "Periodic version check: new version %s available",
+                new_info.get("latest"),
             )
-            if new_info.get("latest") != old_latest:
-                await sessions.on_version_update(new_info)
-                logger.info(
-                    "Periodic version check: new version %s available",
-                    new_info.get("latest"),
-                )
-            else:
-                shared.version_info = new_info
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.debug("Periodic version check failed (non-blocking)")
+        else:
+            shared.version_info = new_info
 
 
 # --- Discovery tools (read-only) ---

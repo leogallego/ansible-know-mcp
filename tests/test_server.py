@@ -1278,10 +1278,12 @@ class TestPeriodicVersionCheck:
             if call_count > 1:
                 raise asyncio.CancelledError
 
+        mock_client = MagicMock()
+        mock_client.is_closed = False
         with patch("ansible_know.server._check_pypi_version", return_value=new_info):
             with patch("asyncio.sleep", side_effect=fake_sleep):
                 with pytest.raises(asyncio.CancelledError):
-                    await _periodic_version_check(AsyncMock(), shared, sessions)
+                    await _periodic_version_check(mock_client, shared, sessions)
 
         assert shared.version_info["latest"] == "0.4.0"
 
@@ -1302,10 +1304,12 @@ class TestPeriodicVersionCheck:
             if call_count > 1:
                 raise asyncio.CancelledError
 
+        mock_client = MagicMock()
+        mock_client.is_closed = False
         with patch("ansible_know.server._check_pypi_version", return_value=None):
             with patch("asyncio.sleep", side_effect=fake_sleep):
                 with pytest.raises(asyncio.CancelledError):
-                    await _periodic_version_check(AsyncMock(), shared, sessions)
+                    await _periodic_version_check(mock_client, shared, sessions)
 
         # version_info unchanged when check returns None
         assert shared.version_info["latest"] == "0.3.0"
@@ -1328,11 +1332,13 @@ class TestPeriodicVersionCheck:
             if call_count > 1:
                 raise asyncio.CancelledError
 
+        mock_client = MagicMock()
+        mock_client.is_closed = False
         with patch("ansible_know.server._check_pypi_version", return_value=same_info):
             with patch("asyncio.sleep", side_effect=fake_sleep):
                 with patch.object(sessions, "on_version_update", new_callable=AsyncMock) as mock_update:
                     with pytest.raises(asyncio.CancelledError):
-                        await _periodic_version_check(AsyncMock(), shared, sessions)
+                        await _periodic_version_check(mock_client, shared, sessions)
 
         # Same version: on_version_update should NOT be called
         mock_update.assert_not_called()
@@ -1340,32 +1346,24 @@ class TestPeriodicVersionCheck:
         assert shared.version_info["latest"] == "0.3.0"
 
     @pytest.mark.asyncio
-    async def test_continues_after_unexpected_error(self):
+    async def test_exits_when_client_closed(self):
         from ansible_know.collections import CollectionManager
         from ansible_know.server import _periodic_version_check
         from ansible_know.state import SessionManager, SharedState
 
-        original_info = {"installed": "0.3.0", "latest": "0.3.0", "outdated": False}
-        shared = SharedState(version_info=dict(original_info))
+        shared = SharedState(version_info={"installed": "0.3.0", "latest": "0.3.0", "outdated": False})
         sessions = SessionManager(shared, collection_factory=CollectionManager)
 
-        call_count = 0
+        mock_client = MagicMock()
+        mock_client.is_closed = True
 
         async def fake_sleep(_):
-            nonlocal call_count
-            call_count += 1
-            if call_count > 1:
-                raise asyncio.CancelledError
+            pass
 
-        with patch(
-            "ansible_know.server._check_pypi_version",
-            side_effect=RuntimeError("network exploded"),
-        ):
-            with patch("asyncio.sleep", side_effect=fake_sleep):
-                with pytest.raises(asyncio.CancelledError):
-                    await _periodic_version_check(AsyncMock(), shared, sessions)
+        with patch("asyncio.sleep", side_effect=fake_sleep):
+            await _periodic_version_check(mock_client, shared, sessions)
 
-        assert shared.version_info == original_info
+        assert shared.version_info["latest"] == "0.3.0"
 
 
 class TestGetStateSessionIsolation:

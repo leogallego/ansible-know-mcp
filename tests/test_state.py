@@ -143,9 +143,9 @@ class TestSessionManager:
         )
 
         result = mgr.all_installed_collections
-        assert "community.general" in result
-        assert "ansible.posix" in result
         assert result["ansible.posix"] == "1.6.0"
+        # Last-writer-wins: session "b" overwrites session "a" for duplicates
+        assert result["community.general"] == "9.1.0"
 
     @pytest.mark.asyncio
     async def test_remove_session_calls_cleanup(self):
