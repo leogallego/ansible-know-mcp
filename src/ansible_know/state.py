@@ -9,10 +9,16 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING
+
+if sys.version_info >= (3, 12):
+    from typing import TypedDict
+else:
+    from typing_extensions import TypedDict
 
 if TYPE_CHECKING:
     import httpx
