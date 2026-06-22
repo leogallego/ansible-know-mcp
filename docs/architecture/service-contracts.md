@@ -28,8 +28,8 @@ The server follows a 5-layer pipeline architecture adapted for MCP:
 │                    readme_parser.py                      │
 ├─────────────────────────────────────────────────────────┤
 │  Foundation        async_utils.py, cache.py, config.py,  │
-│                    galaxy_config.py, validation.py,      │
-│                    errors.py, types.py                    │
+│                    galaxy_config.py, state.py,            │
+│                    validation.py, errors.py, types.py     │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -68,21 +68,24 @@ decorated tool, resource, and prompt handler functions. FastMCP manages:
 | In (from Transport) | `Context` | `fastmcp.Context` |
 | In (from Transport) | Tool parameters | `Annotated[str, ...]`, `Annotated[str \| None, ...]` |
 | Out (to Transport) | Tool results | `dict[str, Any]`, `str`, `list[dict]` |
-| Shared (lifespan) | `httpx.AsyncClient` | Via `ctx.lifespan_context` dict |
-| Shared (lifespan) | `list[GalaxyServerConfig]` | Via `ctx.lifespan_context` dict |
+| Shared (lifespan) | `httpx.AsyncClient` | Via `LifespanContext["http_client"]` |
+| Shared (lifespan) | `SharedState` | Via `LifespanContext["shared"]` — process-wide galaxy servers + version info |
+| Shared (lifespan) | `SessionManager` | Via `LifespanContext["sessions"]` — per-session state factory |
 
 ### Concurrency Contract
 
 - Tool handlers are `async` functions running on the FastMCP event loop.
 - Blocking work (subprocess calls, file I/O) MUST be dispatched via
   `_run_in_executor()` to avoid blocking the event loop.
-- The lifespan context dict is shared across all concurrent tool calls.
+- The lifespan context is a `LifespanContext` TypedDict shared across all
+  concurrent tool calls. Per-session state is obtained via
+  `await sessions.get_or_create(ctx.session_id)`.
 
 ### Violations
 
 | ID | Severity | Description | Location |
 |----|----------|-------------|----------|
-| V-T1 | Warning | Lifespan context is an untyped `dict[str, Any]` accessed by string keys (`"http_client"`, `"version_info"`, `"upgrade_warned"`, `"galaxy_servers"`). Should be a typed dataclass or `TypedDict` to prevent key typos and enable static analysis. | `server.py:103-108`, `server.py:132-139` |
+| ~~V-T1~~ | ~~Warning~~ | ~~Lifespan context is an untyped `dict[str, Any]` accessed by string keys.~~ **Fixed in PR #87** — `LifespanContext` TypedDict with typed keys (`http_client`, `shared`, `sessions`). | ~~`server.py:103-108`~~ → `state.py` |
 | V-T2 | Warning | `_run_in_executor()` uses deprecated `asyncio.get_event_loop()`. Should use `asyncio.get_running_loop()` — the function is only called from async context. | `server.py:126-129` |
 | V-T3 | Info | Tool return types are `dict[str, Any]` rather than typed dicts. FastMCP serializes to JSON regardless, but typed returns would improve static analysis within the server code. | All tool handlers |
 
@@ -228,13 +231,18 @@ dependencies on upper layers.
 | `ModuleMetadata` | `TypedDict` | `types.py:8-15` |
 | `RoleMetadata` | `TypedDict` | `types.py:18-23` |
 | `DocProvenance` | `TypedDict` (partial) | `types.py:26-35` |
-| `ErrorResponse` | `TypedDict` | `types.py:38-40` |
+| `VersionInfo` | `TypedDict` | `types.py:43-49` |
+| `ErrorResponse` | `TypedDict` | `types.py:51-53` |
 | `EnsureCollectionResult` | `TypedDict` | `types.py:43-49` |
 | `SkillEntry` | `TypedDict` | `types.py:52-57` |
 | `CollectionInfo` | `TypedDict` (partial) | `types.py:74-82` |
 | `CollectionSearchResult` | `TypedDict` | `types.py:85-90` |
 | `GalaxyDocClient` | `Protocol` | `types.py:94-120` |
 | `GalaxyClientFactory` | `Protocol` | `types.py:123-131` |
+| `ServerState` | `@dataclass` | `state.py` |
+| `SharedState` | `@dataclass` | `state.py` |
+| `SessionManager` | class | `state.py` |
+| `LifespanContext` | `TypedDict` | `state.py` |
 | `GalaxyServerConfig` | `@dataclass(frozen=True)` | `galaxy_config.py:24-35` |
 | `AnsibleKnowError` | Exception base | `errors.py:6-7` |
 | `AnsibleDocError` | Exception | `errors.py:10-11` |
@@ -268,15 +276,25 @@ AnsibleKnowError
 
 ### State Management
 
-Module-level mutable state exists in four modules. `galaxy.py` and `docs.py`
-use `BoundedCache` (introduced in PR #60) for thread-safe, bounded, TTL-aware
-caching.
+State is split into process-wide and per-session layers (PR #87):
+
+- **`SharedState`** (process-wide): `galaxy_servers`, `version_info`. Created
+  once in lifespan. `version_info` updated by periodic PyPI check.
+- **`ServerState`** (per-session): `collection_manager`, `missing_collections`,
+  `upgrade_warned`. Created lazily by `SessionManager.get_or_create()`.
+- **`SessionManager`**: manages session lifecycle with `asyncio.Lock`.
+  Accepts a `collection_factory` callable to avoid Foundation→External Access
+  imports. Provides `remove_session()` for cleanup.
+
+Module-level references `_shared_state` and `_session_manager` in `server.py`
+are write-once at lifespan startup for resource handlers (which don't receive
+`Context`).
+
+Additional module-level caches:
 
 | Module | State Variables | Thread Safety |
 |--------|----------------|---------------|
-| `server.py` | `_version_info`, `_galaxy_servers`, `_missing_collections` | `_version_info` and `_galaxy_servers` are write-once at startup (safe). `_missing_collections` is a `set` mutated from async context — documented as a negative cache but **not explicitly synchronized**. |
 | `galaxy.py` | `_version_cache`, `_blob_cache` | Thread-safe via `BoundedCache` (internal `threading.Lock`, LRU eviction, 1hr TTL) |
-| `collections.py` | `_tmp_dir`, `_installed`, `_install_locks` | Thread-safe via `threading.Lock` |
 | `docs.py` | `_manifest_cache` | Thread-safe via `BoundedCache` (max 50 entries, 1hr TTL) — **fixed in PR #60** |
 
 #### Violations
@@ -284,8 +302,8 @@ caching.
 | ID | Severity | Description | Location |
 |----|----------|-------------|----------|
 | ~~V-S1~~ | ~~Error~~ | ~~`docs.py` `_manifest_cache` is not thread-safe.~~ **Fixed in PR #60** — now uses `BoundedCache` with thread-safe locking and bounded size. | `docs.py:20` |
-| V-S2 | Warning | `server.py` `_missing_collections` is a module-level `set` mutated from async tool handlers without synchronization. While CPython's GIL provides some protection for `set.add()` and `set.discard()`, this is an implementation detail, not a contract. The negative cache semantics are now documented (PR #60) but synchronization is still missing. | `server.py:165-169` |
-| V-S3 | Warning | Module-level mutable state in 4 modules makes the server difficult to test, reset, or run multiple instances. State should be encapsulated in a server context or session object. (Partially mitigated by `BoundedCache` providing a consistent cache abstraction.) | Multiple modules |
+| ~~V-S2~~ | ~~Warning~~ | ~~`server.py` `_missing_collections` is a module-level `set` mutated from async tool handlers without synchronization.~~ **Mitigated in PR #87** — `missing_collections` is now per-session in `ServerState`. Async-only access within a session is safe (no preemption at `set.add()`/`set.discard()`). | ~~`server.py:165-169`~~ → `state.py:ServerState` |
+| ~~V-S3~~ | ~~Warning~~ | ~~Module-level mutable state makes the server difficult to test, reset, or run multiple instances.~~ **Partially resolved in PR #87** — State split into `SharedState` (process-wide) and `ServerState` (per-session) via `SessionManager`. `collections.py` still uses per-instance state (`CollectionManager` class) but is now created per-session. | ~~Multiple modules~~ → `state.py`, `server.py` |
 
 ### Validation
 
@@ -343,8 +361,8 @@ Foundation   → (no internal dependencies)
 
 ### Priority 2 (Warning-level violations)
 
-3. **V-T1**: Define a `LifespanContext` TypedDict or dataclass for the lifespan
-   context dict.
+3. ~~**V-T1**: Define a `LifespanContext` TypedDict or dataclass for the lifespan
+   context dict.~~ **Fixed in PR #87** — `LifespanContext` TypedDict in `state.py`.
 4. **V-T2**: Replace `asyncio.get_event_loop()` with `asyncio.get_running_loop()`.
 5. **V-D1**: Make `_module_to_skill_name()` public (rename to
    `module_to_skill_name()`).
@@ -357,9 +375,11 @@ Foundation   → (no internal dependencies)
 10. ~~**V-E3**: Move `_transform_to_ansible_doc_format()` to `parser.py`.~~
     **Fixed in PR #69** — now `parser.transform_galaxy_to_ansible_doc_format()`.
 11. **V-E4**: Encapsulate `collections.py` state in a `CollectionManager` class.
-12. **V-S2**: Use `asyncio.Lock` or explicit synchronization for `_missing_collections`.
-13. **V-S3**: Design a `ServerState` or session context that encapsulates all
-    mutable state.
+12. ~~**V-S2**: Use `asyncio.Lock` or explicit synchronization for
+    `_missing_collections`.~~ **Mitigated in PR #87** — now per-session.
+13. ~~**V-S3**: Design a `ServerState` or session context that encapsulates all
+    mutable state.~~ **Partially resolved in PR #87** — `SharedState` +
+    `SessionManager` with per-session `ServerState`.
 14. **V-F1**: Make `SKILLS_DIR` lazy (function or descriptor).
 
 ### Priority 3 (Info-level, PEP 8 suggestions)
@@ -367,7 +387,7 @@ Foundation   → (no internal dependencies)
 15. **V-D6 / V-F2 / V-T3**: Tighten return types from `dict[str, Any]` to
     specific `TypedDict`s where definitions exist. (Partially addressed in
     PR #60 — `EnsureCollectionResult`, `ErrorResponse`, `SkillEntry`,
-    `CollectionInfo`, `CollectionSearchResult` TypedDicts added to `types.py`,
-    and `collections.ensure_collection()` now returns `EnsureCollectionResult`.
-    Remaining tool handlers still return untyped dicts.)
+    `CollectionInfo`, `CollectionSearchResult` TypedDicts added to `types.py`.
+    Further tightened in PR #87 — `VersionInfo` TypedDict for version check
+    results. Remaining tool handlers still return untyped dicts.)
 16. Add `__all__` exports to all public modules.

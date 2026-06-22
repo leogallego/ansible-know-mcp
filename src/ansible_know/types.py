@@ -40,6 +40,15 @@ class DocProvenance(_DocProvenanceBase, total=False):
     doc_source_server: str
 
 
+class VersionInfo(TypedDict):
+    """Version check result from PyPI."""
+
+    installed: str
+    latest: str
+    outdated: bool
+    upgrade_command: str
+
+
 class ErrorResponse(TypedDict):
     """Standard error shape returned by all tools on failure."""
 

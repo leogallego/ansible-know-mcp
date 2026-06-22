@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import os
 from dataclasses import dataclass
+from typing import Literal
 
 __all__ = ["ServerConfig", "parse_args"]
 
@@ -21,7 +22,7 @@ _DEFAULT_PORT = 8080
 class ServerConfig:
     """Resolved server transport configuration."""
 
-    transport: str
+    transport: Literal["stdio", "http"]
     host: str
     port: int
 

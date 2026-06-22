@@ -168,3 +168,12 @@ class CollectionManager:
     def list_installed(self) -> dict[str, str]:
         with self._locks_lock:
             return dict(self._installed)
+
+    def cleanup(self) -> None:
+        """Remove the temporary directory and reset tracked state."""
+        with self._locks_lock:
+            if self._tmp_dir is not None:
+                self._tmp_dir.cleanup()
+                self._tmp_dir = None
+            self._installed.clear()
+            self._install_locks.clear()
