@@ -144,30 +144,38 @@ class SessionManager:
         if existing is not None:
             self._last_accessed[session_id] = now
             return existing
+        evicted: ServerState | None = None
         async with self._lock:
             if session_id in self._sessions:
                 self._last_accessed[session_id] = now
                 return self._sessions[session_id]
             if len(self._sessions) >= self._max_sessions:
-                await self._evict_lru_locked()
+                evicted = await self._evict_lru_locked()
             self._sessions[session_id] = ServerState(
                 collection_manager=self._collection_factory(),
                 galaxy_servers=self._shared.galaxy_servers,
             )
             self._last_accessed[session_id] = now
             logger.debug("Created session state for %s", session_id)
-            return self._sessions[session_id]
+            result = self._sessions[session_id]
+        if evicted is not None:
+            evicted.collection_manager.cleanup()
+        return result
 
-    async def _evict_lru_locked(self) -> None:
-        """Evict the least-recently-accessed session. Must hold self._lock."""
+    async def _evict_lru_locked(self) -> ServerState | None:
+        """Evict the least-recently-accessed session. Must hold self._lock.
+
+        Returns the evicted state so the caller can run cleanup()
+        outside the lock, or None if nothing was evicted.
+        """
         if not self._last_accessed:
-            return
+            return None
         lru_id = min(self._last_accessed, key=self._last_accessed.__getitem__)
         state = self._sessions.pop(lru_id, None)
         self._last_accessed.pop(lru_id, None)
         if state is not None:
-            state.collection_manager.cleanup()
             logger.info("Evicted LRU session %s (max_sessions=%d)", lru_id, self._max_sessions)
+        return state
 
     async def remove_session(self, session_id: str) -> None:
         """Remove a session and clean up its resources."""
@@ -199,7 +207,10 @@ class SessionManager:
                     evicted_states.append(state)
 
         for state in evicted_states:
-            state.collection_manager.cleanup()
+            try:
+                state.collection_manager.cleanup()
+            except Exception:
+                logger.debug("Session cleanup failed", exc_info=True)
 
         if to_evict:
             logger.info("Evicted %d stale sessions (ttl=%ds)", len(to_evict), self._session_ttl)

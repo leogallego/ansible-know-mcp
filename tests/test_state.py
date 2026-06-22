@@ -298,6 +298,25 @@ class TestSessionManager:
             assert mgr.max_sessions == 50
 
     @pytest.mark.asyncio
+    async def test_env_var_invalid_falls_back_to_default(self):
+        with patch.dict("os.environ", {
+            "ANSIBLE_KNOW_SESSION_TTL": "abc",
+            "ANSIBLE_KNOW_MAX_SESSIONS": "not_a_number",
+        }):
+            mgr = SessionManager(SharedState(), collection_factory=CollectionManager)
+            assert mgr.session_ttl == 4 * 3600
+            assert mgr.max_sessions == 100
+
+    @pytest.mark.asyncio
+    async def test_cleanup_stale_sessions_empty(self):
+        mgr = SessionManager(
+            SharedState(), collection_factory=CollectionManager,
+            session_ttl=100,
+        )
+        evicted = await mgr.cleanup_stale_sessions()
+        assert evicted == 0
+
+    @pytest.mark.asyncio
     async def test_env_var_minimum_clamp(self):
         with patch.dict("os.environ", {
             "ANSIBLE_KNOW_SESSION_TTL": "10",
