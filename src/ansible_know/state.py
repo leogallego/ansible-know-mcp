@@ -39,7 +39,7 @@ def _get_session_ttl() -> int:
     raw = os.environ.get("ANSIBLE_KNOW_SESSION_TTL", "")
     if raw.strip():
         try:
-            return max(60, int(raw))
+            return max(300, int(raw))
         except ValueError:
             pass
     return DEFAULT_SESSION_TTL
@@ -139,6 +139,8 @@ class SessionManager:
         Updates last-accessed time. Evicts LRU session if count limit
         is reached when creating a new session.
         """
+        # Fast path: lockless read is safe in single-threaded asyncio —
+        # no await between dict read and timestamp write.
         now = time.monotonic()
         existing = self._sessions.get(session_id)
         if existing is not None:

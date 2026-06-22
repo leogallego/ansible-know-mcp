@@ -323,5 +323,5 @@ class TestSessionManager:
             "ANSIBLE_KNOW_MAX_SESSIONS": "0",
         }):
             mgr = SessionManager(SharedState(), collection_factory=CollectionManager)
-            assert mgr.session_ttl == 60
+            assert mgr.session_ttl == 300
             assert mgr.max_sessions == 1
