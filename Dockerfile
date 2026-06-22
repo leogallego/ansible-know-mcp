@@ -1,5 +1,9 @@
 FROM python:3.12-slim
 
+LABEL org.opencontainers.image.source="https://github.com/leogallego/ansible-know-mcp" \
+      org.opencontainers.image.description="Ansible Know MCP Server — module and role discovery, documentation, and skill generation" \
+      org.opencontainers.image.license="GPL-3.0-or-later"
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends git && \
     rm -rf /var/lib/apt/lists/*
@@ -25,6 +29,6 @@ ENV ANSIBLE_KNOW_TRANSPORT=http \
     ANSIBLE_KNOW_SKIP_UPDATE_CHECK=1
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import httpx; httpx.get('http://localhost:7860/mcp').raise_for_status()" || exit 1
+    CMD python -c "import socket; s = socket.create_connection(('localhost', 7860), timeout=5); s.close()"
 
 CMD ["ansible-know-mcp"]

@@ -16,4 +16,8 @@ skills
 .coverage
 .pytest_cache
 .ruff_cache
+.mypy_cache
+.env
 uv.lock
+CLAUDE.md
+.gitmodules

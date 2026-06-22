@@ -118,21 +118,15 @@ Connect from any MCP client using the streamable HTTP URL:
 
 ### Docker
 
-Run the pre-built container image:
-
-```bash
-docker run -p 7860:7860 ghcr.io/leogallego/ansible-know-mcp:latest
-```
-
-Or build from source:
+Build and run from source:
 
 ```bash
 docker build -t ansible-know-mcp .
-docker run -p 8080:7860 ansible-know-mcp
+docker run -p 7860:7860 ansible-know-mcp
 ```
 
 Connect from any MCP client using the streamable HTTP URL:
-`http://localhost:8080/mcp`
+`http://localhost:7860/mcp`
 
 ### Remote MCP (Hugging Face Spaces)
 
@@ -267,15 +261,28 @@ url = https://galaxy.ansible.com/api/
 
 Deploy as a remote MCP server on [Hugging Face Spaces](https://huggingface.co/docs/hub/spaces):
 
-1. Create a new Space with **SDK: Docker** and **Port: 7860**
-2. Push this repository (or set it as the Space's linked repo)
-3. The included `Dockerfile` builds and starts the server automatically
+1. Create a new Space with **SDK: Docker**
+2. The Space's `README.md` must include YAML frontmatter:
+   ```yaml
+   ---
+   title: Ansible Know MCP
+   emoji: "\U0001F4DA"
+   sdk: docker
+   app_port: 7860
+   ---
+   ```
+3. Push this repository (or set it as the Space's linked repo)
+4. The included `Dockerfile` builds and starts the server automatically
+
+> **Note:** Free-tier Spaces sleep after inactivity. MCP clients will see
+> connection errors until the Space wakes up (~30-60s cold start). Use
+> a paid Space or a keep-alive ping for production use.
 
 **Custom domain** (optional):
 
 1. In the Space settings, go to **Custom domains**
 2. Add your domain (e.g., `know.ansible.ar`)
-3. Create a CNAME record pointing to `<your-space>.hf.space`
+3. Create a CNAME record pointing to `<owner>-<space-name>.hf.space`
 4. HF provisions a TLS certificate automatically
 
 **Environment variables** (set in Space settings):
