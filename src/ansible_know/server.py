@@ -641,6 +641,32 @@ async def list_skills(
         return {"error": sanitize_error(str(exc))}
 
 
+def _get_skill_sync(
+    skills_dir: Path, skill_name: str,
+) -> str | dict[str, str]:
+    """Synchronous helper for get_skill — all file I/O happens here."""
+    parts = skill_name.split(".")
+    if len(parts) >= 3:
+        namespace = ".".join(parts[:2])
+        short_name = ".".join(parts[2:])
+        nested_path = (skills_dir / namespace / short_name / "SKILL.md").resolve()
+        validate_path_containment(nested_path, skills_dir)
+        if nested_path.exists():
+            return truncate_response(nested_path.read_text())
+
+        flat_path = (skills_dir / skill_name / "SKILL.md").resolve()
+        validate_path_containment(flat_path, skills_dir)
+        if flat_path.exists():
+            return truncate_response(flat_path.read_text())
+    else:
+        skill_path = (skills_dir / skill_name / "SKILL.md").resolve()
+        validate_path_containment(skill_path, skills_dir)
+        if skill_path.exists():
+            return truncate_response(skill_path.read_text())
+
+    return {"error": f"Skill '{skill_name}' not found."}
+
+
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_skill(
     skill_name: Annotated[
@@ -662,26 +688,7 @@ async def get_skill(
     try:
         from ansible_know.config import SKILLS_DIR
 
-        parts = skill_name.split(".")
-        if len(parts) >= 3:
-            namespace = ".".join(parts[:2])
-            short_name = ".".join(parts[2:])
-            nested_path = (SKILLS_DIR / namespace / short_name / "SKILL.md").resolve()
-            validate_path_containment(nested_path, SKILLS_DIR)
-            if nested_path.exists():
-                return truncate_response(nested_path.read_text())
-
-            flat_path = (SKILLS_DIR / skill_name / "SKILL.md").resolve()
-            validate_path_containment(flat_path, SKILLS_DIR)
-            if flat_path.exists():
-                return truncate_response(flat_path.read_text())
-        else:
-            skill_path = (SKILLS_DIR / skill_name / "SKILL.md").resolve()
-            validate_path_containment(skill_path, SKILLS_DIR)
-            if skill_path.exists():
-                return truncate_response(skill_path.read_text())
-
-        return {"error": f"Skill '{skill_name}' not found."}
+        return await run_in_executor(_get_skill_sync, SKILLS_DIR, skill_name)
     except ValidationError as exc:
         return {"error": str(exc)}
     except Exception as exc:
