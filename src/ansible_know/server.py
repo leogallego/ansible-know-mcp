@@ -147,10 +147,22 @@ mcp = FastMCP(
 )
 
 
-def _galaxy_factory():
-    """Lazy import of GalaxyClient.from_config for dependency injection."""
+def _galaxy_factory(ctx: Context | None = None):
+    """Return a GalaxyClient factory that injects the shared semaphore."""
     from ansible_know.galaxy import GalaxyClient
-    return GalaxyClient.from_config
+
+    semaphore = None
+    if ctx is not None:
+        shared: SharedState = ctx.lifespan_context["shared"]
+        semaphore = shared.enrichment_semaphore
+
+    def _factory(config, http_client=None):
+        return GalaxyClient.from_config(
+            config, http_client=http_client,
+            enrichment_semaphore=semaphore,
+        )
+
+    return _factory
 
 
 async def _get_state(ctx: Context | None) -> ServerState:
@@ -302,7 +314,7 @@ async def get_module_doc(
         http_client = _get_http_client(ctx)
         raw_doc, galaxy_meta = await resolution.resolve_module_doc(
             module_name, http_client=http_client, galaxy_servers=state.galaxy_servers,
-            client_factory=_galaxy_factory(),
+            client_factory=_galaxy_factory(ctx),
             missing_collections=state.missing_collections,
             collections_path=state.collection_manager.get_collections_path(),
         )
@@ -350,7 +362,7 @@ async def get_role_doc(
         http_client = _get_http_client(ctx)
         return await resolution.resolve_role_doc(
             role_name, http_client=http_client, galaxy_servers=state.galaxy_servers,
-            client_factory=_galaxy_factory(),
+            client_factory=_galaxy_factory(ctx),
             missing_collections=state.missing_collections,
             collections_path=state.collection_manager.get_collections_path(),
         )
@@ -426,7 +438,7 @@ async def search_collections(
         http_client = _get_http_client(ctx)
         return await resolution.search_galaxy_collections(
             query, tags=tags, http_client=http_client, galaxy_servers=state.galaxy_servers,
-            client_factory=_galaxy_factory(),
+            client_factory=_galaxy_factory(ctx),
         )
     except Exception as exc:
         logger.warning("search_collections failed: %s", exc)
@@ -750,7 +762,7 @@ async def generate_skill(
         http_client = _get_http_client(ctx)
         raw_doc, galaxy_meta = await resolution.resolve_module_doc(
             module_name, http_client=http_client, galaxy_servers=state.galaxy_servers,
-            client_factory=_galaxy_factory(),
+            client_factory=_galaxy_factory(ctx),
             missing_collections=state.missing_collections,
             collections_path=state.collection_manager.get_collections_path(),
         )
@@ -816,7 +828,7 @@ async def generate_role_skill(
         http_client = _get_http_client(ctx)
         metadata = await resolution.resolve_role_doc(
             role_name, http_client=http_client, galaxy_servers=state.galaxy_servers,
-            client_factory=_galaxy_factory(),
+            client_factory=_galaxy_factory(ctx),
             missing_collections=state.missing_collections,
             collections_path=state.collection_manager.get_collections_path(),
         )

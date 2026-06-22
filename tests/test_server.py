@@ -1230,7 +1230,10 @@ class TestLifespanHttpClient:
             from ansible_know.server import search_collections
             await search_collections("test", ctx=mock_ctx)
 
-        mock_from_config.assert_called_once_with(server, http_client=None)
+        mock_from_config.assert_called_once()
+        call_kwargs = mock_from_config.call_args
+        assert call_kwargs[0][0] == server
+        assert call_kwargs[1]["http_client"] is None
 
     @pytest.mark.asyncio
     async def test_validate_certs_true_uses_shared_client(self):
@@ -1261,7 +1264,10 @@ class TestLifespanHttpClient:
             from ansible_know.server import search_collections
             await search_collections("test", ctx=mock_ctx)
 
-        mock_from_config.assert_called_once_with(server, http_client=mock_client)
+        mock_from_config.assert_called_once()
+        call_kwargs = mock_from_config.call_args
+        assert call_kwargs[0][0] == server
+        assert call_kwargs[1]["http_client"] is mock_client
 
     @pytest.mark.asyncio
     async def test_tools_work_without_ctx(self, mock_ansible_doc):

@@ -60,6 +60,7 @@ class SharedState:
 
     galaxy_servers: list[GalaxyServerConfig] = field(default_factory=list)
     version_info: VersionInfo | None = None
+    enrichment_semaphore: asyncio.Semaphore = field(default_factory=lambda: asyncio.Semaphore(5))
 
 
 class SessionManager:
