@@ -310,7 +310,7 @@ class TestFindCommonParams:
 
 
 class TestRenderCollectionSkill:
-    def test_renders_codex(self, sample_api_module_doc):
+    def test_renders_collection_skill(self, sample_api_module_doc):
         metadata = extract_module_metadata(sample_api_module_doc)
         content = render_collection_skill("netbox.netbox", [metadata], collection_version="4.1.0")
 

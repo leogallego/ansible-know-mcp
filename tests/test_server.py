@@ -180,14 +180,14 @@ class TestGetSkillTool:
         assert result == "nested skill content"
 
     @pytest.mark.asyncio
-    async def test_reads_codex_by_namespace(self, tmp_path, monkeypatch):
+    async def test_reads_collection_skill_by_namespace(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
-        codex_dir = tmp_path / "netbox.netbox"
-        codex_dir.mkdir(parents=True)
-        (codex_dir / "SKILL.md").write_text("codex content")
+        coll_dir = tmp_path / "netbox.netbox"
+        coll_dir.mkdir(parents=True)
+        (coll_dir / "SKILL.md").write_text("collection skill content")
         from ansible_know.server import get_skill
         result = await get_skill("netbox.netbox")
-        assert result == "codex content"
+        assert result == "collection skill content"
 
     @pytest.mark.asyncio
     async def test_falls_back_to_flat_layout(self, tmp_path, monkeypatch):
@@ -325,12 +325,12 @@ class TestSkillNameValidation:
     @pytest.mark.asyncio
     async def test_get_skill_accepts_namespace(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
-        codex_dir = tmp_path / "netbox.netbox"
-        codex_dir.mkdir()
-        (codex_dir / "SKILL.md").write_text("codex")
+        coll_dir = tmp_path / "netbox.netbox"
+        coll_dir.mkdir()
+        (coll_dir / "SKILL.md").write_text("collection skill")
         from ansible_know.server import get_skill
         result = await get_skill("netbox.netbox")
-        assert result == "codex"
+        assert result == "collection skill"
 
     @pytest.mark.asyncio
     async def test_get_skill_rejects_single_segment(self):
@@ -661,14 +661,14 @@ class TestResourceFunctions:
         result = resource_skill_content("ansible.builtin.copy")
         assert result == "nested content"
 
-    def test_resource_skill_content_reads_codex(self, tmp_path, monkeypatch):
+    def test_resource_skill_content_reads_collection_skill(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
-        codex_dir = tmp_path / "netbox.netbox"
-        codex_dir.mkdir()
-        (codex_dir / "SKILL.md").write_text("codex content")
+        coll_dir = tmp_path / "netbox.netbox"
+        coll_dir.mkdir()
+        (coll_dir / "SKILL.md").write_text("collection skill content")
         from ansible_know.server import resource_skill_content
         result = resource_skill_content("netbox.netbox")
-        assert result == "codex content"
+        assert result == "collection skill content"
 
     def test_resource_skills_list_with_nested_skills(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
