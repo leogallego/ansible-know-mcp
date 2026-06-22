@@ -118,7 +118,7 @@ ANSIBLE_STDOUT_CALLBACK=json ansible <hosts> -m {{ module_name }} -a "<args>" -b
 ```
 {% endif %}
 
-Or set `stdout_callback = json` in your `ansible.cfg` (AnsibleClaw projects include this by default).
+Or set `stdout_callback = json` in your `ansible.cfg`.
 
 ## Safety
 
@@ -132,7 +132,7 @@ Or set `stdout_callback = json` in your `ansible.cfg` (AnsibleClaw projects incl
 
 ## Inventory
 
-When running from inside the AnsibleClaw project, `ansible.cfg` sets the default inventory automatically. When using this skill from another location:
+When using this skill, specify an inventory:
 
 - Specify inventory explicitly: `-i /path/to/inventory.yml`
 - Set environment variable: `export ANSIBLE_INVENTORY=/path/to/inventory.yml`

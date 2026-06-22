@@ -1,7 +1,7 @@
 """Skill rendering and package writing.
 
-Extracted from ansibleclawed cli.py — generates SKILL.md skill packages
-from Ansible module, role, and collection metadata.
+Skill generation approach inspired by AnsibleClaw (https://github.com/micytao/AnsibleClaw).
+Generates SKILL.md skill packages from Ansible module, role, and collection metadata.
 """
 
 from __future__ import annotations
