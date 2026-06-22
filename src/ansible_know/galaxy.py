@@ -29,17 +29,7 @@ TIMEOUT_FAST = httpx.Timeout(10.0)
 TIMEOUT_DEFAULT = httpx.Timeout(10.0, read=30.0)
 TIMEOUT_SLOW = httpx.Timeout(10.0, read=60.0)
 
-_enrichment_semaphore: asyncio.Semaphore | None = None
-_enrichment_semaphore_loop: asyncio.AbstractEventLoop | None = None
-
-
-def _get_enrichment_semaphore() -> asyncio.Semaphore:
-    global _enrichment_semaphore, _enrichment_semaphore_loop
-    loop = asyncio.get_running_loop()
-    if _enrichment_semaphore is None or _enrichment_semaphore_loop is not loop:
-        _enrichment_semaphore = asyncio.Semaphore(5)
-        _enrichment_semaphore_loop = loop
-    return _enrichment_semaphore
+ENRICHMENT_CONCURRENCY = 5
 
 # Module-level caches shared across all GalaxyClient instances.
 # Keys include enough context (namespace, name, version) to avoid
@@ -81,6 +71,7 @@ class GalaxyClient:
         password: str | None = None,
         verify: bool = True,
         server_name: str | None = None,
+        enrichment_semaphore: asyncio.Semaphore | None = None,
     ):
         self._base = (base_url or GALAXY_BASE_URL).rstrip("/")
         self._http_client = http_client
@@ -90,10 +81,16 @@ class GalaxyClient:
         self._password = password
         self._verify = verify
         self.server_name = server_name
+        self._enrichment_semaphore = enrichment_semaphore or asyncio.Semaphore(
+            ENRICHMENT_CONCURRENCY,
+        )
 
     @classmethod
     def from_config(
-        cls, config: GalaxyServerConfig, http_client: httpx.AsyncClient | None = None,
+        cls,
+        config: GalaxyServerConfig,
+        http_client: httpx.AsyncClient | None = None,
+        enrichment_semaphore: asyncio.Semaphore | None = None,
     ) -> GalaxyClient:
         """Create a GalaxyClient from a GalaxyServerConfig."""
         return cls(
@@ -104,6 +101,7 @@ class GalaxyClient:
             password=config.password,
             verify=config.validate_certs,
             server_name=config.name,
+            enrichment_semaphore=enrichment_semaphore,
         )
 
     async def __aenter__(self) -> GalaxyClient:
@@ -269,7 +267,7 @@ class GalaxyClient:
             })
 
         async def _enrich(cand: dict) -> None:
-            async with _get_enrichment_semaphore():
+            async with self._enrichment_semaphore:
                 try:
                     detail = await self._get_collection_detail(
                         cand["_ns"], cand["_name"],

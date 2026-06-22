@@ -32,12 +32,19 @@ class ModuleMetadata(TypedDict):
     is_api_module: bool
 
 
+class EntryPointInfo(TypedDict):
+    """Single role entry point with description and options list."""
+
+    description: str
+    options: list[ParamDict]
+
+
 class RoleMetadata(TypedDict):
     """Role metadata extracted by parser.extract_role_metadata()."""
 
     role_name: str
     short_description: str
-    entry_points: dict[str, dict[str, Any]]
+    entry_points: dict[str, EntryPointInfo]
 
 
 class _DocProvenanceBase(TypedDict):
@@ -171,7 +178,7 @@ class GetRoleDocResult(_GetRoleDocResultBase, total=False):
     """
 
     short_description: str
-    entry_points: dict[str, dict[str, Any]]
+    entry_points: dict[str, EntryPointInfo]
     dependencies: list[str]
     examples: str
     doc_version: str

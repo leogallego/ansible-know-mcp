@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 from ansible_know.errors import AnsibleDocError, CollectionNotFoundError, is_missing_collection_error
 
 if TYPE_CHECKING:
-    from ansible_know.types import ModuleMetadata, ParamDict, RoleMetadata
+    from ansible_know.types import EntryPointInfo, ModuleMetadata, ParamDict, RoleMetadata
 
 logger = logging.getLogger("ansible_know")
 
@@ -345,7 +345,7 @@ def extract_role_metadata(role_doc: dict[str, Any]) -> RoleMetadata:
     raw_entry_points = role_data.get("entry_points", {})
 
     first_desc = ""
-    entry_points: dict[str, dict[str, Any]] = {}
+    entry_points: dict[str, EntryPointInfo] = {}
 
     for ep_name, ep_data in raw_entry_points.items():
         desc = ep_data.get("description", "")
@@ -355,7 +355,7 @@ def extract_role_metadata(role_doc: dict[str, Any]) -> RoleMetadata:
             first_desc = desc
 
         options_raw = ep_data.get("options", {})
-        options: list[dict[str, Any]] = []
+        options: list[ParamDict] = []
         for opt_name, opt_spec in options_raw.items():
             opt_desc = opt_spec.get("description", "")
             if isinstance(opt_desc, list):
