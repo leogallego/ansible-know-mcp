@@ -146,7 +146,7 @@ business logic. Domain modules are imported lazily to avoid loading
 | ~~V-D5~~ | ~~Warning~~ | ~~`docs.py` does not define `__all__`.~~ **Fixed** — `docs.py` now defines `__all__`. | ~~`docs.py`~~ |
 | V-D6 | Info | Several Domain functions return `dict[str, Any]` where TypedDicts exist. Partially addressed in PR #60 (`EnsureCollectionResult` now typed on `collections.ensure_collection()`, plus `ErrorResponse`, `SkillEntry`, `CollectionSearchResult` TypedDicts added) but not all return sites use them yet. | `parser.py:214-223`, `server.py:195-240` |
 | ~~V-D7~~ | ~~Warning~~ | ~~`_resolve_module_doc()` and `_resolve_role_doc()` in `server.py` contain significant business logic (Galaxy fallback, missing-collection caching). This logic belongs in the Domain layer, not Orchestration. The Orchestration layer should delegate to a domain-level resolution function.~~ **Fixed in PR #66** — Resolution logic moved to `resolution.py`. | ~~`server.py:195-301`~~ |
-| V-D8 | Warning | `collection_manifest.generate_manifest()` writes to disk as a side effect. A Domain function that both generates and persists violates separation of concerns — generation and persistence should be separate operations. | `collection_manifest.py:113-117` |
+| ~~V-D8~~ | ~~Warning~~ | ~~`collection_manifest.generate_manifest()` writes to disk as a side effect.~~ **Fixed** — Split into `generate_manifest()` (pure computation) and `write_manifest()` (I/O). Callers in `server.py` call both, wrapping `write_manifest` in `run_in_executor`. | ~~`collection_manifest.py:113-117`~~ |
 
 ---
 
@@ -372,7 +372,7 @@ Foundation   → (no internal dependencies)
 6. ~~**V-D2–V-D5**: Add `__all__` to all modules.~~ **Fixed** — all modules now define `__all__`.
 7. ~~**V-D7 / V-L2**: Move `_resolve_module_doc()` and `_resolve_role_doc()` to a
    domain-level resolution module.~~ **Fixed in PR #66**.
-8. **V-D8**: Split `generate_manifest()` into generation and persistence.
+8. ~~**V-D8**: Split `generate_manifest()` into generation and persistence.~~ **Fixed** — `generate_manifest()` is pure; `write_manifest()` handles I/O.
 9. ~~**V-E2**: Define a `GalaxyClientProtocol` for the Galaxy client interface.~~
    **Fixed in PR #66** — `GalaxyDocClient` Protocol in `types.py`.
 10. ~~**V-E3**: Move `_transform_to_ansible_doc_format()` to `parser.py`.~~

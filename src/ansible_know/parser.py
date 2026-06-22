@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 from ansible_know.errors import AnsibleDocError, CollectionNotFoundError, is_missing_collection_error
 
 if TYPE_CHECKING:
-    from ansible_know.types import ModuleMetadata, RoleMetadata
+    from ansible_know.types import ModuleMetadata, ParamDict, RoleMetadata
 
 logger = logging.getLogger("ansible_know")
 
@@ -165,7 +165,7 @@ def search_modules(
     }
 
 
-def extract_params(module_doc: dict[str, Any]) -> list[dict[str, Any]]:
+def extract_params(module_doc: dict[str, Any]) -> list[ParamDict]:
     """Extract parameter specs from a module doc.
 
     Returns:

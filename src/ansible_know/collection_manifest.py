@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from ansible_know.config import SKILLS_DIR
 from ansible_know.tagging import derive_tags
+from ansible_know.validation import validate_path_containment
 
 if TYPE_CHECKING:
     from ansible_know.types import ModuleMetadata
@@ -20,6 +21,7 @@ if TYPE_CHECKING:
 __all__ = [
     "generate_manifest",
     "load_cached_manifest",
+    "write_manifest",
 ]
 
 
@@ -36,7 +38,7 @@ def generate_manifest(
         collection_namespace: e.g. "netbox.netbox"
         modules_metadata: list of extract_module_metadata() results
         roles_metadata: list of role metadata dicts (optional)
-        skills_dir: where to check for existing skills and write manifest
+        skills_dir: where to check for existing skill packages
         collection_version: installed version to store for cache invalidation
 
     Returns:
@@ -92,11 +94,31 @@ def generate_manifest(
         "roles": roles_list,
     }
 
+    return manifest
+
+
+def write_manifest(
+    manifest: dict[str, Any],
+    collection_namespace: str,
+    skills_dir: Path | None = None,
+) -> None:
+    """Persist a manifest dict to MANIFEST.json on disk.
+
+    Creates the collection directory if it does not exist.
+    Defaults to ``SKILLS_DIR`` when ``skills_dir`` is not provided.
+
+    Raises:
+        ValidationError: If the resolved path escapes ``skills_dir``.
+        OSError: On permission or I/O errors.
+    """
+    if skills_dir is None:
+        skills_dir = SKILLS_DIR
+
+    collection_dir = (skills_dir / collection_namespace).resolve()
+    validate_path_containment(collection_dir, skills_dir)
     collection_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = collection_dir / "MANIFEST.json"
     manifest_path.write_text(json.dumps(manifest, indent=2))
-
-    return manifest
 
 
 def load_cached_manifest(

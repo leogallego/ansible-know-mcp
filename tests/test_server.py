@@ -371,6 +371,50 @@ class TestGetSkillSync:
             _get_skill_sync(tmp_path, "no.such.module")
 
 
+class TestExtractSkillDescription:
+    def test_extracts_simple_description(self, tmp_path):
+        from ansible_know.server import _extract_skill_description
+
+        skill_md = tmp_path / "SKILL.md"
+        skill_md.write_text("---\nname: test\ndescription: A test skill\n---\n")
+        assert _extract_skill_description(skill_md) == "A test skill"
+
+    def test_returns_empty_when_no_description(self, tmp_path):
+        from ansible_know.server import _extract_skill_description
+
+        skill_md = tmp_path / "SKILL.md"
+        skill_md.write_text("---\nname: test\n---\nSome content\n")
+        assert _extract_skill_description(skill_md) == ""
+
+    def test_returns_empty_for_empty_file(self, tmp_path):
+        from ansible_know.server import _extract_skill_description
+
+        skill_md = tmp_path / "SKILL.md"
+        skill_md.write_text("")
+        assert _extract_skill_description(skill_md) == ""
+
+    def test_strips_folded_scalar_marker(self, tmp_path):
+        from ansible_know.server import _extract_skill_description
+
+        skill_md = tmp_path / "SKILL.md"
+        skill_md.write_text("---\nname: test\ndescription: >-\n  Multiline\n---\n")
+        assert _extract_skill_description(skill_md) == ""
+
+    def test_description_with_colon_in_value(self, tmp_path):
+        from ansible_know.server import _extract_skill_description
+
+        skill_md = tmp_path / "SKILL.md"
+        skill_md.write_text("---\nname: test\ndescription: Manage devices: create and update\n---\n")
+        assert _extract_skill_description(skill_md) == "Manage devices: create and update"
+
+    def test_description_bare_colon_no_value(self, tmp_path):
+        from ansible_know.server import _extract_skill_description
+
+        skill_md = tmp_path / "SKILL.md"
+        skill_md.write_text("---\nname: test\ndescription:\n---\n")
+        assert _extract_skill_description(skill_md) == ""
+
+
 class TestPathTraversal:
     @pytest.mark.asyncio
     async def test_get_skill_blocks_traversal(self, tmp_path, monkeypatch):

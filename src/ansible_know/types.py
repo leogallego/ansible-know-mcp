@@ -10,12 +10,24 @@ if TYPE_CHECKING:
     from ansible_know.galaxy_config import GalaxyServerConfig
 
 
+class ParamDict(TypedDict):
+    """Single parameter extracted from a module's ansible-doc options."""
+
+    name: str
+    type: str
+    required: bool
+    default: Any
+    choices: Any
+    description: str
+    aliases: list[str]
+
+
 class ModuleMetadata(TypedDict):
     """Module metadata extracted by parser.extract_module_metadata()."""
 
     module_name: str
     short_description: str
-    params: list[dict[str, Any]]
+    params: list[ParamDict]
     examples: str
     is_api_module: bool
 
@@ -78,7 +90,7 @@ class ModuleTagEntry(TypedDict):
     fqcn: str
     short_name: str
     short_description: str
-    required_params: list[dict[str, Any]]
+    required_params: list[ParamDict]
     is_api_module: bool
 
 
@@ -89,7 +101,7 @@ class CollectionSkillContext(TypedDict):
     collection_version: str | None
     modules_by_tag: dict[str, list[ModuleTagEntry]]
     all_api: bool
-    common_params: list[dict[str, Any]]
+    common_params: list[ParamDict]
     module_count: int
 
 
