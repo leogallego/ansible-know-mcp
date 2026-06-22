@@ -122,14 +122,20 @@ async def app_lifespan(server):
         check_task = asyncio.create_task(
             _periodic_version_check(client, shared, sessions)
         )
+        cleanup_task = asyncio.create_task(
+            _periodic_session_cleanup(sessions)
+        )
         try:
             yield LifespanContext(
                 http_client=client, shared=shared, sessions=sessions,
             )
         finally:
             check_task.cancel()
+            cleanup_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await check_task
+            with contextlib.suppress(asyncio.CancelledError):
+                await cleanup_task
 
 mcp = FastMCP(
     name="Ansible Know",
@@ -217,6 +223,18 @@ async def _maybe_warn_upgrade(ctx: Context | None) -> None:
         f"Upgrade: {version_info['upgrade_command']}"
     )
     state.upgrade_warned = True
+
+
+async def _periodic_session_cleanup(sessions: SessionManager) -> None:
+    """Evict stale sessions periodically."""
+    from ansible_know.state import SESSION_CLEANUP_INTERVAL
+
+    while True:
+        await asyncio.sleep(SESSION_CLEANUP_INTERVAL)
+        try:
+            await sessions.cleanup_stale_sessions()
+        except Exception:
+            logger.debug("Session cleanup raised unexpectedly", exc_info=True)
 
 
 async def _periodic_version_check(
