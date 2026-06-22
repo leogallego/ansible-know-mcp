@@ -173,8 +173,8 @@ class SearchDocsEntry(TypedDict):
 
     title: str
     summary: str
-    topic: str
-    audience: str
+    topic: list[str]
+    audience: list[str]
     lines: int
     source: str
     url: str
