@@ -149,7 +149,11 @@ mcp = FastMCP(
         "(3) search_modules/get_collection_manifest to find modules and roles, "
         "(4) get_module_doc or get_role_doc for structured docs, "
         "(5) search_docs for conceptual guides, "
-        "(6) generate_skill or generate_role_skill to create skill packages."
+        "(6) generate_skill or generate_role_skill to create skill packages. "
+        "Resources: server://version for version and upgrade status, "
+        "galaxy://installed for session collections, "
+        "docs://sources for configured doc sources, "
+        "skills://list for generated skills."
     ),
     lifespan=app_lifespan,
 )
