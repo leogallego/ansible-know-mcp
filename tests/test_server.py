@@ -1692,3 +1692,52 @@ class TestGetStateSessionIsolation:
         await _get_state(ctx)
 
         mock_exit_stack.push_async_callback.assert_called_once()
+
+
+class TestClearCache:
+    """Tests for the clear_cache tool."""
+
+    @pytest.mark.asyncio
+    async def test_clear_all(self):
+        from ansible_know.server import clear_cache
+
+        with patch("ansible_know.galaxy.clear_cache") as mock_galaxy, \
+             patch("ansible_know.docs.clear_cache") as mock_docs:
+            result = await clear_cache()
+
+        assert result == {"cleared": ["galaxy_versions", "galaxy_blobs", "doc_manifests"]}
+        mock_galaxy.assert_called_once()
+        mock_docs.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_clear_galaxy_only(self):
+        from ansible_know.server import clear_cache
+
+        with patch("ansible_know.galaxy.clear_cache") as mock_galaxy, \
+             patch("ansible_know.docs.clear_cache") as mock_docs:
+            result = await clear_cache(scope="galaxy")
+
+        assert result == {"cleared": ["galaxy_versions", "galaxy_blobs"]}
+        mock_galaxy.assert_called_once()
+        mock_docs.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_clear_docs_only(self):
+        from ansible_know.server import clear_cache
+
+        with patch("ansible_know.galaxy.clear_cache") as mock_galaxy, \
+             patch("ansible_know.docs.clear_cache") as mock_docs:
+            result = await clear_cache(scope="docs")
+
+        assert result == {"cleared": ["doc_manifests"]}
+        mock_galaxy.assert_not_called()
+        mock_docs.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_invalid_scope(self):
+        from ansible_know.server import clear_cache
+
+        result = await clear_cache(scope="invalid")
+
+        assert "error" in result
+        assert "Invalid scope" in result["error"]

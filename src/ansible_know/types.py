@@ -244,6 +244,12 @@ class GenerateCollectionSkillsResult(TypedDict):
     collection_skill: str
 
 
+class ClearCacheResult(TypedDict):
+    """Result of clear_cache tool."""
+
+    cleared: list[str]
+
+
 class GalaxyDocClient(Protocol):
     """Structural interface for Galaxy documentation clients.
 
