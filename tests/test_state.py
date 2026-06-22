@@ -1,7 +1,8 @@
 """Tests for ansible_know.state."""
 
 import asyncio
-from unittest.mock import MagicMock
+import time
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -184,3 +185,124 @@ class TestSessionManager:
 
         assert shared.version_info is None
         assert state.upgrade_warned is True
+
+    @pytest.mark.asyncio
+    async def test_session_count_property(self):
+        mgr = SessionManager(SharedState(), collection_factory=CollectionManager)
+        assert mgr.session_count == 0
+        await mgr.get_or_create("a")
+        assert mgr.session_count == 1
+        await mgr.get_or_create("b")
+        assert mgr.session_count == 2
+        await mgr.remove_session("a")
+        assert mgr.session_count == 1
+
+    @pytest.mark.asyncio
+    async def test_max_sessions_evicts_lru(self):
+        mgr = SessionManager(
+            SharedState(), collection_factory=CollectionManager,
+            max_sessions=2,
+        )
+        state_a = await mgr.get_or_create("a")
+        state_a.collection_manager.cleanup = MagicMock()
+        await mgr.get_or_create("b")
+        # Creating a third should evict "a" (LRU)
+        await mgr.get_or_create("c")
+        assert mgr.session_count == 2
+        state_a.collection_manager.cleanup.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_max_sessions_evicts_oldest_not_recent(self):
+        mgr = SessionManager(
+            SharedState(), collection_factory=CollectionManager,
+            max_sessions=2,
+        )
+        state_a = await mgr.get_or_create("a")
+        state_a.collection_manager.cleanup = MagicMock()
+        state_b = await mgr.get_or_create("b")
+        state_b.collection_manager.cleanup = MagicMock()
+        # Touch "a" so "b" becomes LRU
+        await mgr.get_or_create("a")
+        await mgr.get_or_create("c")
+        assert mgr.session_count == 2
+        state_b.collection_manager.cleanup.assert_called_once()
+        state_a.collection_manager.cleanup.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cleanup_stale_sessions_evicts_expired(self):
+        mgr = SessionManager(
+            SharedState(), collection_factory=CollectionManager,
+            session_ttl=100,
+        )
+        state = await mgr.get_or_create("old")
+        state.collection_manager.cleanup = MagicMock()
+
+        # Simulate time passing beyond TTL
+        mgr._last_accessed["old"] = time.monotonic() - 200
+
+        evicted = await mgr.cleanup_stale_sessions()
+        assert evicted == 1
+        assert mgr.session_count == 0
+        state.collection_manager.cleanup.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cleanup_stale_sessions_keeps_fresh(self):
+        mgr = SessionManager(
+            SharedState(), collection_factory=CollectionManager,
+            session_ttl=3600,
+        )
+        await mgr.get_or_create("fresh")
+
+        evicted = await mgr.cleanup_stale_sessions()
+        assert evicted == 0
+        assert mgr.session_count == 1
+
+    @pytest.mark.asyncio
+    async def test_cleanup_mixed_stale_and_fresh(self):
+        mgr = SessionManager(
+            SharedState(), collection_factory=CollectionManager,
+            session_ttl=100,
+        )
+        state_old = await mgr.get_or_create("old")
+        state_old.collection_manager.cleanup = MagicMock()
+        await mgr.get_or_create("fresh")
+
+        mgr._last_accessed["old"] = time.monotonic() - 200
+
+        evicted = await mgr.cleanup_stale_sessions()
+        assert evicted == 1
+        assert mgr.session_count == 1
+
+    @pytest.mark.asyncio
+    async def test_remove_session_cleans_last_accessed(self):
+        mgr = SessionManager(SharedState(), collection_factory=CollectionManager)
+        await mgr.get_or_create("s1")
+        assert "s1" in mgr._last_accessed
+        await mgr.remove_session("s1")
+        assert "s1" not in mgr._last_accessed
+
+    @pytest.mark.asyncio
+    async def test_default_config_values(self):
+        mgr = SessionManager(SharedState(), collection_factory=CollectionManager)
+        assert mgr.session_ttl == 4 * 3600
+        assert mgr.max_sessions == 100
+
+    @pytest.mark.asyncio
+    async def test_env_var_overrides(self):
+        with patch.dict("os.environ", {
+            "ANSIBLE_KNOW_SESSION_TTL": "7200",
+            "ANSIBLE_KNOW_MAX_SESSIONS": "50",
+        }):
+            mgr = SessionManager(SharedState(), collection_factory=CollectionManager)
+            assert mgr.session_ttl == 7200
+            assert mgr.max_sessions == 50
+
+    @pytest.mark.asyncio
+    async def test_env_var_minimum_clamp(self):
+        with patch.dict("os.environ", {
+            "ANSIBLE_KNOW_SESSION_TTL": "10",
+            "ANSIBLE_KNOW_MAX_SESSIONS": "0",
+        }):
+            mgr = SessionManager(SharedState(), collection_factory=CollectionManager)
+            assert mgr.session_ttl == 60
+            assert mgr.max_sessions == 1

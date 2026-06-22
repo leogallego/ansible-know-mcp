@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, TypedDict
@@ -27,6 +29,30 @@ __all__ = [
 ]
 
 logger = logging.getLogger("ansible_know")
+
+DEFAULT_SESSION_TTL = 4 * 3600  # 4 hours
+DEFAULT_MAX_SESSIONS = 100
+SESSION_CLEANUP_INTERVAL = 300  # 5 minutes
+
+
+def _get_session_ttl() -> int:
+    raw = os.environ.get("ANSIBLE_KNOW_SESSION_TTL", "")
+    if raw.strip():
+        try:
+            return max(60, int(raw))
+        except ValueError:
+            pass
+    return DEFAULT_SESSION_TTL
+
+
+def _get_max_sessions() -> int:
+    raw = os.environ.get("ANSIBLE_KNOW_MAX_SESSIONS", "")
+    if raw.strip():
+        try:
+            return max(1, int(raw))
+        except ValueError:
+            pass
+    return DEFAULT_MAX_SESSIONS
 
 
 @dataclass
@@ -70,6 +96,15 @@ class SessionManager:
     gets its own ``CollectionManager``, ``missing_collections`` set,
     and ``upgrade_warned`` flag.
 
+    Lifecycle management:
+    - **TTL eviction**: sessions inactive longer than ``session_ttl``
+      seconds are cleaned up (env: ``ANSIBLE_KNOW_SESSION_TTL``).
+    - **Count limit**: at most ``max_sessions`` concurrent sessions;
+      LRU eviction removes the least-recently-accessed session when
+      the limit is reached (env: ``ANSIBLE_KNOW_MAX_SESSIONS``).
+    - **Periodic cleanup**: call ``cleanup_stale_sessions()`` from a
+      background task to evict expired sessions.
+
     The ``collection_factory`` callable is injected by the caller
     (Orchestration layer) so this Foundation-layer module never
     imports External Access modules at runtime.
@@ -79,37 +114,96 @@ class SessionManager:
         self,
         shared: SharedState,
         collection_factory: Callable[[], CollectionManager],
+        session_ttl: int | None = None,
+        max_sessions: int | None = None,
     ) -> None:
         self._shared = shared
         self._collection_factory = collection_factory
         self._sessions: dict[str, ServerState] = {}
+        self._last_accessed: dict[str, float] = {}
         self._lock = asyncio.Lock()
+        self._session_ttl = session_ttl if session_ttl is not None else _get_session_ttl()
+        self._max_sessions = max_sessions if max_sessions is not None else _get_max_sessions()
+
+    @property
+    def session_ttl(self) -> int:
+        return self._session_ttl
+
+    @property
+    def max_sessions(self) -> int:
+        return self._max_sessions
 
     async def get_or_create(self, session_id: str) -> ServerState:
-        """Return existing session state or create a new one."""
-        # Fast path: dict.get() is atomic in single-threaded asyncio
-        # (no await between read and lock acquisition).
+        """Return existing session state or create a new one.
+
+        Updates last-accessed time. Evicts LRU session if count limit
+        is reached when creating a new session.
+        """
+        now = time.monotonic()
         existing = self._sessions.get(session_id)
         if existing is not None:
+            self._last_accessed[session_id] = now
             return existing
         async with self._lock:
-            if session_id not in self._sessions:
-                # galaxy_servers is a shared reference (write-once list);
-                # see SharedState docstring for the invariant.
-                self._sessions[session_id] = ServerState(
-                    collection_manager=self._collection_factory(),
-                    galaxy_servers=self._shared.galaxy_servers,
-                )
-                logger.debug("Created session state for %s", session_id)
+            if session_id in self._sessions:
+                self._last_accessed[session_id] = now
+                return self._sessions[session_id]
+            if len(self._sessions) >= self._max_sessions:
+                await self._evict_lru_locked()
+            self._sessions[session_id] = ServerState(
+                collection_manager=self._collection_factory(),
+                galaxy_servers=self._shared.galaxy_servers,
+            )
+            self._last_accessed[session_id] = now
+            logger.debug("Created session state for %s", session_id)
             return self._sessions[session_id]
+
+    async def _evict_lru_locked(self) -> None:
+        """Evict the least-recently-accessed session. Must hold self._lock."""
+        if not self._last_accessed:
+            return
+        lru_id = min(self._last_accessed, key=self._last_accessed.__getitem__)
+        state = self._sessions.pop(lru_id, None)
+        self._last_accessed.pop(lru_id, None)
+        if state is not None:
+            state.collection_manager.cleanup()
+            logger.info("Evicted LRU session %s (max_sessions=%d)", lru_id, self._max_sessions)
 
     async def remove_session(self, session_id: str) -> None:
         """Remove a session and clean up its resources."""
         async with self._lock:
             state = self._sessions.pop(session_id, None)
+            self._last_accessed.pop(session_id, None)
         if state is not None:
             state.collection_manager.cleanup()
             logger.debug("Removed session state for %s", session_id)
+
+    async def cleanup_stale_sessions(self) -> int:
+        """Evict sessions that have exceeded the TTL.
+
+        Returns the number of sessions evicted.
+        """
+        now = time.monotonic()
+        cutoff = now - self._session_ttl
+        to_evict: list[str] = []
+
+        async with self._lock:
+            for sid, last in list(self._last_accessed.items()):
+                if last < cutoff:
+                    to_evict.append(sid)
+            evicted_states: list[ServerState] = []
+            for sid in to_evict:
+                state = self._sessions.pop(sid, None)
+                self._last_accessed.pop(sid, None)
+                if state is not None:
+                    evicted_states.append(state)
+
+        for state in evicted_states:
+            state.collection_manager.cleanup()
+
+        if to_evict:
+            logger.info("Evicted %d stale sessions (ttl=%ds)", len(to_evict), self._session_ttl)
+        return len(to_evict)
 
     async def on_version_update(self, new_info: VersionInfo | None) -> None:
         """Update version info and reset upgrade_warned for all sessions."""
@@ -118,6 +212,10 @@ class SessionManager:
             if new_info and new_info.get("outdated"):
                 for session in self._sessions.values():
                     session.upgrade_warned = False
+
+    @property
+    def session_count(self) -> int:
+        return len(self._sessions)
 
     @property
     def shared(self) -> SharedState:
