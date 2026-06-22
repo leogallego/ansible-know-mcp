@@ -12,44 +12,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ansible_know.config import SKILLS_DIR
+from ansible_know.tagging import derive_tags
 
 if TYPE_CHECKING:
     from ansible_know.types import ModuleMetadata
 
 __all__ = [
-    "derive_tags",
     "generate_manifest",
     "load_cached_manifest",
 ]
-
-
-def derive_tags(fqcn: str, params: list[dict[str, Any]]) -> list[str]:
-    """Heuristically derive tags from module name segments and parameters."""
-    parts = fqcn.split(".")
-    module_short = parts[-1] if parts else fqcn
-
-    tags: set[str] = set()
-    tag_hints = {
-        "user": "identity", "group": "identity", "role": "identity",
-        "network": "networking", "interface": "networking", "vlan": "networking",
-        "firewall": "security", "acl": "security", "cert": "security",
-        "file": "files", "copy": "files", "template": "files",
-        "package": "packages", "apt": "packages", "yum": "packages", "dnf": "packages",
-        "service": "services", "systemd": "services",
-        "docker": "containers", "podman": "containers", "container": "containers",
-        "ip": "ipam", "prefix": "ipam", "subnet": "ipam", "address": "ipam",
-        "device": "dcim", "rack": "dcim", "site": "dcim",
-        "vm": "virtualization", "virtual": "virtualization",
-        "cloud": "cloud", "ec2": "cloud", "azure": "cloud", "gcp": "cloud",
-        "db": "database", "database": "database", "mysql": "database", "postgres": "database",
-    }
-
-    for segment in module_short.split("_"):
-        segment_lower = segment.lower()
-        if segment_lower in tag_hints:
-            tags.add(tag_hints[segment_lower])
-
-    return sorted(tags)
 
 
 def generate_manifest(

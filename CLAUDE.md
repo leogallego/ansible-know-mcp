@@ -28,6 +28,7 @@ src/ansible_know/
 ├── collection_manifest.py # collection-level MANIFEST.json generation/caching
 ├── docs.py                # multi-manifest documentation client (httpx)
 ├── galaxy.py              # Galaxy v3 API client — search, docs-blob, format conversion
+├── tagging.py             # Tag derivation from module metadata (Foundation)
 └── templates/             # Jinja2 templates for skill packages
 ```
 
