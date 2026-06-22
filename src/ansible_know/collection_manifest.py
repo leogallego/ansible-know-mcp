@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 __all__ = [
     "generate_manifest",
     "load_cached_manifest",
+    "write_manifest",
 ]
 
 
@@ -92,11 +93,22 @@ def generate_manifest(
         "roles": roles_list,
     }
 
+    return manifest
+
+
+def write_manifest(
+    manifest: dict[str, Any],
+    collection_namespace: str,
+    skills_dir: Path | None = None,
+) -> None:
+    """Persist a manifest dict to MANIFEST.json on disk."""
+    if skills_dir is None:
+        skills_dir = SKILLS_DIR
+
+    collection_dir = skills_dir / collection_namespace
     collection_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = collection_dir / "MANIFEST.json"
     manifest_path.write_text(json.dumps(manifest, indent=2))
-
-    return manifest
 
 
 def load_cached_manifest(

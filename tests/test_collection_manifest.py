@@ -5,6 +5,7 @@ import json
 from ansible_know.collection_manifest import (
     generate_manifest,
     load_cached_manifest,
+    write_manifest,
 )
 from ansible_know.parser import extract_module_metadata
 from ansible_know.tagging import derive_tags
@@ -49,9 +50,17 @@ class TestGenerateManifest:
         assert mod["is_api_module"] is False
         assert mod["has_skill"] is False
 
-    def test_writes_manifest_file(self, tmp_path, sample_module_doc):
+    def test_generate_does_not_write_file(self, tmp_path, sample_module_doc):
         metadata = extract_module_metadata(sample_module_doc)
         generate_manifest("ansible.builtin", [metadata], skills_dir=tmp_path)
+
+        manifest_path = tmp_path / "ansible.builtin" / "MANIFEST.json"
+        assert not manifest_path.exists()
+
+    def test_writes_manifest_file(self, tmp_path, sample_module_doc):
+        metadata = extract_module_metadata(sample_module_doc)
+        manifest = generate_manifest("ansible.builtin", [metadata], skills_dir=tmp_path)
+        write_manifest(manifest, "ansible.builtin", skills_dir=tmp_path)
 
         manifest_path = tmp_path / "ansible.builtin" / "MANIFEST.json"
         assert manifest_path.exists()
@@ -168,7 +177,8 @@ class TestLoadCachedManifest:
 
     def test_returns_cached_manifest(self, tmp_path, sample_module_doc):
         metadata = extract_module_metadata(sample_module_doc)
-        generate_manifest("ansible.builtin", [metadata], skills_dir=tmp_path)
+        manifest = generate_manifest("ansible.builtin", [metadata], skills_dir=tmp_path)
+        write_manifest(manifest, "ansible.builtin", skills_dir=tmp_path)
 
         cached = load_cached_manifest("ansible.builtin", skills_dir=tmp_path)
         assert cached is not None

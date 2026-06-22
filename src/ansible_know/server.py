@@ -496,12 +496,17 @@ async def get_collection_manifest(
                 "entry_points": entry_points,
             })
 
-        return await run_in_executor(
+        manifest = await run_in_executor(
             collection_manifest.generate_manifest,
             collection_namespace, metadata_list,
             roles_metadata=roles_metadata,
             collection_version=installed_version,
         )
+        await run_in_executor(
+            collection_manifest.write_manifest,
+            manifest, collection_namespace,
+        )
+        return manifest
     except ValidationError:
         raise
     except Exception as exc:
@@ -900,6 +905,10 @@ async def generate_collection_skills(
             collection_manifest.generate_manifest,
             collection_namespace, metadata_list, skills_dir=base_dir,
             collection_version=installed_version,
+        )
+        await run_in_executor(
+            collection_manifest.write_manifest,
+            manifest, collection_namespace, skills_dir=base_dir,
         )
 
         await run_in_executor(
