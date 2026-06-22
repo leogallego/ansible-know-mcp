@@ -75,21 +75,21 @@ class TestGenerateManifest:
 
         assert manifest["modules"][0]["is_api_module"] is True
 
-    def test_has_codex_false_by_default(self, tmp_path, sample_module_doc):
+    def test_has_collection_skill_false_by_default(self, tmp_path, sample_module_doc):
         metadata = extract_module_metadata(sample_module_doc)
         manifest = generate_manifest("ansible.builtin", [metadata], skills_dir=tmp_path)
 
-        assert manifest["has_codex"] is False
+        assert manifest["has_collection_skill"] is False
 
-    def test_has_codex_true_when_exists(self, tmp_path, sample_module_doc):
-        codex_dir = tmp_path / "ansible.builtin"
-        codex_dir.mkdir(parents=True)
-        (codex_dir / "SKILL.md").write_text("codex content")
+    def test_has_collection_skill_true_when_exists(self, tmp_path, sample_module_doc):
+        skill_dir = tmp_path / "ansible.builtin"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("collection skill content")
 
         metadata = extract_module_metadata(sample_module_doc)
         manifest = generate_manifest("ansible.builtin", [metadata], skills_dir=tmp_path)
 
-        assert manifest["has_codex"] is True
+        assert manifest["has_collection_skill"] is True
 
 
 class TestGenerateManifestWithRoles:

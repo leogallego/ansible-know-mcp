@@ -108,7 +108,7 @@ def generate_manifest(
             "has_skill": has_skill,
         })
 
-    has_codex = (collection_dir / "SKILL.md").exists()
+    has_collection_skill = (collection_dir / "SKILL.md").exists()
 
     manifest = {
         "collection": collection_namespace,
@@ -116,7 +116,7 @@ def generate_manifest(
         "generated": datetime.now(timezone.utc).isoformat(),
         "module_count": len(modules_list),
         "role_count": len(roles_list),
-        "has_codex": has_codex,
+        "has_collection_skill": has_collection_skill,
         "modules": modules_list,
         "roles": roles_list,
     }

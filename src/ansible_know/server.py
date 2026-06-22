@@ -466,7 +466,7 @@ async def get_collection_manifest(
                 parser.list_roles, collection_filter=collection_namespace,
                 collections_path=cpath,
             )
-        except Exception as exc:
+        except (AnsibleDocError, OSError) as exc:
             logger.warning("list_roles failed for %s: %s", collection_namespace, exc)
 
         if not modules and not roles_raw:
@@ -570,12 +570,55 @@ def _extract_skill_description(skill_md: Path) -> str:
     return ""
 
 
+def _list_skills_sync(
+    skills_dir: Path, collection: str | None,
+) -> list[dict[str, str]]:
+    """Synchronous helper for list_skills — all file I/O happens here."""
+    results: list[dict[str, str]] = []
+    if not skills_dir.exists():
+        return results
+
+    if collection:
+        collection_dir = (skills_dir / collection).resolve()
+        validate_path_containment(collection_dir, skills_dir)
+        if not collection_dir.is_dir():
+            return results
+        for sub_dir in sorted(collection_dir.iterdir()):
+            try:
+                skill_md = sub_dir / "SKILL.md"
+                if sub_dir.is_dir() and not sub_dir.is_symlink() and skill_md.exists():
+                    results.append({
+                        "name": f"{collection}.{sub_dir.name}",
+                        "description": _extract_skill_description(skill_md),
+                        "path": str(sub_dir),
+                    })
+            except OSError:
+                logger.warning("Skipping unreadable skill: %s", sub_dir.name)
+                continue
+    else:
+        for skill_dir in sorted(skills_dir.iterdir()):
+            try:
+                if not skill_dir.is_dir() or skill_dir.is_symlink():
+                    continue
+                skill_md = skill_dir / "SKILL.md"
+                if skill_md.exists():
+                    results.append({
+                        "name": skill_dir.name,
+                        "description": _extract_skill_description(skill_md),
+                        "path": str(skill_dir),
+                    })
+            except OSError:
+                logger.warning("Skipping unreadable skill: %s", skill_dir.name)
+                continue
+    return results
+
+
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def list_skills(
     collection: Annotated[
         str | None,
         "Optional collection namespace to list skills within (e.g. 'netbox.netbox'). "
-        "Without this, returns collection-level codex entries and standalone skills only.",
+        "Without this, returns collection-level skill entries and standalone skills only.",
     ] = None,
 ) -> list[dict[str, str]] | dict[str, str]:
     """List all available generated skills. Returns name, description, path for each.
@@ -592,36 +635,7 @@ async def list_skills(
     try:
         from ansible_know.config import SKILLS_DIR
 
-        results: list[dict[str, str]] = []
-        if not SKILLS_DIR.exists():
-            return results
-
-        if collection:
-            collection_dir = (SKILLS_DIR / collection).resolve()
-            validate_path_containment(collection_dir, SKILLS_DIR)
-            if not collection_dir.is_dir():
-                return results
-            for sub_dir in sorted(collection_dir.iterdir()):
-                skill_md = sub_dir / "SKILL.md"
-                if sub_dir.is_dir() and skill_md.exists():
-                    results.append({
-                        "name": f"{collection}.{sub_dir.name}",
-                        "description": _extract_skill_description(skill_md),
-                        "path": str(sub_dir),
-                    })
-        else:
-            for skill_dir in sorted(SKILLS_DIR.iterdir()):
-                if not skill_dir.is_dir():
-                    continue
-                skill_md = skill_dir / "SKILL.md"
-                if skill_md.exists():
-                    results.append({
-                        "name": skill_dir.name,
-                        "description": _extract_skill_description(skill_md),
-                        "path": str(skill_dir),
-                    })
-
-        return results
+        return await run_in_executor(_list_skills_sync, SKILLS_DIR, collection)
     except Exception as exc:
         logger.warning("list_skills failed: %s", exc)
         return {"error": sanitize_error(str(exc))}
@@ -629,7 +643,11 @@ async def list_skills(
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_skill(
-    skill_name: Annotated[str, "Skill name (usually the module FQCN)"],
+    skill_name: Annotated[
+        str,
+        "Skill name: a module FQCN (e.g. 'netbox.netbox.netbox_device') or "
+        "a collection namespace (e.g. 'netbox.netbox') for the collection-level skill.",
+    ],
 ) -> str | dict[str, str]:
     """Read a specific skill's SKILL.md content by name.
 
@@ -808,7 +826,7 @@ async def generate_collection_skills(
     """Batch generate skills for an entire collection.
 
     Generates/updates the collection MANIFEST.json as a byproduct.
-    Returns {"succeeded": int, "failed": int, "total": int, "manifest": dict, "codex": str},
+    Returns {"succeeded": int, "failed": int, "total": int, "manifest": dict, "collection_skill": str},
     or {"error": str} on failure.
     """
     logger.info("generate_collection_skills namespace=%r install_to=%r", collection_namespace, install_to)
@@ -884,7 +902,7 @@ async def generate_collection_skills(
             "failed": failed,
             "total": total,
             "manifest": manifest,
-            "codex": collection_namespace,
+            "collection_skill": collection_namespace,
         }
     except ValidationError:
         raise
@@ -905,13 +923,13 @@ def resource_skills_list() -> str:
     skills_list: list[str] = []
     if SKILLS_DIR.exists():
         for skill_dir in sorted(SKILLS_DIR.iterdir()):
-            if not skill_dir.is_dir():
+            if not skill_dir.is_dir() or skill_dir.is_symlink():
                 continue
             skill_md = skill_dir / "SKILL.md"
             if skill_md.exists():
                 skills_list.append(skill_dir.name)
-            for sub_dir in sorted(skill_dir.iterdir()) if skill_dir.is_dir() else []:
-                if sub_dir.is_dir() and (sub_dir / "SKILL.md").exists():
+            for sub_dir in sorted(skill_dir.iterdir()):
+                if sub_dir.is_dir() and not sub_dir.is_symlink() and (sub_dir / "SKILL.md").exists():
                     skills_list.append(f"{skill_dir.name}.{sub_dir.name}")
     return json.dumps(skills_list, indent=2)
 

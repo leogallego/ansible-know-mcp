@@ -72,12 +72,22 @@ class SkillEntry(TypedDict):
     path: str
 
 
+class ModuleTagEntry(TypedDict):
+    """Single module entry within a tag group for collection skill rendering."""
+
+    fqcn: str
+    short_name: str
+    short_description: str
+    required_params: list[dict[str, Any]]
+    is_api_module: bool
+
+
 class CollectionSkillContext(TypedDict):
-    """Template context for collection-level codex skill rendering."""
+    """Template context for collection-level skill rendering."""
 
     collection_namespace: str
     collection_version: str | None
-    modules_by_tag: dict[str, list[dict[str, Any]]]
+    modules_by_tag: dict[str, list[ModuleTagEntry]]
     all_api: bool
     common_params: list[dict[str, Any]]
     module_count: int

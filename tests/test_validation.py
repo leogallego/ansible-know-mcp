@@ -10,6 +10,7 @@ from ansible_know.validation import (
     MAX_NAMESPACE_LENGTH,
     MAX_QUERY_LENGTH,
     MAX_RESPONSE_SIZE,
+    MAX_SKILL_NAME_LENGTH,
     MAX_TAGS_LENGTH,
     MAX_VERSION_LENGTH,
     sanitize_error,
@@ -20,6 +21,7 @@ from ansible_know.validation import (
     validate_namespace,
     validate_path_containment,
     validate_query,
+    validate_skill_name,
     validate_tags,
     validate_version,
 )
@@ -116,6 +118,58 @@ class TestValidateNamespace:
         too_long = "a" * 64 + "." + "b" * 64
         with pytest.raises(ValidationError):
             validate_namespace(too_long)
+
+
+class TestValidateSkillName:
+    def test_valid_two_segments(self):
+        validate_skill_name("netbox.netbox")
+
+    def test_valid_three_segments(self):
+        validate_skill_name("netbox.netbox.netbox_device")
+
+    def test_valid_with_underscores(self):
+        validate_skill_name("my_ns.my_col.my_mod")
+
+    def test_valid_with_numbers(self):
+        validate_skill_name("ns1.col2.mod3")
+
+    def test_rejects_empty(self):
+        with pytest.raises(ValidationError):
+            validate_skill_name("")
+
+    def test_rejects_single_segment(self):
+        with pytest.raises(ValidationError):
+            validate_skill_name("copy")
+
+    def test_rejects_four_segments(self):
+        with pytest.raises(ValidationError):
+            validate_skill_name("a.b.c.d")
+
+    def test_rejects_dashes(self):
+        with pytest.raises(ValidationError):
+            validate_skill_name("my-ns.my-col")
+
+    def test_rejects_path_traversal(self):
+        with pytest.raises(ValidationError):
+            validate_skill_name("../../etc/passwd")
+
+    def test_rejects_shell_metacharacters(self):
+        for char in [";", "|", "&", "$", "`"]:
+            with pytest.raises(ValidationError):
+                validate_skill_name(f"a.b{char}rm")
+
+    def test_rejects_over_max_length(self):
+        valid = "a" * 100 + "." + "b" * 100
+        assert len(valid) < MAX_SKILL_NAME_LENGTH
+        validate_skill_name(valid)
+
+        too_long = "a" * 128 + "." + "b" * 128
+        with pytest.raises(ValidationError):
+            validate_skill_name(too_long)
+
+    def test_rejects_slashes(self):
+        with pytest.raises(ValidationError):
+            validate_skill_name("a/b.c")
 
 
 class TestValidateKeyword:

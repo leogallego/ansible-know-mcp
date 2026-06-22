@@ -31,11 +31,14 @@ def validate_fqcn(name: str) -> None:
         )
 
 
+MAX_SKILL_NAME_LENGTH = MAX_NAMESPACE_LENGTH * 2
+
+
 def validate_skill_name(name: str) -> None:
-    if not name or not _SKILL_NAME_RE.match(name):
+    if not name or len(name) > MAX_SKILL_NAME_LENGTH or not _SKILL_NAME_RE.match(name):
         raise ValidationError(
-            "Invalid skill name: expected format 'namespace.collection' or "
-            "'namespace.collection.module' with alphanumeric/underscore segments."
+            "Invalid skill name: expected a collection namespace (e.g. 'netbox.netbox') "
+            "or a fully-qualified module name (e.g. 'netbox.netbox.netbox_device')."
         )
 
 

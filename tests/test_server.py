@@ -124,13 +124,14 @@ class TestListSkillsTool:
     @pytest.mark.asyncio
     async def test_returns_top_level_skills(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
-        codex_dir = tmp_path / "netbox.netbox"
-        codex_dir.mkdir()
-        (codex_dir / "SKILL.md").write_text("---\nname: netbox.netbox\ndescription: Codex\n---\n")
+        skill_dir = tmp_path / "netbox.netbox"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text("---\nname: netbox.netbox\ndescription: Collection guide\n---\n")
         from ansible_know.server import list_skills
         result = await list_skills()
         assert len(result) == 1
         assert result[0]["name"] == "netbox.netbox"
+        assert result[0]["description"] == "Collection guide"
 
     @pytest.mark.asyncio
     async def test_returns_collection_skills_with_filter(self, tmp_path, monkeypatch):
@@ -142,6 +143,21 @@ class TestListSkillsTool:
         result = await list_skills(collection="netbox.netbox")
         assert len(result) == 1
         assert result[0]["name"] == "netbox.netbox.netbox_device"
+        assert result[0]["description"] == "Device"
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_for_nonexistent_collection(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+        from ansible_know.server import list_skills
+        result = await list_skills(collection="nonexistent.collection")
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_rejects_invalid_collection_name(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+        from ansible_know.server import list_skills
+        result = await list_skills(collection="bad!")
+        assert "error" in result
 
 
 class TestGetSkillTool:
@@ -210,7 +226,7 @@ class TestGenerateCollectionSkillsTool:
         result = await generate_collection_skills("ansible.builtin", install_to=str(tmp_path))
         assert result["total"] == 4
         assert result["succeeded"] + result["failed"] == 4
-        assert result["codex"] == "ansible.builtin"
+        assert result["collection_skill"] == "ansible.builtin"
         assert (tmp_path / "ansible.builtin" / "SKILL.md").exists()
 
 
@@ -653,6 +669,28 @@ class TestResourceFunctions:
         from ansible_know.server import resource_skill_content
         result = resource_skill_content("netbox.netbox")
         assert result == "codex content"
+
+    def test_resource_skills_list_with_nested_skills(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+        coll_dir = tmp_path / "netbox.netbox"
+        coll_dir.mkdir()
+        (coll_dir / "SKILL.md").write_text("# Collection skill")
+        mod_dir = coll_dir / "netbox_device"
+        mod_dir.mkdir()
+        (mod_dir / "SKILL.md").write_text("# Device skill")
+        from ansible_know.server import resource_skills_list
+        result = json.loads(resource_skills_list())
+        assert "netbox.netbox" in result
+        assert "netbox.netbox.netbox_device" in result
+
+    def test_resource_skill_content_flat_fallback(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+        flat = tmp_path / "ansible.builtin.copy"
+        flat.mkdir(parents=True)
+        (flat / "SKILL.md").write_text("flat content")
+        from ansible_know.server import resource_skill_content
+        result = resource_skill_content("ansible.builtin.copy")
+        assert result == "flat content"
 
     def test_resource_skill_content_invalid_fqcn(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)

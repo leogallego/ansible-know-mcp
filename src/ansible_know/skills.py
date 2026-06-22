@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 from ansible_know.config import TEMPLATE_DIR
 
 if TYPE_CHECKING:
-    from ansible_know.types import CollectionSkillContext
+    from ansible_know.types import CollectionSkillContext, ModuleTagEntry
 
 logger = logging.getLogger("ansible_know")
 
@@ -203,7 +203,7 @@ def write_role_skill_package(output_dir: Path, metadata: dict[str, Any]) -> None
     (assets_dir / "playbook.yml").write_text(playbook_template.render(**ctx))
 
 
-# --- Collection codex skill ---
+# --- Collection-level skill ---
 
 
 def _collection_template_context(
@@ -211,10 +211,10 @@ def _collection_template_context(
     metadata_list: list[dict[str, Any]],
     collection_version: str | None = None,
 ) -> CollectionSkillContext:
-    """Build template context for a collection-level codex skill."""
+    """Build template context for a collection-level skill."""
     from ansible_know.collection_manifest import derive_tags
 
-    modules_by_tag: dict[str, list[dict[str, Any]]] = {}
+    modules_by_tag: dict[str, list[ModuleTagEntry]] = {}
     for meta in metadata_list:
         fqcn = meta["module_name"]
         short_name = fqcn.rsplit(".", 1)[-1]
@@ -222,7 +222,7 @@ def _collection_template_context(
         required_params = [p for p in params if p.get("required")]
         tags = derive_tags(fqcn, params)
 
-        entry = {
+        entry: ModuleTagEntry = {
             "fqcn": fqcn,
             "short_name": short_name,
             "short_description": meta["short_description"],
@@ -280,7 +280,7 @@ def render_collection_skill(
     metadata_list: list[dict[str, Any]],
     collection_version: str | None = None,
 ) -> str:
-    """Render the COLLECTION_SKILL.md.j2 template for a collection codex."""
+    """Render the COLLECTION_SKILL.md.j2 template for a collection-level skill."""
     logger.debug("Rendering collection skill for %s", namespace)
     env = _get_template_env()
     template = env.get_template("COLLECTION_SKILL.md.j2")
@@ -294,7 +294,7 @@ def write_collection_skill_package(
     metadata_list: list[dict[str, Any]],
     collection_version: str | None = None,
 ) -> None:
-    """Write the collection codex skill package: SKILL.md only (no scripts/assets)."""
+    """Write the collection-level skill package: SKILL.md only (no scripts/assets)."""
     logger.debug("Writing collection skill package to %s for %s", output_dir, namespace)
     output_dir.mkdir(parents=True, exist_ok=True)
 

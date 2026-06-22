@@ -6,6 +6,7 @@ from ansible_know.skills import (
     _build_example_args,
     _collection_template_context,
     _extract_example_values,
+    _find_common_params,
     _role_template_context,
     module_to_skill_name,
     render_collection_skill,
@@ -272,13 +273,49 @@ class TestCollectionTemplateContext:
         assert ctx["collection_version"] == "2.15.0"
 
 
+class TestFindCommonParams:
+    def test_empty_metadata(self):
+        assert _find_common_params([]) == []
+
+    def test_single_module_all_params_common(self):
+        meta = {
+            "module_name": "ns.col.mod",
+            "params": [{"name": "url", "type": "str", "required": True}],
+        }
+        result = _find_common_params([meta])
+        assert len(result) == 1
+        assert result[0]["name"] == "url"
+
+    def test_threshold_boundary_at_80_percent(self):
+        shared_param = {"name": "token", "type": "str", "required": True}
+        unique_param = {"name": "unique", "type": "str", "required": False}
+        metas = [
+            {"module_name": f"ns.col.mod{i}", "params": [shared_param]}
+            for i in range(4)
+        ]
+        metas.append({"module_name": "ns.col.mod5", "params": [unique_param]})
+        result = _find_common_params(metas)
+        names = [p["name"] for p in result]
+        assert "token" in names
+        assert "unique" not in names
+
+    def test_below_threshold_excluded(self):
+        metas = [
+            {"module_name": "ns.col.mod1", "params": [{"name": "a", "type": "str", "required": True}]},
+            {"module_name": "ns.col.mod2", "params": [{"name": "b", "type": "str", "required": True}]},
+            {"module_name": "ns.col.mod3", "params": [{"name": "c", "type": "str", "required": True}]},
+        ]
+        result = _find_common_params(metas)
+        assert result == []
+
+
 class TestRenderCollectionSkill:
     def test_renders_codex(self, sample_api_module_doc):
         metadata = extract_module_metadata(sample_api_module_doc)
         content = render_collection_skill("netbox.netbox", [metadata], collection_version="4.1.0")
 
         assert "netbox.netbox" in content
-        assert "Playbook Codex" in content
+        assert "Playbook Guide" in content
         assert "Phase 1" in content
         assert "Phase 2" in content
         assert "Phase 5" in content
@@ -307,4 +344,4 @@ class TestWriteCollectionSkillPackage:
 
         content = (output_dir / "SKILL.md").read_text()
         assert "netbox.netbox" in content
-        assert "Playbook Codex" in content
+        assert "Playbook Guide" in content
