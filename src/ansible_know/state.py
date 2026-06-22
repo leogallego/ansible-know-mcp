@@ -159,7 +159,10 @@ class SessionManager:
             logger.debug("Created session state for %s", session_id)
             result = self._sessions[session_id]
         if evicted is not None:
-            evicted.collection_manager.cleanup()
+            try:
+                evicted.collection_manager.cleanup()
+            except OSError:
+                logger.debug("LRU session cleanup failed", exc_info=True)
         return result
 
     async def _evict_lru_locked(self) -> ServerState | None:
@@ -209,7 +212,7 @@ class SessionManager:
         for state in evicted_states:
             try:
                 state.collection_manager.cleanup()
-            except Exception:
+            except OSError:
                 logger.debug("Session cleanup failed", exc_info=True)
 
         if to_evict:
