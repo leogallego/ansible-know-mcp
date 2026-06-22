@@ -365,7 +365,9 @@ def extract_role_metadata(role_doc: dict[str, Any]) -> RoleMetadata:
                 "type": opt_spec.get("type", "str"),
                 "required": opt_spec.get("required", False),
                 "default": opt_spec.get("default"),
+                "choices": opt_spec.get("choices"),
                 "description": opt_desc,
+                "aliases": opt_spec.get("aliases", []),
             })
         options.sort(key=lambda o: (not o["required"], o["name"]))
 
