@@ -116,6 +116,45 @@ Connect from any MCP client using the streamable HTTP URL:
 > reverse proxy with authentication/authorization, or use only on trusted
 > networks.
 
+### Docker
+
+Run the pre-built container image:
+
+```bash
+docker run -p 7860:7860 ghcr.io/leogallego/ansible-know-mcp:latest
+```
+
+Or build from source:
+
+```bash
+docker build -t ansible-know-mcp .
+docker run -p 8080:7860 ansible-know-mcp
+```
+
+Connect from any MCP client using the streamable HTTP URL:
+`http://localhost:8080/mcp`
+
+### Remote MCP (Hugging Face Spaces)
+
+A public instance is available as a remote MCP server:
+
+**Claude Code:**
+```bash
+claude mcp add ansible-know --transport http https://know.ansible.ar/mcp
+```
+
+**VS Code / Cursor** (`.vscode/mcp.json`):
+```json
+{
+  "servers": {
+    "ansible-know": {
+      "type": "http",
+      "url": "https://know.ansible.ar/mcp"
+    }
+  }
+}
+```
+
 ### Full stack
 
 ```json
@@ -221,6 +260,47 @@ url = https://galaxy.ansible.com/api/
 > **Note:** `uvx` caches the installed version and does not auto-upgrade on new releases.
 > To always run the latest version (at the cost of slower startup):
 > `claude mcp add ansible-know -- uvx --upgrade ansible-know-mcp`
+
+## Deployment
+
+### Hugging Face Spaces
+
+Deploy as a remote MCP server on [Hugging Face Spaces](https://huggingface.co/docs/hub/spaces):
+
+1. Create a new Space with **SDK: Docker** and **Port: 7860**
+2. Push this repository (or set it as the Space's linked repo)
+3. The included `Dockerfile` builds and starts the server automatically
+
+**Custom domain** (optional):
+
+1. In the Space settings, go to **Custom domains**
+2. Add your domain (e.g., `know.ansible.ar`)
+3. Create a CNAME record pointing to `<your-space>.hf.space`
+4. HF provisions a TLS certificate automatically
+
+**Environment variables** (set in Space settings):
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `ANSIBLE_KNOW_SKILLS_DIR` | No | Defaults to `./skills/` (ephemeral in container) |
+| `ANSIBLE_KNOW_NO_PUBLIC_GALAXY` | No | Set to `1` to disable public Galaxy fallback |
+
+### Generic Docker
+
+The `Dockerfile` works with any container platform (Fly.io, Railway, Cloud Run, etc.):
+
+```bash
+docker build -t ansible-know-mcp .
+docker run -p 8080:7860 ansible-know-mcp
+```
+
+Override defaults with environment variables:
+
+```bash
+docker run -p 9090:9090 \
+  -e ANSIBLE_KNOW_PORT=9090 \
+  ansible-know-mcp
+```
 
 ## Development
 
