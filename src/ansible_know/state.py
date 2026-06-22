@@ -51,8 +51,11 @@ class ServerState:
 class SharedState:
     """Process-wide state shared across all sessions.
 
-    Created once at lifespan startup. Read-only except for
-    ``version_info`` which is updated by the periodic check.
+    Created once at lifespan startup. ``galaxy_servers`` is write-once:
+    set at lifespan startup, never mutated thereafter. Per-session
+    ``ServerState`` references the same list object for zero-copy reads.
+    ``version_info`` is updated by the periodic check via
+    ``SessionManager.on_version_update()``.
     """
 
     galaxy_servers: list[GalaxyServerConfig] = field(default_factory=list)
@@ -90,6 +93,8 @@ class SessionManager:
             return existing
         async with self._lock:
             if session_id not in self._sessions:
+                # galaxy_servers is a shared reference (write-once list);
+                # see SharedState docstring for the invariant.
                 self._sessions[session_id] = ServerState(
                     collection_manager=self._collection_factory(),
                     galaxy_servers=self._shared.galaxy_servers,

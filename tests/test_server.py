@@ -1336,13 +1336,10 @@ class TestPeriodicVersionCheck:
         mock_client.is_closed = False
         with patch("ansible_know.server._check_pypi_version", return_value=same_info):
             with patch("asyncio.sleep", side_effect=fake_sleep):
-                with patch.object(sessions, "on_version_update", new_callable=AsyncMock) as mock_update:
-                    with pytest.raises(asyncio.CancelledError):
-                        await _periodic_version_check(mock_client, shared, sessions)
+                with pytest.raises(asyncio.CancelledError):
+                    await _periodic_version_check(mock_client, shared, sessions)
 
-        # Same version: on_version_update should NOT be called
-        mock_update.assert_not_called()
-        # But shared.version_info should still be refreshed
+        # Same version: on_version_update is called but upgrade_warned not reset
         assert shared.version_info["latest"] == "0.3.0"
 
     @pytest.mark.asyncio
@@ -1363,6 +1360,34 @@ class TestPeriodicVersionCheck:
         with patch("asyncio.sleep", side_effect=fake_sleep):
             await _periodic_version_check(mock_client, shared, sessions)
 
+        assert shared.version_info["latest"] == "0.3.0"
+
+    @pytest.mark.asyncio
+    async def test_survives_unexpected_exception(self):
+        from ansible_know.collections import CollectionManager
+        from ansible_know.server import _periodic_version_check
+        from ansible_know.state import SessionManager, SharedState
+
+        shared = SharedState(version_info={"installed": "0.3.0", "latest": "0.3.0", "outdated": False})
+        sessions = SessionManager(shared, collection_factory=CollectionManager)
+
+        call_count = 0
+
+        async def fake_sleep(_):
+            nonlocal call_count
+            call_count += 1
+            if call_count > 2:
+                raise asyncio.CancelledError
+
+        mock_client = MagicMock()
+        mock_client.is_closed = False
+        with patch("ansible_know.server._check_pypi_version", side_effect=RuntimeError("boom")):
+            with patch("asyncio.sleep", side_effect=fake_sleep):
+                with pytest.raises(asyncio.CancelledError):
+                    await _periodic_version_check(mock_client, shared, sessions)
+
+        # Loop survived the exception and ran again (call_count > 2)
+        assert call_count > 2
         assert shared.version_info["latest"] == "0.3.0"
 
 
@@ -1415,3 +1440,45 @@ class TestGetStateSessionIsolation:
         # Each call returns a new ephemeral instance
         state_2 = await _get_state(None)
         assert state is not state_2
+
+    @pytest.mark.asyncio
+    async def test_registers_cleanup_on_session_exit_stack(self):
+        from ansible_know.collections import CollectionManager
+        from ansible_know.server import _get_state
+        from ansible_know.state import SessionManager, SharedState
+
+        shared = SharedState()
+        sessions = SessionManager(shared, collection_factory=CollectionManager)
+
+        mock_exit_stack = MagicMock()
+        ctx = MagicMock()
+        ctx.lifespan_context = {"shared": shared, "sessions": sessions, "http_client": None}
+        ctx.session_id = "session-cleanup"
+        ctx.session._exit_stack = mock_exit_stack
+        ctx.session._ansible_know_cleanup_registered = False
+
+        await _get_state(ctx)
+
+        mock_exit_stack.push_async_callback.assert_called_once()
+        assert ctx.session._ansible_know_cleanup_registered is True
+
+    @pytest.mark.asyncio
+    async def test_cleanup_not_registered_twice(self):
+        from ansible_know.collections import CollectionManager
+        from ansible_know.server import _get_state
+        from ansible_know.state import SessionManager, SharedState
+
+        shared = SharedState()
+        sessions = SessionManager(shared, collection_factory=CollectionManager)
+
+        mock_exit_stack = MagicMock()
+        ctx = MagicMock()
+        ctx.lifespan_context = {"shared": shared, "sessions": sessions, "http_client": None}
+        ctx.session_id = "session-once"
+        ctx.session._exit_stack = mock_exit_stack
+        ctx.session._ansible_know_cleanup_registered = False
+
+        await _get_state(ctx)
+        await _get_state(ctx)
+
+        mock_exit_stack.push_async_callback.assert_called_once()

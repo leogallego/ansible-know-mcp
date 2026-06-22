@@ -1,5 +1,6 @@
 """Tests for ansible_know.state."""
 
+import asyncio
 from unittest.mock import MagicMock
 
 import pytest
@@ -160,6 +161,12 @@ class TestSessionManager:
         # Second get_or_create should produce a new instance
         state2 = await mgr.get_or_create("s1")
         assert state2 is not state
+
+    @pytest.mark.asyncio
+    async def test_concurrent_get_or_create_same_id(self):
+        mgr = SessionManager(SharedState(), collection_factory=CollectionManager)
+        results = await asyncio.gather(*[mgr.get_or_create("same") for _ in range(10)])
+        assert all(r is results[0] for r in results)
 
     @pytest.mark.asyncio
     async def test_remove_session_nonexistent_is_noop(self):

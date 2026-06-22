@@ -145,7 +145,20 @@ async def _get_state(ctx: Context | None) -> ServerState:
     """Return per-session ServerState from ctx, or create ephemeral."""
     if ctx is not None:
         sessions: SessionManager = ctx.lifespan_context["sessions"]
-        return await sessions.get_or_create(ctx.session_id)
+        state = await sessions.get_or_create(ctx.session_id)
+        if (
+            hasattr(ctx.session, "_exit_stack")
+            and ctx.session._exit_stack is not None
+            and not getattr(ctx.session, "_ansible_know_cleanup_registered", False)
+        ):
+            session_id = ctx.session_id
+
+            async def _cleanup_session() -> None:
+                await sessions.remove_session(session_id)
+
+            ctx.session._exit_stack.push_async_callback(_cleanup_session)
+            ctx.session._ansible_know_cleanup_registered = True
+        return state
     from ansible_know.collections import CollectionManager
     return ServerState(collection_manager=CollectionManager())
 
@@ -192,7 +205,11 @@ async def _periodic_version_check(
         await asyncio.sleep(_VERSION_CHECK_INTERVAL)
         if client.is_closed:
             return
-        new_info = await _check_pypi_version(client)
+        try:
+            new_info = await _check_pypi_version(client)
+        except Exception:
+            logger.debug("Periodic version check raised unexpectedly", exc_info=True)
+            continue
         if new_info is None:
             continue
         old_latest = (
@@ -200,14 +217,12 @@ async def _periodic_version_check(
             if shared.version_info
             else None
         )
+        await sessions.on_version_update(new_info)
         if new_info.get("latest") != old_latest:
-            await sessions.on_version_update(new_info)
             logger.info(
                 "Periodic version check: new version %s available",
                 new_info.get("latest"),
             )
-        else:
-            shared.version_info = new_info
 
 
 # --- Discovery tools (read-only) ---
