@@ -954,35 +954,14 @@ def resource_skill_content(skill_name: str) -> str:
     except ValidationError as exc:
         return str(exc)
 
-    parts = skill_name.split(".")
-    if len(parts) >= 3:
-        namespace = ".".join(parts[:2])
-        short_name = ".".join(parts[2:])
-        nested_path = (SKILLS_DIR / namespace / short_name / "SKILL.md").resolve()
-        try:
-            validate_path_containment(nested_path, SKILLS_DIR)
-        except ValidationError as exc:
-            return str(exc)
-        if nested_path.exists():
-            return truncate_response(nested_path.read_text())
+    try:
+        result = _get_skill_sync(SKILLS_DIR, skill_name)
+    except ValidationError as exc:
+        return str(exc)
 
-        flat_path = (SKILLS_DIR / skill_name / "SKILL.md").resolve()
-        try:
-            validate_path_containment(flat_path, SKILLS_DIR)
-        except ValidationError as exc:
-            return str(exc)
-        if flat_path.exists():
-            return truncate_response(flat_path.read_text())
-    else:
-        skill_path = (SKILLS_DIR / skill_name / "SKILL.md").resolve()
-        try:
-            validate_path_containment(skill_path, SKILLS_DIR)
-        except ValidationError as exc:
-            return str(exc)
-        if skill_path.exists():
-            return truncate_response(skill_path.read_text())
-
-    return f"Skill '{skill_name}' not found."
+    if isinstance(result, dict):
+        return result.get("error", f"Skill '{skill_name}' not found.")
+    return result
 
 
 @mcp.resource(

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ansible_know.config import TEMPLATE_DIR
+from ansible_know.tagging import derive_tags
 
 if TYPE_CHECKING:
     from ansible_know.types import CollectionSkillContext, ModuleTagEntry
@@ -212,8 +213,6 @@ def _collection_template_context(
     collection_version: str | None = None,
 ) -> CollectionSkillContext:
     """Build template context for a collection-level skill."""
-    from ansible_know.tagging import derive_tags
-
     modules_by_tag: dict[str, list[ModuleTagEntry]] = {}
     for meta in metadata_list:
         fqcn = meta["module_name"]

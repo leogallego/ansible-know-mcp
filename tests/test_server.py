@@ -339,6 +339,31 @@ class TestSkillNameValidation:
         assert "error" in result
 
 
+class TestGetSkillSync:
+    def test_returns_content_for_namespace_skill(self, tmp_path):
+        from ansible_know.server import _get_skill_sync
+
+        coll_dir = tmp_path / "netbox.netbox"
+        coll_dir.mkdir()
+        (coll_dir / "SKILL.md").write_text("collection skill content")
+        assert _get_skill_sync(tmp_path, "netbox.netbox") == "collection skill content"
+
+    def test_returns_content_for_nested_module_skill(self, tmp_path):
+        from ansible_know.server import _get_skill_sync
+
+        mod_dir = tmp_path / "netbox.netbox" / "netbox_device"
+        mod_dir.mkdir(parents=True)
+        (mod_dir / "SKILL.md").write_text("module skill content")
+        assert _get_skill_sync(tmp_path, "netbox.netbox.netbox_device") == "module skill content"
+
+    def test_returns_error_for_missing_skill(self, tmp_path):
+        from ansible_know.server import _get_skill_sync
+
+        result = _get_skill_sync(tmp_path, "no.such.module")
+        assert isinstance(result, dict)
+        assert "error" in result
+
+
 class TestPathTraversal:
     @pytest.mark.asyncio
     async def test_get_skill_blocks_traversal(self, tmp_path, monkeypatch):

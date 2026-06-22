@@ -26,9 +26,9 @@ def derive_tags(fqcn: str, params: list[dict[str, Any]]) -> list[str]:
 
     Contract:
         Preconditions:
-            - `fqcn` must be a string. If not, raises `AttributeError` when
-              calling `.split()` (implicit, line 59).
-            - `params` must be a list (not validated, but reserved for future use).
+            - `fqcn` must be a string. If not, raises `AttributeError` from
+              `.split()`.
+            - `params` must be a list (not validated, reserved for future use).
 
         Raises:
             AttributeError: If `fqcn` is not a string (implicit from `.split()`).
