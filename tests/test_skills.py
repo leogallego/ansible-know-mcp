@@ -332,6 +332,36 @@ class TestRenderCollectionSkill:
         assert "connection: local" not in content
 
 
+class TestCollectionSkillCommonParamsRendering:
+    def test_renders_common_params_table(self, sample_api_module_doc):
+        metadata = extract_module_metadata(sample_api_module_doc)
+        content = render_collection_skill("netbox.netbox", [metadata])
+
+        assert "### Common Parameters" in content
+        assert "netbox_url" in content
+        assert "netbox_token" in content
+
+    def test_renders_credential_vault_hint(self, sample_api_module_doc):
+        metadata = extract_module_metadata(sample_api_module_doc)
+        content = render_collection_skill("netbox.netbox", [metadata])
+
+        assert "vault_netbox_url" in content
+        assert "vault_netbox_token" in content
+
+    def test_no_common_params_when_below_threshold(self, sample_module_doc):
+        metadata = extract_module_metadata(sample_module_doc)
+        content = render_collection_skill("ansible.builtin", [metadata])
+
+        assert "### Common Parameters" in content
+
+    def test_modules_by_tag_shows_required_params(self, sample_api_module_doc):
+        metadata = extract_module_metadata(sample_api_module_doc)
+        content = render_collection_skill("netbox.netbox", [metadata])
+
+        assert "Key Params" in content
+        assert "`data`" in content
+
+
 class TestWriteCollectionSkillPackage:
     def test_writes_skill_md_only(self, tmp_path, sample_api_module_doc):
         metadata = extract_module_metadata(sample_api_module_doc)
