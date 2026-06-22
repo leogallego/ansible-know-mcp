@@ -1,0 +1,123 @@
+---
+name: {{ collection_namespace }}
+description: >-
+  Guided playbook development for the {{ collection_namespace }} collection.
+  Covers {{ module_count }} module{{ "s" if module_count != 1 else "" }}{% if collection_version %} (v{{ collection_version }}){% endif %}.
+---
+
+# {{ collection_namespace }} Playbook Guide
+
+Build playbooks for the **{{ collection_namespace }}** collection{% if collection_version %} (v{{ collection_version }}){% endif %} using verified
+module documentation. This skill was generated from live module metadata —
+all parameters, defaults, and examples are version-accurate.
+
+## Phase 1 — Gather Intent
+
+Before writing any YAML, collect these requirements:
+
+{% if all_api %}
+- **Target service:** URL, API token/credentials, SSL verification
+{% endif %}
+- **Desired state:** What objects to create/update/delete
+- **Data source:** Manual variables, CSV import, discovered facts, or another system
+- **Idempotency needs:** Create-only, create-or-update, or full desired-state enforcement
+- **Error handling:** Fail on first error, or collect and report all failures
+
+If any critical info is missing, produce a safe template with `# TODO:` comments.
+
+{% if all_api %}
+### Connection Requirements
+
+All modules in this collection are **API modules**. They require:
+
+```yaml
+connection: local
+gather_facts: false
+```
+
+{% endif %}
+{% if common_params %}
+### Common Parameters
+
+These parameters are shared across most modules in this collection:
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+{% for p in common_params -%}
+| `{{ p.name }}` | {{ p.type }} | {{ "yes" if p.required else "no" }} | {{ p.default if p.default is not none else "-" }} | {{ p.description }} |
+{% endfor %}
+
+Store credentials in variables, never hardcode:
+
+```yaml
+vars:
+{% for p in common_params %}{% if "token" in p.name or "url" in p.name or "password" in p.name %}
+  {{ p.name }}: "{{ '{{' }} vault_{{ p.name }} {{ '}}' }}"
+{% endif %}{% endfor %}
+```
+
+{% endif %}
+## Phase 2 — Select Modules
+
+Choose modules based on what you need to manage:
+
+{% for tag, modules in modules_by_tag | dictsort %}
+### {{ tag | capitalize }}
+
+| Module | Purpose | Key Params |
+|--------|---------|------------|
+{% for m in modules -%}
+| `{{ m.fqcn }}` | {{ m.short_description }} | {% for p in m.required_params[:4] %}`{{ p.name }}`{{ ", " if not loop.last else "" }}{% endfor %}{% if not m.required_params %}—{% endif %} |
+{% endfor %}
+
+{% endfor %}
+## Phase 3 — Design Block
+
+Before writing YAML, output a human-readable design for review:
+
+```
+Intent:       <what you want to accomplish>
+{% if all_api -%}
+Target:       <service URL> (credentials via vault)
+{% endif -%}
+Modules:      <list of modules to use>
+Variables:    <input variables needed>
+Dependencies: <ordering constraints between tasks>
+Error plan:   <fail-fast or collect-all>
+```
+
+**Wait for user confirmation before proceeding to Phase 4.**
+
+## Phase 4 — Write Playbook
+
+Apply these rules while writing YAML:
+
+### Checklist
+
+1. **FQCN** — always `{{ collection_namespace }}.*`, never short names
+2. **Idempotent** — use `state: present`/`absent` for desired-state management
+3. **No shell** — never use `shell`/`command` when a module exists for the task
+{% if all_api %}
+4. **connection: local** — all tasks run locally against the API
+5. **Credentials** — use `no_log: true` on tasks that could expose tokens
+{% endif %}
+6. **Loop efficiently** — use `loop:` with module params, not `with_items:`
+7. **Check mode** — verify all modules support `--check`
+8. **Dependencies** — order tasks by object dependency
+
+## Phase 5 — Validate
+
+Run these checks in order. Fix errors and re-run until clean:
+
+```bash
+# Syntax check
+ansible-playbook playbook.yml --syntax-check
+
+# Lint
+ansible-lint playbook.yml
+
+# Dry run{% if all_api %} (requires API connectivity){% endif %}
+ansible-playbook playbook.yml --check -v
+```
+
+Report results to the user before applying.

@@ -16,6 +16,7 @@ MAX_TAGS_LENGTH = 500
 
 _FQCN_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$")
 _NAMESPACE_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$")
+_SKILL_NAME_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)?$")
 _VERSION_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
 _TAGS_RE = re.compile(r"^[a-zA-Z0-9_,-]+$")
 _SENSITIVE_PREFIXES = ("/etc", "/usr", "/bin", "/sbin", "/boot", "/proc", "/sys", "/dev")
@@ -27,6 +28,17 @@ def validate_fqcn(name: str) -> None:
         raise ValidationError(
             "Invalid module name: expected format 'namespace.collection.module' "
             "with alphanumeric/underscore segments."
+        )
+
+
+MAX_SKILL_NAME_LENGTH = MAX_NAMESPACE_LENGTH * 2
+
+
+def validate_skill_name(name: str) -> None:
+    if not name or len(name) > MAX_SKILL_NAME_LENGTH or not _SKILL_NAME_RE.match(name):
+        raise ValidationError(
+            "Invalid skill name: expected a collection namespace (e.g. 'netbox.netbox') "
+            "or a fully-qualified module name (e.g. 'netbox.netbox.netbox_device')."
         )
 
 
