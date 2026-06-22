@@ -407,6 +407,13 @@ class TestExtractSkillDescription:
         skill_md.write_text("---\nname: test\ndescription: Manage devices: create and update\n---\n")
         assert _extract_skill_description(skill_md) == "Manage devices: create and update"
 
+    def test_description_bare_colon_no_value(self, tmp_path):
+        from ansible_know.server import _extract_skill_description
+
+        skill_md = tmp_path / "SKILL.md"
+        skill_md.write_text("---\nname: test\ndescription:\n---\n")
+        assert _extract_skill_description(skill_md) == ""
+
 
 class TestPathTraversal:
     @pytest.mark.asyncio
