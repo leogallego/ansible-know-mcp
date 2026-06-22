@@ -1,6 +1,6 @@
 """Ansible Know MCP Server.
 
-Provides 12 tools, 5 resources, and 4 prompts for module and role discovery,
+Provides 13 tools, 5 resources, and 4 prompts for module and role discovery,
 documentation search, Galaxy collection discovery, and skill generation
 via the Model Context Protocol.
 """
@@ -25,6 +25,7 @@ from ansible_know.async_utils import run_in_executor
 from ansible_know.errors import AnsibleDocError, ValidationError, collection_hint, maybe_add_hint
 from ansible_know.state import LifespanContext, ServerState, SessionManager, SharedState
 from ansible_know.types import (
+    ClearCacheResult,
     CollectionSearchResult,
     EnsureCollectionResult,
     ErrorResponse,
@@ -974,6 +975,41 @@ async def generate_collection_skills(
     except Exception as exc:
         logger.warning("generate_collection_skills failed: %s", exc)
         return {"error": maybe_add_hint(sanitize_error(str(exc)), collection_namespace)}
+
+
+_VALID_CACHE_SCOPES = {"galaxy", "docs"}
+
+
+@mcp.tool(annotations=ToolAnnotations(idempotentHint=True, readOnlyHint=False, destructiveHint=False))
+async def clear_cache(
+    scope: Annotated[
+        str | None,
+        "Cache scope to clear: 'galaxy' (version + docs-blob), 'docs' (doc manifests), "
+        "or omit to clear all caches.",
+    ] = None,
+) -> ClearCacheResult | ErrorResponse:
+    """Clear server caches.
+
+    Clears Galaxy version/docs-blob caches, doc manifest caches, or both.
+    Useful when cached data becomes stale during long-running sessions.
+    """
+    logger.info("clear_cache scope=%r", scope)
+    if scope is not None and scope not in _VALID_CACHE_SCOPES:
+        return {"error": f"Invalid scope '{scope}'. Must be 'galaxy', 'docs', or omitted for all."}
+
+    cleared: list[str] = []
+
+    if scope in (None, "galaxy"):
+        from ansible_know import galaxy
+        galaxy.clear_cache()
+        cleared.extend(["galaxy_versions", "galaxy_blobs"])
+
+    if scope in (None, "docs"):
+        from ansible_know import docs
+        docs.clear_cache()
+        cleared.append("doc_manifests")
+
+    return {"cleared": cleared}
 
 
 # --- Resources (read-only data) ---
