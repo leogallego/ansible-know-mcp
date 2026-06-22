@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol, TypedDict
+import sys
+from typing import TYPE_CHECKING, Any, Protocol
+
+if sys.version_info >= (3, 12):
+    from typing import TypedDict
+else:
+    from typing_extensions import TypedDict
 
 if TYPE_CHECKING:
     import httpx
