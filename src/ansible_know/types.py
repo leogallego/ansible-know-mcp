@@ -112,6 +112,41 @@ class CollectionSkillContext(TypedDict):
     module_count: int
 
 
+class ManifestModuleEntry(TypedDict):
+    """Single module entry in a collection manifest."""
+
+    fqcn: str
+    description: str
+    param_count: int
+    required_params: list[str]
+    is_api_module: bool
+    has_skill: bool
+    tags: list[str]
+
+
+class ManifestRoleEntry(TypedDict):
+    """Single role entry in a collection manifest."""
+
+    fqcn: str
+    description: str
+    has_argument_specs: bool
+    entry_points: list[str]
+    has_skill: bool
+
+
+class ManifestResult(TypedDict):
+    """Result of get_collection_manifest / generate_manifest."""
+
+    collection: str
+    collection_version: str | None
+    generated: str
+    module_count: int
+    role_count: int
+    has_collection_skill: bool
+    modules: list[ManifestModuleEntry]
+    roles: list[ManifestRoleEntry]
+
+
 class _CollectionInfoBase(TypedDict):
     """Required fields for a collection search result entry."""
 

@@ -16,7 +16,7 @@ from ansible_know.tagging import derive_tags
 from ansible_know.validation import validate_path_containment
 
 if TYPE_CHECKING:
-    from ansible_know.types import ModuleMetadata
+    from ansible_know.types import ManifestResult, ModuleMetadata
 
 __all__ = [
     "generate_manifest",
@@ -31,7 +31,7 @@ def generate_manifest(
     roles_metadata: list[dict[str, Any]] | None = None,
     skills_dir: Path | None = None,
     collection_version: str | None = None,
-) -> dict[str, Any]:
+) -> ManifestResult:
     """Generate a collection manifest from module and role metadata.
 
     Args:
@@ -125,7 +125,7 @@ def load_cached_manifest(
     collection_namespace: str,
     skills_dir: Path | None = None,
     installed_version: str | None = None,
-) -> dict[str, Any] | None:
+) -> ManifestResult | None:
     """Load a cached MANIFEST.json if it exists and is still valid.
 
     When installed_version is provided, the cache is invalidated if the

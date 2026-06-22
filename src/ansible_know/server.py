@@ -31,6 +31,7 @@ from ansible_know.types import (
     GenerateCollectionSkillsResult,
     GetModuleDocResult,
     GetRoleDocResult,
+    ManifestResult,
     SearchDocsEntry,
     SkillEntry,
     VersionInfo,
@@ -467,7 +468,7 @@ async def search_collections(
 async def get_collection_manifest(
     collection_namespace: Annotated[str, "Collection namespace (e.g. 'netbox.netbox')"],
     ctx: Context | None = None,
-) -> dict[str, Any] | ErrorResponse:
+) -> ManifestResult | ErrorResponse:
     """Get collection-level manifest with per-module summaries.
 
     Returns cached MANIFEST.json if available, otherwise generates on-demand

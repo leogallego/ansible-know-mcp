@@ -1,26 +1,71 @@
 ---
 name: pr-architecture-review
 description: >-
-  Review PR changes against ansible-know-mcp architecture contracts.
-  Auto-detects which layers are affected and checks for violations.
+  Use when reviewing a PR or branch changes against ansible-know-mcp
+  architecture contracts. Use when asked to review a PR, check
+  architecture, audit layer dependencies, or do a multidimensional
+  code review of this project.
+user-invocable: true
+argument-hint: "[PR number or branch name, defaults to current branch vs main]"
 ---
 
 # PR Architecture Review
 
-Review pull request changes against the documented service contracts for
-the Ansible Know MCP Server. This skill auto-detects which architecture
-layers are affected by the changed files and runs the relevant checks.
+Multidimensional code review of pull request changes against the
+documented service contracts for the Ansible Know MCP Server.
 
 ## Prerequisites
 
-Read `docs/architecture/service-contracts.md` and the ADRs in
-`docs/architecture/adr/` before using this skill. The contracts define
-the layer boundaries and allowed dependencies.
+Load these reference materials before starting — they define the layer
+boundaries, allowed dependencies, and known violations:
 
-## Step 1: Identify Changed Files and Affected Layers
+1. Read `docs/architecture/service-contracts.md`
+2. Read all ADRs in `docs/architecture/adr/`
 
-Run `git diff --name-only <base>..HEAD` (or the PR's file list) and
-classify each changed file into its architecture layer:
+Pass the relevant sections to each subagent in Phase 2.
+
+## Phase 1: Setup
+
+1. **Identify the PR target.** Use `$ARGUMENTS` if provided (PR number
+   or branch name). Otherwise use the current branch diffed against `main`.
+2. **Get the diff.** Use `git diff main...HEAD --name-only` for branch
+   reviews, or MCP GitHub `pull_request_read` with `get_files` /
+   `get_diff` for PR reviews. If `gh` CLI fails (sandbox), fall back
+   to MCP GitHub tools — see skill `sandbox-git-github` for guidance.
+3. **Classify changed files by layer** using the table in Step 1 below.
+   Skip files that don't map to any layer (README, pyproject.toml, CI).
+
+## Phase 2: Dispatch Parallel Reviewers
+
+Dispatch one subagent per review dimension. Each subagent receives the
+diff, the relevant checklist from below, and the service contracts as
+context. Dimensions are independent — run them in parallel.
+
+| Dimension | Checklist | Relevant local skills |
+|-----------|-----------|----------------------|
+| **Layer dependencies** | Steps 1–2 | — |
+| **Type contracts & API surface** | Steps 3, 6 | `python-tighten-types`, `python-contract-docstrings` |
+| **Async/sync & state management** | Steps 4–5 | `python-try-except` |
+| **PEP 8 & Python standards** | Step 7 | `python-alignment-chart`, `python-concept-analysis` |
+| **Security** | Step 8 | — |
+
+Each subagent should load its listed local skills from `skills/` for
+additional context. Instruct each to return structured findings using
+the Reporting format at the bottom of this skill.
+
+## Phase 3: Synthesize
+
+Merge all subagent findings. Deduplicate (same file+line across
+dimensions). Sort by severity: Error → Warning → Info. Present a
+single consolidated report.
+
+---
+
+## Review Checklists
+
+### Step 1: Identify Changed Files and Affected Layers
+
+Classify each changed file into its architecture layer:
 
 | File Pattern | Layer |
 |-------------|-------|
@@ -48,7 +93,7 @@ classify each changed file into its architecture layer:
 Files that do not match any pattern (e.g., `README.md`, `pyproject.toml`,
 CI configs) do not require architecture review.
 
-## Step 2: Check Layer Dependency Rules
+### Step 2: Check Layer Dependency Rules
 
 For each changed file, verify that its imports respect the allowed
 dependency direction:
@@ -61,7 +106,7 @@ External     → Foundation ONLY
 Foundation   → no internal dependencies
 ```
 
-### What to look for
+#### What to look for
 
 - [ ] **Domain module importing External Access**: e.g., `parser.py`
   importing from `galaxy.py` or `collections.py`. Domain modules should
@@ -75,7 +120,7 @@ Foundation   → no internal dependencies
   delegate to Domain modules, not implement resolution strategies,
   data transformations, or caching logic directly.
 
-### Known existing violations (do not worsen)
+#### Known existing violations (do not worsen)
 
 - `server.py` contains `_resolve_module_doc()` and `_resolve_role_doc()`
   (business logic in Orchestration — V-D7/V-L2).
@@ -86,7 +131,7 @@ Foundation   → no internal dependencies
 **Rule**: do not add new violations. If a PR must cross a layer boundary,
 document why and file a follow-up issue.
 
-## Step 3: Check Type Contracts
+### Step 3: Check Type Contracts
 
 For changes that modify function signatures or return types:
 
@@ -102,7 +147,7 @@ For changes that modify function signatures or return types:
   in the Orchestration layer (using `validation.py` functions) before
   being passed to Domain or External Access.
 
-## Step 4: Check Async/Sync Boundary
+### Step 4: Check Async/Sync Boundary
 
 For changes that add or modify function calls between layers:
 
@@ -116,7 +161,7 @@ For changes that add or modify function calls between layers:
 - [ ] **`asyncio.get_event_loop()`**: do not use. Use
   `asyncio.get_running_loop()` instead (PEP deprecated pattern).
 
-## Step 5: Check State Management
+### Step 5: Check State Management
 
 For changes that add or modify module-level state:
 
@@ -134,7 +179,7 @@ For changes that add or modify module-level state:
   and similar mutations on module-level state are safe under the
   concurrency model being used.
 
-## Step 6: Check Public API Surface
+### Step 6: Check Public API Surface
 
 For changes that add, rename, or remove public functions/classes:
 
@@ -149,7 +194,7 @@ For changes that add, rename, or remove public functions/classes:
   `idempotentHint`, `destructiveHint`). New resources must have
   descriptive names and descriptions.
 
-## Step 7: PEP 8 and Python Standards
+### Step 7: PEP 8 and Python Standards
 
 For all Python changes, verify:
 
@@ -167,7 +212,7 @@ For all Python changes, verify:
 - [ ] **Sequence truthiness**: use `if not seq:` instead of
   `if len(seq) == 0:` (PEP 8 Section 9).
 
-## Step 8: Security Review
+### Step 8: Security Review
 
 For changes that handle external input or subprocess calls:
 
@@ -185,6 +230,8 @@ For changes that handle external input or subprocess calls:
   `_sanitize_credential()` to strip control characters.
 - [ ] **Response size**: large responses must pass through
   `truncate_response()` to prevent memory exhaustion.
+
+---
 
 ## Reporting
 
