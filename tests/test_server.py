@@ -339,6 +339,38 @@ class TestSkillNameValidation:
         assert "error" in result
 
 
+class TestGetSkillSync:
+    def test_returns_content_for_namespace_skill(self, tmp_path):
+        from ansible_know.server import _get_skill_sync
+
+        coll_dir = tmp_path / "netbox.netbox"
+        coll_dir.mkdir()
+        (coll_dir / "SKILL.md").write_text("collection skill content")
+        assert _get_skill_sync(tmp_path, "netbox.netbox") == "collection skill content"
+
+    def test_returns_content_for_nested_module_skill(self, tmp_path):
+        from ansible_know.server import _get_skill_sync
+
+        mod_dir = tmp_path / "netbox.netbox" / "netbox_device"
+        mod_dir.mkdir(parents=True)
+        (mod_dir / "SKILL.md").write_text("module skill content")
+        assert _get_skill_sync(tmp_path, "netbox.netbox.netbox_device") == "module skill content"
+
+    def test_falls_back_to_flat_layout(self, tmp_path):
+        from ansible_know.server import _get_skill_sync
+
+        flat_dir = tmp_path / "netbox.netbox.netbox_device"
+        flat_dir.mkdir()
+        (flat_dir / "SKILL.md").write_text("flat skill content")
+        assert _get_skill_sync(tmp_path, "netbox.netbox.netbox_device") == "flat skill content"
+
+    def test_raises_for_missing_skill(self, tmp_path):
+        from ansible_know.server import _get_skill_sync
+
+        with pytest.raises(FileNotFoundError, match="not found"):
+            _get_skill_sync(tmp_path, "no.such.module")
+
+
 class TestPathTraversal:
     @pytest.mark.asyncio
     async def test_get_skill_blocks_traversal(self, tmp_path, monkeypatch):

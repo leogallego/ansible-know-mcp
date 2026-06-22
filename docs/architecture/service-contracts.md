@@ -29,7 +29,8 @@ The server follows a 5-layer pipeline architecture adapted for MCP:
 ├─────────────────────────────────────────────────────────┤
 │  Foundation        async_utils.py, cache.py, config.py,  │
 │                    galaxy_config.py, state.py,            │
-│                    validation.py, errors.py, types.py     │
+│                    tagging.py, validation.py,             │
+│                    errors.py, types.py                    │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -139,10 +140,10 @@ business logic. Domain modules are imported lazily to avoid loading
 | ID | Severity | Description | Location |
 |----|----------|-------------|----------|
 | V-D1 | Warning | `server.py` calls `skills._module_to_skill_name()` — a private function (leading underscore). This crosses the public API boundary. Should be exposed as a public function or the skill name derivation should be the caller's responsibility. | `server.py:753`, `server.py:880` |
-| V-D2 | Warning | `parser.py` does not define `__all__`. All module-level functions are implicitly public, including internal helpers like `_get_module_name()` and `_run_ansible_doc()`. | `parser.py` |
-| V-D3 | Warning | `skills.py` does not define `__all__`. | `skills.py` |
-| V-D4 | Warning | `collection_manifest.py` does not define `__all__`. | `collection_manifest.py` |
-| V-D5 | Warning | `docs.py` does not define `__all__`. | `docs.py` |
+| ~~V-D2~~ | ~~Warning~~ | ~~`parser.py` does not define `__all__`. All module-level functions are implicitly public, including internal helpers like `_get_module_name()` and `_run_ansible_doc()`.~~ **Fixed** — `parser.py` now defines `__all__`. | ~~`parser.py`~~ |
+| ~~V-D3~~ | ~~Warning~~ | ~~`skills.py` does not define `__all__`.~~ **Fixed** — `skills.py` now defines `__all__`. | ~~`skills.py`~~ |
+| ~~V-D4~~ | ~~Warning~~ | ~~`collection_manifest.py` does not define `__all__`.~~ **Fixed** — `collection_manifest.py` now defines `__all__`. | ~~`collection_manifest.py`~~ |
+| ~~V-D5~~ | ~~Warning~~ | ~~`docs.py` does not define `__all__`.~~ **Fixed** — `docs.py` now defines `__all__`. | ~~`docs.py`~~ |
 | V-D6 | Info | Several Domain functions return `dict[str, Any]` where TypedDicts exist. Partially addressed in PR #60 (`EnsureCollectionResult` now typed on `collections.ensure_collection()`, plus `ErrorResponse`, `SkillEntry`, `CollectionSearchResult` TypedDicts added) but not all return sites use them yet. | `parser.py:214-223`, `server.py:195-240` |
 | ~~V-D7~~ | ~~Warning~~ | ~~`_resolve_module_doc()` and `_resolve_role_doc()` in `server.py` contain significant business logic (Galaxy fallback, missing-collection caching). This logic belongs in the Domain layer, not Orchestration. The Orchestration layer should delegate to a domain-level resolution function.~~ **Fixed in PR #66** — Resolution logic moved to `resolution.py`. | ~~`server.py:195-301`~~ |
 | V-D8 | Warning | `collection_manifest.generate_manifest()` writes to disk as a side effect. A Domain function that both generates and persists violates separation of concerns — generation and persistence should be separate operations. | `collection_manifest.py:113-117` |
@@ -219,6 +220,8 @@ dependencies on upper layers.
 | `cache.py` | Thread-safe bounded LRU cache with TTL | `cache.py` |
 | `config.py` | Paths, constants, env var defaults, doc sources | `config.py` |
 | `galaxy_config.py` | Galaxy server config from `ansible.cfg` | `galaxy_config.py` |
+| `state.py` | Session state management (collection install tracking) | `state.py` |
+| `tagging.py` | Tag derivation from module FQCN segments | `tagging.py` |
 | `validation.py` | Input validation, error sanitization, response truncation | `validation.py` |
 | `errors.py` | Exception hierarchy and error helpers | `errors.py` |
 | `types.py` | `TypedDict` definitions, `GalaxyDocClient` Protocol | `types.py` |
@@ -366,7 +369,7 @@ Foundation   → (no internal dependencies)
 4. **V-T2**: Replace `asyncio.get_event_loop()` with `asyncio.get_running_loop()`.
 5. **V-D1**: Make `_module_to_skill_name()` public (rename to
    `module_to_skill_name()`).
-6. **V-D2–V-D5**: Add `__all__` to all modules.
+6. ~~**V-D2–V-D5**: Add `__all__` to all modules.~~ **Fixed** — all modules now define `__all__`.
 7. ~~**V-D7 / V-L2**: Move `_resolve_module_doc()` and `_resolve_role_doc()` to a
    domain-level resolution module.~~ **Fixed in PR #66**.
 8. **V-D8**: Split `generate_manifest()` into generation and persistence.

@@ -3,11 +3,11 @@
 import json
 
 from ansible_know.collection_manifest import (
-    derive_tags,
     generate_manifest,
     load_cached_manifest,
 )
 from ansible_know.parser import extract_module_metadata
+from ansible_know.tagging import derive_tags
 
 
 class TestDeriveTags:

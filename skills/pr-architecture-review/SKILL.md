@@ -36,6 +36,9 @@ classify each changed file into its architecture layer:
 | `src/ansible_know/cache.py` | **Foundation** |
 | `src/ansible_know/config.py` | **Foundation** |
 | `src/ansible_know/galaxy_config.py` | **Foundation** |
+| `src/ansible_know/async_utils.py` | **Foundation** |
+| `src/ansible_know/state.py` | **Foundation** |
+| `src/ansible_know/tagging.py` | **Foundation** |
 | `src/ansible_know/validation.py` | **Foundation** |
 | `src/ansible_know/errors.py` | **Foundation** |
 | `src/ansible_know/types.py` | **Foundation** |
