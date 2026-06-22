@@ -24,7 +24,17 @@ from mcp.types import ToolAnnotations
 from ansible_know.async_utils import run_in_executor
 from ansible_know.errors import AnsibleDocError, ValidationError, collection_hint, maybe_add_hint
 from ansible_know.state import LifespanContext, ServerState, SessionManager, SharedState
-from ansible_know.types import VersionInfo
+from ansible_know.types import (
+    CollectionSearchResult,
+    EnsureCollectionResult,
+    ErrorResponse,
+    GenerateCollectionSkillsResult,
+    GetModuleDocResult,
+    GetRoleDocResult,
+    SearchDocsEntry,
+    SkillEntry,
+    VersionInfo,
+)
 from ansible_know.validation import (
     sanitize_error,
     truncate_response,
@@ -235,7 +245,7 @@ async def search_modules(
     keyword: Annotated[str, "Search term to match against module names and descriptions"],
     namespace: Annotated[str | None, "Optional collection namespace filter (e.g. 'community.docker')"] = None,
     ctx: Context | None = None,
-) -> dict[str, str]:
+) -> dict[str, str] | ErrorResponse:
     """Find Ansible modules by keyword in name or description. Returns up to 50 matches as {fqcn: short_description}.
 
     Returns: {"module.fqcn": "short description", ...} or {"error": str} on failure.
@@ -269,7 +279,7 @@ async def search_modules(
 async def get_module_doc(
     module_name: Annotated[str, "Fully-qualified collection name (e.g. 'ansible.builtin.copy')"],
     ctx: Context | None = None,
-) -> dict[str, Any]:
+) -> GetModuleDocResult | ErrorResponse:
     """Get full structured documentation for one module.
 
     Returns: module_name, short_description, params (list with name/type/required/default/choices/description/aliases),
@@ -315,7 +325,7 @@ async def get_module_doc(
 async def get_role_doc(
     role_name: Annotated[str, "Fully-qualified role name (e.g. 'fedora.linux_system_roles.timesync')"],
     ctx: Context | None = None,
-) -> dict[str, Any]:
+) -> GetRoleDocResult | ErrorResponse:
     """Get full structured documentation for one role.
 
     Returns: role_name, content_type ('role'), short_description,
@@ -357,7 +367,7 @@ async def search_docs(
     topic: Annotated[str | None, "Filter by topic tag"] = None,
     audience: Annotated[str | None, "Filter by audience tag"] = None,
     core_only: Annotated[bool, "If true, only return entries marked as core"] = False,
-) -> list[dict[str, Any]] | dict[str, str]:
+) -> list[SearchDocsEntry] | ErrorResponse:
     """Search documentation manifests for conceptual guides.
 
     Returns up to 20 matching entries with title, summary, topic, audience, lines, source, and raw URL.
@@ -385,7 +395,7 @@ async def search_collections(
     query: Annotated[str, "Search keyword (e.g., 'netbox', 'cisco ios', 'vmware')"],
     tags: Annotated[str | None, "Optional comma-separated Galaxy tags to filter (e.g., 'networking,cloud')"] = None,
     ctx: Context | None = None,
-) -> dict[str, Any]:
+) -> CollectionSearchResult | ErrorResponse:
     """Search Ansible Galaxy for collections by keyword.
 
     Returns non-deprecated collections ranked by download count.
@@ -427,7 +437,7 @@ async def search_collections(
 async def get_collection_manifest(
     collection_namespace: Annotated[str, "Collection namespace (e.g. 'netbox.netbox')"],
     ctx: Context | None = None,
-) -> dict[str, Any]:
+) -> dict[str, Any] | ErrorResponse:
     """Get collection-level manifest with per-module summaries.
 
     Returns cached MANIFEST.json if available, otherwise generates on-demand
@@ -517,7 +527,7 @@ async def ensure_collection(
         "Optional version (e.g. '4.1.0'). If omitted, installs latest and pins the resolved version.",
     ] = None,
     ctx: Context | None = None,
-) -> dict[str, Any]:
+) -> EnsureCollectionResult | ErrorResponse:
     """Install a collection to a temporary directory for this session.
 
     Installs once and pins the resolved version. Subsequent calls with the
@@ -620,7 +630,7 @@ async def list_skills(
         "Optional collection namespace to list skills within (e.g. 'netbox.netbox'). "
         "Without this, returns collection-level skill entries and standalone skills only.",
     ] = None,
-) -> list[dict[str, str]] | dict[str, str]:
+) -> list[SkillEntry] | ErrorResponse:
     """List all available generated skills. Returns name, description, path for each.
 
     Returns: [{"name": str, "description": str, "path": str}, ...] or {"error": str} on failure.
@@ -680,7 +690,7 @@ async def get_skill(
         "Skill name: a module FQCN (e.g. 'netbox.netbox.netbox_device') or "
         "a collection namespace (e.g. 'netbox.netbox') for the collection-level skill.",
     ],
-) -> str | dict[str, str]:
+) -> str | ErrorResponse:
     """Read a specific skill's SKILL.md content by name.
 
     Returns: SKILL.md content as str, or {"error": str} on failure/not found.
@@ -709,7 +719,7 @@ async def generate_skill(
     module_name: Annotated[str, "Fully-qualified module name (e.g. 'ansible.builtin.copy')"],
     install_to: Annotated[str | None, "Optional absolute path to install the skill to"] = None,
     ctx: Context | None = None,
-) -> str | dict[str, str]:
+) -> str | ErrorResponse:
     """Generate a skill package for one module.
 
     Writes SKILL.md + scripts + playbook to disk.
@@ -775,7 +785,7 @@ async def generate_role_skill(
     role_name: Annotated[str, "Fully-qualified role name (e.g. 'fedora.linux_system_roles.timesync')"],
     install_to: Annotated[str | None, "Optional absolute path to install the skill to"] = None,
     ctx: Context | None = None,
-) -> str | dict[str, str]:
+) -> str | ErrorResponse:
     """Generate a skill package for one role.
 
     Writes SKILL.md + assets/playbook.yml to disk (no scripts/).
@@ -837,7 +847,7 @@ async def generate_collection_skills(
     collection_namespace: Annotated[str, "Collection namespace (e.g. 'netbox.netbox')"],
     install_to: Annotated[str | None, "Optional absolute path to install skills to"] = None,
     ctx: Context | None = None,
-) -> dict[str, Any]:
+) -> GenerateCollectionSkillsResult | ErrorResponse:
     """Batch generate skills for an entire collection.
 
     Generates/updates the collection MANIFEST.json as a byproduct.
