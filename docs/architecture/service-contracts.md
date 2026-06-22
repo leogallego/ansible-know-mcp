@@ -88,7 +88,7 @@ decorated tool, resource, and prompt handler functions. FastMCP manages:
 |----|----------|-------------|----------|
 | ~~V-T1~~ | ~~Warning~~ | ~~Lifespan context is an untyped `dict[str, Any]` accessed by string keys.~~ **Fixed in PR #87** — `LifespanContext` TypedDict with typed keys (`http_client`, `shared`, `sessions`). | ~~`server.py:103-108`~~ → `state.py` |
 | V-T2 | Warning | `_run_in_executor()` uses deprecated `asyncio.get_event_loop()`. Should use `asyncio.get_running_loop()` — the function is only called from async context. | `server.py:126-129` |
-| V-T3 | Info | Tool return types are `dict[str, Any]` rather than typed dicts. FastMCP serializes to JSON regardless, but typed returns would improve static analysis within the server code. | All tool handlers |
+| ~~V-T3~~ | ~~Info~~ | ~~Tool return types are `dict[str, Any]` rather than typed dicts.~~ **Fixed in PR #105** — all 12 tool handlers now use specific TypedDicts (`GetModuleDocResult`, `GetRoleDocResult`, `CollectionSearchResult`, etc.) with `| ErrorResponse` unions. Safe because `from __future__ import annotations` makes annotations strings at runtime — FastMCP never sees the TypedDict classes. Note: PR #60 originally reverted TypedDict annotations to `dict[str, Any]` over FastMCP wrapping concerns, but that concern is moot with stringified annotations. | ~~All tool handlers~~ → `types.py`, `server.py` |
 
 ---
 
@@ -200,7 +200,7 @@ layer and `_ReadmeParser` in `readme_parser.py` are the other classes.)
 | ~~V-E2~~ | ~~Warning~~ | ~~`GalaxyClient` has no abstract base class or Protocol.~~ **Fixed in PR #66:** `GalaxyDocClient` Protocol and `GalaxyClientFactory` Protocol defined in `types.py`. `resolution.py` depends on the Protocol, not the concrete class. `GalaxyClient` satisfies the Protocol structurally. | ~~`galaxy.py:111`~~ → `types.py` |
 | ~~V-E3~~ | ~~Warning~~ | ~~`GalaxyClient._transform_to_ansible_doc_format()` is a static method that converts Galaxy format to ansible-doc format. This is a data transformation that belongs in the Domain layer (parser), not the External Access layer.~~ **Fixed in PR #69** — Moved to `parser.transform_galaxy_to_ansible_doc_format()`. `galaxy.py` lazy-imports it. | ~~`galaxy.py:381-417`~~ → `parser.py` |
 | V-E4 | Warning | `collections.py` module-level mutable state (`_tmp_dir`, `_installed`, `_install_locks`) makes the module impossible to test in isolation without monkeypatching globals. Should be encapsulated in a class. | `collections.py:26-29` |
-| V-E5 | Info | `galaxy.py` uses `asyncio.Semaphore` for enrichment throttling but creates it lazily with event-loop detection (`_get_enrichment_semaphore`). This is fragile if the event loop changes. | `galaxy.py:40-46` |
+| ~~V-E5~~ | ~~Info~~ | ~~`galaxy.py` uses `asyncio.Semaphore` for enrichment throttling but creates it lazily with event-loop detection (`_get_enrichment_semaphore`). This is fragile if the event loop changes.~~ **Fixed in PR #106** — semaphore moved to `SharedState` (created once at lifespan). `GalaxyClient` accepts it as constructor parameter. `_galaxy_factory()` closure injects it from context. | ~~`galaxy.py:40-46`~~ → `state.py`, `galaxy.py`, `server.py` |
 
 ---
 
@@ -270,7 +270,7 @@ AnsibleKnowError
 | ID | Severity | Description | Location |
 |----|----------|-------------|----------|
 | V-F1 | Warning | `config.py` evaluates `Path.cwd()` at import time for `SKILLS_DIR`. This captures the working directory at the moment the module is first imported, which may differ from the intended runtime directory. Should be a function or lazy property. | `config.py:14-17` |
-| V-F2 | Info | `types.py` `TypedDict` definitions use `dict[str, Any]` for nested structures (e.g., `params: list[dict[str, Any]]`). More specific nested types would improve type safety. | `types.py:14`, `types.py:22` |
+| ~~V-F2~~ | ~~Info~~ | ~~`types.py` `TypedDict` definitions use `dict[str, Any]` for nested structures (e.g., `params: list[dict[str, Any]]`). More specific nested types would improve type safety.~~ **Fixed in PRs #104, #106** — `params` tightened to `list[ParamDict]` (PR #104), `entry_points` tightened to `dict[str, EntryPointInfo]` (PR #106). | ~~`types.py:14`, `types.py:22`~~ → `types.py` |
 | V-F3 | Info | `galaxy_config.py` `GalaxyServerConfig` is a frozen dataclass, which is correct for an immutable configuration value object. No issues. | `galaxy_config.py:24-35` |
 
 ---
@@ -387,10 +387,12 @@ Foundation   → (no internal dependencies)
 
 ### Priority 3 (Info-level, PEP 8 suggestions)
 
-15. **V-D6 / V-F2 / V-T3**: Tighten return types from `dict[str, Any]` to
-    specific `TypedDict`s where definitions exist. (Partially addressed in
-    PR #60 — `EnsureCollectionResult`, `ErrorResponse`, `SkillEntry`,
-    `CollectionInfo`, `CollectionSearchResult` TypedDicts added to `types.py`.
-    Further tightened in PR #87 — `VersionInfo` TypedDict for version check
-    results. Remaining tool handlers still return untyped dicts.)
+15. ~~**V-D6 / V-F2 / V-T3**: Tighten return types from `dict[str, Any]` to
+    specific `TypedDict`s where definitions exist.~~ **Resolved across PRs
+    #60, #87, #104, #105, #106** — all tool handlers now use specific TypedDicts
+    (`GetModuleDocResult`, `GetRoleDocResult`, `CollectionSearchResult`, etc.).
+    `ParamDict` and `EntryPointInfo` replace nested `dict[str, Any]`.
+    PR #60 initially reverted TypedDict annotations over FastMCP wrapping
+    concerns; PR #105 re-added them safely using `from __future__ import
+    annotations` (annotations are strings at runtime, invisible to FastMCP).
 16. Add `__all__` exports to all public modules.
