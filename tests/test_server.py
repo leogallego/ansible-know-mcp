@@ -356,12 +356,19 @@ class TestGetSkillSync:
         (mod_dir / "SKILL.md").write_text("module skill content")
         assert _get_skill_sync(tmp_path, "netbox.netbox.netbox_device") == "module skill content"
 
-    def test_returns_error_for_missing_skill(self, tmp_path):
+    def test_falls_back_to_flat_layout(self, tmp_path):
         from ansible_know.server import _get_skill_sync
 
-        result = _get_skill_sync(tmp_path, "no.such.module")
-        assert isinstance(result, dict)
-        assert "error" in result
+        flat_dir = tmp_path / "netbox.netbox.netbox_device"
+        flat_dir.mkdir()
+        (flat_dir / "SKILL.md").write_text("flat skill content")
+        assert _get_skill_sync(tmp_path, "netbox.netbox.netbox_device") == "flat skill content"
+
+    def test_raises_for_missing_skill(self, tmp_path):
+        from ansible_know.server import _get_skill_sync
+
+        with pytest.raises(FileNotFoundError, match="not found"):
+            _get_skill_sync(tmp_path, "no.such.module")
 
 
 class TestPathTraversal:

@@ -641,10 +641,16 @@ async def list_skills(
         return {"error": sanitize_error(str(exc))}
 
 
-def _get_skill_sync(
-    skills_dir: Path, skill_name: str,
-) -> str | dict[str, str]:
-    """Synchronous helper for get_skill — all file I/O happens here."""
+def _get_skill_sync(skills_dir: Path, skill_name: str) -> str:
+    """Read a skill's SKILL.md content from disk.
+
+    Callers MUST validate ``skill_name`` with ``validate_skill_name()`` first.
+
+    Raises:
+        FileNotFoundError: If no matching SKILL.md exists.
+        ValidationError: If a resolved path escapes ``skills_dir``.
+        OSError: On permission or I/O errors reading the file.
+    """
     parts = skill_name.split(".")
     if len(parts) >= 3:
         namespace = ".".join(parts[:2])
@@ -664,7 +670,7 @@ def _get_skill_sync(
         if skill_path.exists():
             return truncate_response(skill_path.read_text())
 
-    return {"error": f"Skill '{skill_name}' not found."}
+    raise FileNotFoundError(f"Skill '{skill_name}' not found.")
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -689,6 +695,8 @@ async def get_skill(
         from ansible_know.config import SKILLS_DIR
 
         return await run_in_executor(_get_skill_sync, SKILLS_DIR, skill_name)
+    except FileNotFoundError as exc:
+        return {"error": str(exc)}
     except ValidationError as exc:
         return {"error": str(exc)}
     except Exception as exc:
@@ -955,13 +963,13 @@ def resource_skill_content(skill_name: str) -> str:
         return str(exc)
 
     try:
-        result = _get_skill_sync(SKILLS_DIR, skill_name)
+        return _get_skill_sync(SKILLS_DIR, skill_name)
+    except FileNotFoundError as exc:
+        return str(exc)
     except ValidationError as exc:
         return str(exc)
-
-    if isinstance(result, dict):
-        return result.get("error", f"Skill '{skill_name}' not found.")
-    return result
+    except OSError as exc:
+        return sanitize_error(str(exc))
 
 
 @mcp.resource(
