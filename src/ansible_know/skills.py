@@ -17,7 +17,7 @@ from ansible_know.config import TEMPLATE_DIR
 from ansible_know.tagging import derive_tags
 
 if TYPE_CHECKING:
-    from ansible_know.types import CollectionSkillContext, ModuleTagEntry
+    from ansible_know.types import CollectionSkillContext, ModuleTagEntry, ParamDict
 
 logger = logging.getLogger("ansible_know")
 
@@ -116,7 +116,7 @@ def write_module_skill_package(output_dir: Path, metadata: dict[str, Any]) -> No
 write_skill_package = write_module_skill_package
 
 
-def _build_example_args(params: list[dict[str, Any]], examples_yaml: str = "") -> str:
+def _build_example_args(params: list[ParamDict], examples_yaml: str = "") -> str:
     """Build a representative example args string from parameters."""
     concrete = _extract_example_values(examples_yaml)
 
@@ -251,14 +251,14 @@ def _collection_template_context(
     }
 
 
-def _find_common_params(metadata_list: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _find_common_params(metadata_list: list[dict[str, Any]]) -> list[ParamDict]:
     """Find parameters shared by >80% of modules in a collection."""
     if not metadata_list:
         return []
 
     threshold = len(metadata_list) * 0.8
     param_counts: Counter[str] = Counter()
-    param_info: dict[str, dict[str, Any]] = {}
+    param_info: dict[str, ParamDict] = {}
 
     for meta in metadata_list:
         for p in meta["params"]:

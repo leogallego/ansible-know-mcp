@@ -1,13 +1,16 @@
-"""Tag derivation from module metadata (Foundation layer — no internal dependencies)."""
+"""Tag derivation from module metadata (Foundation layer)."""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ansible_know.types import ParamDict
 
 __all__ = ["derive_tags"]
 
 
-def derive_tags(fqcn: str, params: list[dict[str, Any]]) -> list[str]:
+def derive_tags(fqcn: str, params: list[ParamDict]) -> list[str]:
     """Heuristically derive tags from module name segments and parameters.
 
     Analyzes the module's fully-qualified collection name (FQCN) to extract
