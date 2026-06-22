@@ -406,7 +406,9 @@ class GalaxyClient:
                 "type": var.get("type"),
                 "required": var.get("required"),
                 "default": var.get("default"),
+                "choices": var.get("choices"),
                 "description": var.get("description", ""),
+                "aliases": var.get("aliases", []),
             })
 
         role_metadata: dict[str, Any] = {
