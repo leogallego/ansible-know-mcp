@@ -137,6 +137,71 @@ class CollectionSearchResult(TypedDict):
     collections: list[CollectionInfo]
 
 
+class _GetModuleDocResultBase(ModuleMetadata):
+    """Required fields for get_module_doc tool return."""
+
+    doc_source: str
+
+
+class GetModuleDocResult(_GetModuleDocResultBase, total=False):
+    """Full result of get_module_doc tool.
+
+    Extends ModuleMetadata with provenance. When doc_source is 'galaxy',
+    includes doc_version and optionally doc_warning/doc_source_server.
+    """
+
+    doc_version: str
+    doc_warning: str
+    doc_source_server: str
+
+
+class _GetRoleDocResultBase(TypedDict):
+    """Required fields for get_role_doc tool return."""
+
+    role_name: str
+    content_type: str
+    doc_source: str
+
+
+class GetRoleDocResult(_GetRoleDocResultBase, total=False):
+    """Full result of get_role_doc tool.
+
+    Combines role metadata with provenance. Optional fields depend
+    on doc_source value ('local', 'galaxy_readme', or 'unavailable').
+    """
+
+    short_description: str
+    entry_points: dict[str, dict[str, Any]]
+    dependencies: list[str]
+    examples: str
+    doc_version: str
+    doc_warning: str
+    doc_source_server: str
+    error: str
+
+
+class SearchDocsEntry(TypedDict):
+    """Single entry from search_docs results."""
+
+    title: str
+    summary: str
+    topic: list[str]
+    audience: list[str]
+    lines: int
+    source: str
+    url: str
+
+
+class GenerateCollectionSkillsResult(TypedDict):
+    """Result of generate_collection_skills tool."""
+
+    succeeded: int
+    failed: int
+    total: int
+    manifest: dict[str, Any]
+    collection_skill: str
+
+
 class GalaxyDocClient(Protocol):
     """Structural interface for Galaxy documentation clients.
 
