@@ -319,6 +319,10 @@ uv pip install -e ".[dev]"
 pytest
 ```
 
+## Acknowledgments
+
+The skill generation approach in this project was inspired by [AnsibleClaw](https://github.com/micytao/AnsibleClaw) by Michael Tao — a skill generation framework that converts Ansible modules into portable AI agent skill packages.
+
 ## License
 
 GPL-3.0-or-later
