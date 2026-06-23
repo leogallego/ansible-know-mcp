@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
-from ansible_know.docs import clear_cache, search_docs
+from ansible_know.docs import _clean_rtd_markdown, clear_cache, fetch_doc_content, search_docs
 
 MOCK_MANIFEST = {
     "version": "2.0",
@@ -144,3 +145,129 @@ class TestSearchDocsFileLoading:
             results = await search_docs("playbook")
         assert len(results) >= 1
         assert any("version" in r.message.lower() for r in caplog.records)
+
+
+class TestCleanRtdMarkdown:
+    def test_strips_breadcrumbs_before_h1(self):
+        raw = "[Home](/) > [Guides](/guides)\n\n# My Page Title\n\nContent here."
+        content, title = _clean_rtd_markdown(raw)
+        assert title == "My Page Title"
+        assert content.startswith("# My Page Title")
+        assert "Home" not in content
+
+    def test_strips_doctype_artifact(self):
+        raw = "<!DOCTYPE html>\n[Nav](/nav)\n\n# Title\n\nBody."
+        content, title = _clean_rtd_markdown(raw)
+        assert "DOCTYPE" not in content
+        assert title == "Title"
+
+    def test_no_h1_keeps_all_content(self):
+        raw = "Some content without any heading.\n\nMore content."
+        content, title = _clean_rtd_markdown(raw)
+        assert content == raw
+        assert title == ""
+
+    def test_strips_anchor_from_title(self):
+        raw = "# Page Title {#page-title}\n\nBody."
+        content, title = _clean_rtd_markdown(raw)
+        assert title == "Page Title"
+
+    def test_collapses_excessive_blank_lines(self):
+        raw = "# Title\n\n\n\n\n\nContent."
+        content, title = _clean_rtd_markdown(raw)
+        assert "\n\n\n" not in content
+        assert "Content." in content
+
+    def test_h2_before_h1_is_treated_as_nav(self):
+        raw = "## Sidebar\n\nNav links\n\n# Main Title\n\nReal content."
+        content, title = _clean_rtd_markdown(raw)
+        assert title == "Main Title"
+        assert "Sidebar" not in content
+
+    def test_empty_input(self):
+        content, title = _clean_rtd_markdown("")
+        assert content == ""
+        assert title == ""
+
+    def test_doctype_on_later_line(self):
+        raw = "Nav\n<!DOCTYPE html>\nMore nav\n# Title\n\nBody."
+        content, title = _clean_rtd_markdown(raw)
+        assert "DOCTYPE" not in content
+        assert title == "Title"
+
+
+class TestFetchDocContent:
+    @pytest.mark.asyncio
+    async def test_returns_cleaned_content(self):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.headers = {
+            "content-type": "text/markdown; charset=utf-8",
+            "x-markdown-tokens": "100",
+        }
+        mock_resp.text = "[Nav](/)\n\n# Test Page\n\nHello world."
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.url = "https://docs.ansible.com/projects/ansible/latest/guide.html"
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        result = await fetch_doc_content(
+            "https://docs.ansible.com/projects/ansible/latest/guide.html",
+            http_client=mock_client,
+        )
+        assert result["title"] == "Test Page"
+        assert "Hello world." in result["content"]
+        assert result["tokens"] == 100
+        assert "Nav" not in result["content"]
+
+    @pytest.mark.asyncio
+    async def test_max_tokens_exceeded(self):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.headers = {
+            "content-type": "text/markdown; charset=utf-8",
+            "x-markdown-tokens": "5000",
+        }
+        mock_resp.text = "# Big Page\n\nLots of content."
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        result = await fetch_doc_content(
+            "https://docs.ansible.com/projects/ansible/latest/big.html",
+            max_tokens=1000,
+            http_client=mock_client,
+        )
+        assert "error" in result
+        assert "5000" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_non_markdown_content_type(self):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.headers = {"content-type": "text/html"}
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        result = await fetch_doc_content(
+            "https://docs.ansible.com/projects/ansible/latest/page.html",
+            http_client=mock_client,
+        )
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_http_error_returns_error(self):
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=httpx.HTTPStatusError(
+            "404", request=MagicMock(), response=MagicMock(status_code=404),
+        ))
+
+        result = await fetch_doc_content(
+            "https://docs.ansible.com/projects/ansible/latest/missing.html",
+            http_client=mock_client,
+        )
+        assert "error" in result
