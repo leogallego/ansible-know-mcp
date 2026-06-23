@@ -108,6 +108,13 @@ async def _fetch_manifest_url(
         if should_close:
             await client.aclose()
 
+    version = data.get("version", "1.0") if isinstance(data, dict) else "1.0"
+    if not version.startswith(f"{MANIFEST_VERSION_MAJOR}."):
+        logger.warning(
+            "Manifest '%s' has version %s (expected %s.x) — some fields may be unrecognized",
+            source_name, version, MANIFEST_VERSION_MAJOR,
+        )
+
     base_url = data.get("base_url", "") if isinstance(data, dict) else ""
     entries = data if isinstance(data, list) else data.get("files", data.get("documents", data.get("entries", [])))
     entries = _postprocess_entries(entries, source_name, base_url)
