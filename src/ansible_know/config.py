@@ -196,3 +196,19 @@ GALAXY_BASE_URL = os.environ.get(
     "ANSIBLE_KNOW_GALAXY_URL",
     "https://galaxy.ansible.com",
 )
+
+PLUGIN_TYPES: tuple[str, ...] = (
+    "become", "cache", "callback", "cliconf", "connection",
+    "filter", "httpapi", "inventory", "lookup", "netconf",
+    "shell", "strategy", "test", "vars",
+)
+
+JINJA2_PLUGIN_TYPES: tuple[str, ...] = ("filter", "lookup", "test")
+
+PLAYBOOK_PLUGIN_TYPES: tuple[str, ...] = (
+    "become", "callback", "connection", "inventory", "strategy",
+)
+
+INFRA_PLUGIN_TYPES: tuple[str, ...] = (
+    "cache", "cliconf", "httpapi", "netconf", "shell", "vars",
+)

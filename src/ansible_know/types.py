@@ -53,6 +53,26 @@ class RoleMetadata(TypedDict):
     entry_points: dict[str, EntryPointInfo]
 
 
+class PluginMetadata(TypedDict):
+    """Plugin metadata extracted by parser.extract_plugin_metadata()."""
+
+    plugin_name: str
+    plugin_type: str
+    short_description: str
+    params: list[ParamDict]
+    examples: str
+
+
+class ManifestPluginEntry(TypedDict):
+    """Single plugin entry in a collection manifest."""
+
+    fqcn: str
+    plugin_type: str
+    description: str
+    param_count: int
+    has_skill: bool
+
+
 class _DocProvenanceBase(TypedDict):
     doc_source: str
     doc_version: str
@@ -148,9 +168,11 @@ class ManifestResult(TypedDict):
     generated: str
     module_count: int
     role_count: int
+    plugin_count: int
     has_collection_skill: bool
     modules: list[ManifestModuleEntry]
     roles: list[ManifestRoleEntry]
+    plugins: list[ManifestPluginEntry]
 
 
 class _CollectionInfoBase(TypedDict):
@@ -162,6 +184,7 @@ class _CollectionInfoBase(TypedDict):
     latest_version: str
     module_count: int
     role_count: int
+    plugin_count: int
     deprecated: bool
     signed: bool
 
@@ -228,6 +251,25 @@ class GetRoleDocResult(_GetRoleDocResultBase, total=False):
     error: str
 
 
+class _GetPluginDocResultBase(PluginMetadata):
+    """Required fields for get_plugin_doc tool return."""
+
+    content_type: str
+    doc_source: str
+
+
+class GetPluginDocResult(_GetPluginDocResultBase, total=False):
+    """Full result of get_plugin_doc tool.
+
+    Extends PluginMetadata with provenance. When doc_source is 'galaxy',
+    includes doc_version and optionally doc_warning/doc_source_server.
+    """
+
+    doc_version: str
+    doc_warning: str
+    doc_source_server: str
+
+
 class SearchDocsEntry(TypedDict):
     """Single entry from search_docs results."""
 
@@ -279,6 +321,10 @@ class GalaxyDocClient(Protocol):
 
     async def fetch_role_doc(
         self, role_name: str,
+    ) -> tuple[dict[str, Any], DocProvenance]: ...
+
+    async def fetch_plugin_doc(
+        self, plugin_name: str, plugin_type: str,
     ) -> tuple[dict[str, Any], DocProvenance]: ...
 
     async def search_collections(

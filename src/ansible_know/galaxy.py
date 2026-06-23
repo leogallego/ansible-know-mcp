@@ -252,6 +252,7 @@ class GalaxyClient:
             role_count = sum(
                 1 for c in contents if c.get("content_type") == "role"
             )
+            plugin_count = 0
             tags_list = [t["name"] for t in cv.get("tags", []) if isinstance(t, dict)]
             candidates.append({
                 "namespace": f"{ns}.{name}",
@@ -260,6 +261,7 @@ class GalaxyClient:
                 "latest_version": cv.get("version", ""),
                 "module_count": module_count,
                 "role_count": role_count,
+                "plugin_count": plugin_count,
                 "deprecated": False,
                 "signed": item.get("is_signed", False),
                 "_ns": ns,

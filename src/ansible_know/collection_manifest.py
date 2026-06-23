@@ -89,9 +89,11 @@ def generate_manifest(
         "generated": datetime.now(timezone.utc).isoformat(),
         "module_count": len(modules_list),
         "role_count": len(roles_list),
+        "plugin_count": 0,
         "has_collection_skill": has_collection_skill,
         "modules": modules_list,
         "roles": roles_list,
+        "plugins": [],
     }
 
     return manifest
@@ -130,6 +132,9 @@ def load_cached_manifest(
 
     When installed_version is provided, the cache is invalidated if the
     stored collection_version doesn't match.
+
+    Backfills plugin_count and plugins fields for cached manifests
+    created before plugin support was added.
     """
     if skills_dir is None:
         skills_dir = SKILLS_DIR
@@ -141,4 +146,10 @@ def load_cached_manifest(
     manifest = json.loads(manifest_path.read_text())
     if installed_version and manifest.get("collection_version") != installed_version:
         return None
+
+    if "plugin_count" not in manifest:
+        manifest["plugin_count"] = 0
+    if "plugins" not in manifest:
+        manifest["plugins"] = []
+
     return manifest

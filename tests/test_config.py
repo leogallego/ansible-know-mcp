@@ -84,3 +84,47 @@ class TestDocCurationConfig:
         for name, cfg in DEFAULT_DOC_SOURCES.items():
             assert "file" in cfg, f"Source '{name}' missing 'file' key"
             assert "description" in cfg
+
+
+class TestPluginTypeConstants:
+    def test_plugin_types_contains_lookup(self):
+        from ansible_know.config import PLUGIN_TYPES
+
+        assert "lookup" in PLUGIN_TYPES
+
+    def test_plugin_types_contains_filter(self):
+        from ansible_know.config import PLUGIN_TYPES
+
+        assert "filter" in PLUGIN_TYPES
+
+    def test_plugin_types_excludes_module_and_role(self):
+        from ansible_know.config import PLUGIN_TYPES
+
+        assert "module" not in PLUGIN_TYPES
+        assert "role" not in PLUGIN_TYPES
+
+    def test_plugin_types_has_14_entries(self):
+        from ansible_know.config import PLUGIN_TYPES
+
+        assert len(PLUGIN_TYPES) == 14
+
+    def test_jinja2_types(self):
+        from ansible_know.config import JINJA2_PLUGIN_TYPES
+
+        assert set(JINJA2_PLUGIN_TYPES) == {"lookup", "filter", "test"}
+
+    def test_playbook_types(self):
+        from ansible_know.config import PLAYBOOK_PLUGIN_TYPES
+
+        assert set(PLAYBOOK_PLUGIN_TYPES) == {"connection", "become", "strategy", "callback", "inventory"}
+
+    def test_infra_types(self):
+        from ansible_know.config import INFRA_PLUGIN_TYPES
+
+        assert set(INFRA_PLUGIN_TYPES) == {"cache", "cliconf", "httpapi", "netconf", "shell", "vars"}
+
+    def test_categories_cover_all_types(self):
+        from ansible_know.config import INFRA_PLUGIN_TYPES, JINJA2_PLUGIN_TYPES, PLAYBOOK_PLUGIN_TYPES, PLUGIN_TYPES
+
+        combined = set(JINJA2_PLUGIN_TYPES) | set(PLAYBOOK_PLUGIN_TYPES) | set(INFRA_PLUGIN_TYPES)
+        assert combined == set(PLUGIN_TYPES)
