@@ -7,6 +7,7 @@ per-source, and provides cross-source search.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -15,13 +16,14 @@ from typing import Any
 import httpx
 
 from ansible_know.cache import BoundedCache
-from ansible_know.config import SEARCH_DOCS_LIMIT, get_doc_sources
+from ansible_know.config import RTD_PROJECT_SLUGS, SEARCH_DOCS_LIMIT, get_doc_sources
 from ansible_know.types import ErrorResponse, FetchDocResult
 from ansible_know.validation import truncate_response
 
 logger = logging.getLogger("ansible_know")
 
 __all__ = [
+    "_search_rtd_api",
     "clear_cache",
     "fetch_doc_content",
     "search_docs",
@@ -30,6 +32,8 @@ __all__ = [
 MAX_MANIFEST_SIZE = 5_000_000  # 5MB
 CACHE_TTL_SECONDS = 3600
 MANIFEST_VERSION_MAJOR = "2"
+RTD_SEARCH_URL = "https://app.readthedocs.org/api/v3/search/"
+RTD_DOCS_DOMAIN = "https://docs.ansible.com"
 
 _manifest_cache: BoundedCache[str, list[dict[str, Any]]] = BoundedCache(
     max_size=50, ttl=CACHE_TTL_SECONDS,
@@ -145,6 +149,74 @@ async def _get_manifest(
     return []
 
 
+async def _search_rtd_api(
+    query: str,
+    source: str | None = None,
+    limit: int = 10,
+    http_client: httpx.AsyncClient | None = None,
+) -> list[dict[str, Any]]:
+    """Search RTD API as fallback when manifest search returns empty."""
+    slugs_to_search: list[tuple[str, str]] = []
+    if source and source in RTD_PROJECT_SLUGS:
+        slugs_to_search = [(source, RTD_PROJECT_SLUGS[source])]
+    else:
+        slugs_to_search = list(RTD_PROJECT_SLUGS.items())
+
+    client = http_client
+    should_close = False
+    if client is None:
+        client = httpx.AsyncClient(timeout=10.0)
+        should_close = True
+
+    async def _search_one(source_name: str, slug: str) -> list[dict[str, Any]]:
+        params = {
+            "q": f"project:{slug}/latest {query}",
+            "page_size": min(limit, 20),
+        }
+        try:
+            resp = await client.get(RTD_SEARCH_URL, params=params, timeout=5.0)
+            resp.raise_for_status()
+            data = resp.json()
+        except (httpx.HTTPError, ValueError):
+            return []
+
+        hits: list[dict[str, Any]] = []
+        for hit in data.get("results", []):
+            blocks = hit.get("blocks", [])
+            summary = ""
+            if blocks:
+                raw = blocks[0].get("content", "")
+                dot = raw.find(". ")
+                summary = (raw[: dot + 1] if dot > 0 else raw[:120]).strip()
+
+            path = hit.get("path", "")
+            hits.append({
+                "title": hit.get("title", ""),
+                "summary": summary,
+                "topic": [],
+                "audience": [],
+                "lines": 0,
+                "source": f"rtd-search:{source_name}",
+                "url": f"{hit.get('domain', RTD_DOCS_DOMAIN)}{path}",
+            })
+        return hits
+
+    try:
+        all_hits = await asyncio.gather(
+            *[_search_one(name, slug) for name, slug in slugs_to_search],
+            return_exceptions=True,
+        )
+        results: list[dict[str, Any]] = []
+        for hits in all_hits:
+            if isinstance(hits, list):
+                results.extend(hits)
+    finally:
+        if should_close:
+            await client.aclose()
+
+    return results[:limit]
+
+
 async def search_docs(
     query: str,
     source: str | None = None,
@@ -214,6 +286,19 @@ async def search_docs(
 
             if len(results) >= SEARCH_DOCS_LIMIT:
                 break
+
+    # RTD Search API fallback when manifest search returns empty
+    if not results:
+        try:
+            rtd_results = await _search_rtd_api(
+                query, source=source, http_client=http_client,
+            )
+            results.extend(rtd_results)
+        except Exception:
+            pass
+    else:
+        # Deduplicate: if both manifest and RTD would return same URLs
+        pass
 
     return results[:SEARCH_DOCS_LIMIT]
 

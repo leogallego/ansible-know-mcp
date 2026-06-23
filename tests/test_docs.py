@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from ansible_know.docs import _clean_rtd_markdown, clear_cache, fetch_doc_content, search_docs
+from ansible_know.docs import _clean_rtd_markdown, _search_rtd_api, clear_cache, fetch_doc_content, search_docs
 
 MOCK_MANIFEST = {
     "version": "2.0",
@@ -271,3 +271,112 @@ class TestFetchDocContent:
             http_client=mock_client,
         )
         assert "error" in result
+
+
+class TestSearchRtdApi:
+    @pytest.mark.asyncio
+    async def test_returns_results(self):
+        rtd_response = {
+            "count": 1,
+            "results": [
+                {
+                    "title": "Using Variables",
+                    "path": "/projects/ansible/latest/playbook_guide/variables.html",
+                    "domain": "https://docs.ansible.com",
+                    "blocks": [
+                        {"type": "section", "content": "Variables let you manage differences. More text here."}
+                    ],
+                }
+            ],
+        }
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = rtd_response
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        results = await _search_rtd_api("variables", source="ansible-core", http_client=mock_client)
+        assert len(results) == 1
+        assert results[0]["title"] == "Using Variables"
+        assert results[0]["source"].startswith("rtd-search:")
+        assert "docs.ansible.com" in results[0]["url"]
+
+    @pytest.mark.asyncio
+    async def test_scoped_to_source(self):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"count": 0, "results": []}
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        await _search_rtd_api("rules", source="ansible-lint", http_client=mock_client)
+        call_args = mock_client.get.call_args
+        query_param = call_args.kwargs.get("params", {}).get("q", "")
+        assert "ansible-lint" in query_param
+
+    @pytest.mark.asyncio
+    async def test_http_error_returns_empty(self):
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=httpx.ConnectError("timeout"))
+
+        results = await _search_rtd_api("test", http_client=mock_client)
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_respects_limit(self):
+        hits = [
+            {
+                "title": f"Result {i}",
+                "path": f"/page{i}.html",
+                "domain": "https://docs.ansible.com",
+                "blocks": [],
+            }
+            for i in range(20)
+        ]
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"count": 20, "results": hits}
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        results = await _search_rtd_api("test", limit=5, http_client=mock_client)
+        assert len(results) <= 5
+
+
+class TestSearchDocsFallback:
+    @pytest.mark.asyncio
+    async def test_falls_back_to_rtd_when_manifest_empty(self):
+        sources = {
+            "test": {"file": "/nonexistent/manifest.json", "description": "Test"},
+        }
+        rtd_response = {
+            "count": 1,
+            "results": [
+                {
+                    "title": "RTD Result",
+                    "path": "/projects/ansible/latest/guide.html",
+                    "domain": "https://docs.ansible.com",
+                    "blocks": [{"content": "Found via RTD search."}],
+                }
+            ],
+        }
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = rtd_response
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client.aclose = AsyncMock()
+
+        with patch("ansible_know.docs.get_doc_sources", return_value=sources):
+            results = await search_docs("guide", http_client=mock_client)
+
+        assert len(results) >= 1
+        assert results[0]["source"].startswith("rtd-search:")
