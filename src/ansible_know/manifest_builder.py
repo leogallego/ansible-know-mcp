@@ -21,7 +21,7 @@ from ansible_know.config import (
     GUIDE_TOPIC_PREFIXES,
     PROJECT_BASE_URLS,
 )
-from ansible_know.text_utils import clean_rtd_markdown
+from ansible_know.text_utils import fetch_rtd_markdown
 
 logger = logging.getLogger("ansible_know.builder")
 
@@ -90,7 +90,7 @@ async def fetch_sitemap_urls(
     for loc in root.findall(".//sm:loc", ns):
         if loc.text:
             loc_path = urlparse(loc.text).path
-            if loc_path.startswith(project_prefix):
+            if loc_path == project_prefix or loc_path.startswith(project_prefix + "/"):
                 urls.append(loc.text)
     return urls
 
@@ -101,29 +101,11 @@ async def _fetch_page_metadata(
 ) -> dict[str, Any]:
     """Fetch a page via markdown endpoint and extract metadata."""
     try:
-        resp = await client.get(
-            url,
-            headers={"Accept": "text/markdown"},
-            follow_redirects=True,
-            timeout=30.0,
-        )
-        resp.raise_for_status()
-    except httpx.HTTPError as exc:
+        content, title, tokens = await fetch_rtd_markdown(url, client)
+    except (httpx.HTTPError, ValueError) as exc:
         logger.warning("Failed to fetch %s: %s", url, exc)
         return {}
 
-    content_type = resp.headers.get("content-type", "")
-    if "text/markdown" not in content_type:
-        logger.warning("Non-markdown response for %s: %s", url, content_type)
-        return {}
-
-    tokens_str = resp.headers.get("x-markdown-tokens", "0")
-    try:
-        tokens = int(tokens_str)
-    except ValueError:
-        tokens = 0
-
-    content, title = clean_rtd_markdown(resp.text)
     lines = content.count("\n") + 1 if content else 0
 
     summary = ""
