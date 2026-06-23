@@ -23,7 +23,6 @@ from ansible_know.validation import truncate_response
 logger = logging.getLogger("ansible_know")
 
 __all__ = [
-    "_search_rtd_api",
     "clear_cache",
     "fetch_doc_content",
     "search_docs",
