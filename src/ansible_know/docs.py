@@ -18,7 +18,7 @@ import httpx
 from ansible_know.cache import BoundedCache
 from ansible_know.config import RTD_PROJECT_SLUGS, SEARCH_DOCS_LIMIT, get_doc_sources
 from ansible_know.types import ErrorResponse, FetchDocResult
-from ansible_know.validation import truncate_response
+from ansible_know.validation import sanitize_error, truncate_response
 
 logger = logging.getLogger("ansible_know")
 
@@ -364,14 +364,14 @@ async def fetch_doc_content(
         )
         resp.raise_for_status()
     except httpx.HTTPError as exc:
-        return {"error": f"Failed to fetch {url}: {exc}"}
+        return {"error": sanitize_error(f"Failed to fetch {url}: {exc}")}
     finally:
         if should_close:
             await client.aclose()
 
     content_type = resp.headers.get("content-type", "")
     if "text/markdown" not in content_type:
-        return {"error": f"Expected text/markdown but got {content_type!r} for {url}"}
+        return {"error": sanitize_error(f"Expected text/markdown but got {content_type!r} for {url}")}
 
     tokens_str = resp.headers.get("x-markdown-tokens", "0")
     try:
