@@ -37,5 +37,6 @@ def clean_rtd_markdown(raw: str) -> tuple[str, str]:
     else:
         title = ""
 
+    text = _PERMALINK_RE.sub("", text)
     text = _EXCESS_BLANKS_RE.sub("\n\n", text)
     return text.strip(), title

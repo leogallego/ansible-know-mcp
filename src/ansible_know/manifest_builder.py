@@ -90,7 +90,7 @@ async def fetch_sitemap_urls(
     for loc in root.findall(".//sm:loc", ns):
         if loc.text:
             loc_path = urlparse(loc.text).path
-            if loc_path.startswith(project_prefix):
+            if loc_path == project_prefix or loc_path.startswith(project_prefix + "/"):
                 urls.append(loc.text)
     return urls
 

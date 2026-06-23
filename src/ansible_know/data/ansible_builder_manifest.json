@@ -1,12 +1,12 @@
 {
   "version": "2.0",
-  "generated": "2026-06-23T06:04:20.725541+00:00",
+  "generated": "2026-06-23T21:18:38.900355+00:00",
   "base_url": "https://docs.ansible.com/projects/builder/en/latest",
   "files": [
     {
       "path": "",
       "topic": "overview",
-      "title": "Introduction to Ansible Builder[\uf0c1](#introduction-to-ansible-builder \"Link to this heading\")",
+      "title": "Introduction to Ansible Builder",
       "audience": "author",
       "core": true,
       "summary": "With `ansible-builder` you can configure and build portable, consistent, customized Ansible control nodes that are packaged as containers by Podman or Docker.",
@@ -16,17 +16,17 @@
     {
       "path": "installation/",
       "topic": "installation",
-      "title": "Installation[\uf0c1](#installation \"Link to this heading\")",
+      "title": "Installation",
       "audience": "author",
       "core": false,
-      "summary": "## [Requirements](#id1)[\uf0c1](#requirements \"Link to this heading\")\n\n* To build images, you must install a containerization tool - either `podman` or `docker` \\- as well as the `ansible-builder` Python package.\n* The `--container-runtime` option must correspond to the containerization tool you use.\n* `ansible-builder` version `3.x` requires Python `3.9` or higher.\n\n## [Base Image Requirements](#id2)[\uf0c1](#base-image-requirements \"Link to this heading\")\n\nAnsible Builder requires RPM-based container images (those using `dnf` or `microdnf` package management) as the base for execution environments.",
+      "summary": "## [Requirements](#id1)\n\n* To build images, you must install a containerization tool - either `podman` or `docker` \\- as well as the `ansible-builder` Python package.\n* The `--container-runtime` option must correspond to the containerization tool you use.\n* `ansible-builder` version `3.x` requires Python `3.9` or higher.\n\n## [Base Image Requirements](#id2)\n\nAnsible Builder requires RPM-based container images (those using `dnf` or `microdnf` package management) as the base for execution environments.",
       "lines": 34,
       "tokens": 598
     },
     {
       "path": "community/",
       "topic": "community",
-      "title": "Community[\uf0c1](#community \"Link to this heading\")",
+      "title": "Community",
       "audience": "author",
       "core": false,
       "summary": "We welcome your feedback, questions and ideas.",
@@ -36,7 +36,7 @@
     {
       "path": "definition/",
       "topic": "definition",
-      "title": "Execution environment definition[\uf0c1](#execution-environment-definition \"Link to this heading\")",
+      "title": "Execution environment definition",
       "audience": "author",
       "core": true,
       "summary": "You define the content of your execution environment in a YAML file.",
@@ -46,7 +46,7 @@
     {
       "path": "usage/",
       "topic": "usage",
-      "title": "CLI Usage[\uf0c1](#cli-usage \"Link to this heading\")",
+      "title": "CLI Usage",
       "audience": "author",
       "core": true,
       "summary": "Ansible Builder can execute two separate steps.",
@@ -56,17 +56,17 @@
     {
       "path": "porting_guides/porting_guide/",
       "topic": "porting_guides",
-      "title": "Ansible Builder Porting Guides[\uf0c1](#ansible-builder-porting-guides \"Link to this heading\")",
+      "title": "Ansible Builder Porting Guides",
       "audience": "author",
       "core": false,
-      "summary": "",
+      "summary": "This section lists porting guides that can help you in updating your Execution Environment files between versions of `ansible-builder`.\n\n* [Ansible Builder 3.2 Porting Guide](https://docs.ansible.com/",
       "lines": 7,
       "tokens": 285
     },
     {
       "path": "collection_metadata/",
       "topic": "collection_metadata",
-      "title": "Collection-level dependencies[\uf0c1](#collection-level-dependencies \"Link to this heading\")",
+      "title": "Collection-level dependencies",
       "audience": "author",
       "core": false,
       "summary": "When Ansible Builder installs collections into an execution environment, it also installs their controller-side Python or system package dependencies listed by each collection on Galaxy.\n\nFor Ansible Builder to find and install collection dependencies, those dependencies must be defined in files in a collection repository.\n\nNote\n\nIf present, the files below must be included in the packaged collection on Galaxy.",
@@ -76,17 +76,17 @@
     {
       "path": "glossary/",
       "topic": "glossary",
-      "title": "Glossary[\uf0c1](#glossary \"Link to this heading\")",
+      "title": "Glossary",
       "audience": "author",
       "core": false,
-      "summary": "execution environment[\uf0c1](#term-execution-environment \"Link to this term\")\n\nexecution environments are container images intended to be used as Ansible control nodes.",
+      "summary": "execution environment\n\nexecution environments are container images intended to be used as Ansible control nodes.",
       "lines": 9,
       "tokens": 284
     },
     {
       "path": "scenario_guides/scenario_copy/",
       "topic": "scenario_guides",
-      "title": "Copying arbitrary files to EE[\uf0c1](#copying-arbitrary-files-to-ee \"Link to this heading\")",
+      "title": "Copying arbitrary files to EE",
       "audience": "author",
       "core": false,
       "summary": "Ansible Builder version 3 schema provides the option to copy files to an EE image.",
@@ -96,7 +96,7 @@
     {
       "path": "scenario_guides/scenario_custom/",
       "topic": "scenario_guides",
-      "title": "Building EEs with environment variables for Galaxy configuration[\uf0c1](#building-ees-with-environment-variables-for-galaxy-configuration \"Link to this heading\")",
+      "title": "Building EEs with environment variables for Galaxy configuration",
       "audience": "author",
       "core": false,
       "summary": "Ansible Builder version 3 schema allows users to perform complex scenarios such as specifying custom Galaxy configurations.",
@@ -106,7 +106,7 @@
     {
       "path": "scenario_guides/scenario_using_env/",
       "topic": "scenario_guides",
-      "title": "Building EEs with environment variables[\uf0c1](#building-ees-with-environment-variables \"Link to this heading\")",
+      "title": "Building EEs with environment variables",
       "audience": "author",
       "core": false,
       "summary": "Ansible Builder version 3 schema provides the option to specify environment variables that can be used in the build process.",
@@ -116,7 +116,7 @@
     {
       "path": "scenario_guides/scenario_secret_passing/",
       "topic": "scenario_guides",
-      "title": "Passing Secrets[\uf0c1](#passing-secrets \"Link to this heading\")",
+      "title": "Passing Secrets",
       "audience": "author",
       "core": false,
       "summary": "When creating an Execution Environment, it may be useful to use [build secrets](https://docs.docker.com/build/building/secrets/).",
@@ -126,17 +126,17 @@
     {
       "path": "porting_guides/porting_guide_v3.2/",
       "topic": "porting_guides",
-      "title": "Ansible Builder 3.2 Porting Guide[\uf0c1](#ansible-builder-3-2-porting-guide \"Link to this heading\")",
+      "title": "Ansible Builder 3.2 Porting Guide",
       "audience": "author",
       "core": false,
-      "summary": "This section discusses the behavioral changes between `ansible-builder` version 3.1 and version 3.2.\n\n## New Features[\uf0c1](#new-features \"Link to this heading\")\n\n### Disabling Colorized Output[\uf0c1](#disabling-colorized-output \"Link to this heading\")\n\nColorized terminal output can be disabled by either setting the `NO_COLOR` environment variable to any non-empty value, or by setting the `CLICOLOR` environment variable to `0`.\n\n## Behavior Changes[\uf0c1](#behavior-changes \"Link to this heading\")\n\n### Preserve Symlinks During Additional Build File Copies[\uf0c1](#preserve-symlinks-during-additional-build-file-copies \"Link to this heading\")\n\nWhen using symlinks in the `additional_build_files` section of an EE, previous behavior was to dereference the symlink to copy the actual file into the container build context.",
+      "summary": "This section discusses the behavioral changes between `ansible-builder` version 3.1 and version 3.2.\n\n## New Features\n\n### Disabling Colorized Output\n\nColorized terminal output can be disabled by either setting the `NO_COLOR` environment variable to any non-empty value, or by setting the `CLICOLOR` environment variable to `0`.\n\n## Behavior Changes\n\n### Preserve Symlinks During Additional Build File Copies\n\nWhen using symlinks in the `additional_build_files` section of an EE, previous behavior was to dereference the symlink to copy the actual file into the container build context.",
       "lines": 37,
       "tokens": 855
     },
     {
       "path": "scenario_guides/scenario_pip_check/",
       "topic": "scenario_guides",
-      "title": "Validating Installed Python Dependencies[\uf0c1](#validating-installed-python-dependencies \"Link to this heading\")",
+      "title": "Validating Installed Python Dependencies",
       "audience": "author",
       "core": false,
       "summary": "It is a good idea to verify that all of the installed Python packages have compatible dependencies installed when the final container image is built.",
@@ -146,20 +146,20 @@
     {
       "path": "porting_guides/porting_guide_v3.1/",
       "topic": "porting_guides",
-      "title": "[Ansible Builder 3.1 Porting Guide](#id2)[\uf0c1](#ansible-builder-3-1-porting-guide \"Link to this heading\")",
+      "title": "[Ansible Builder 3.1 Porting Guide](#id2)",
       "audience": "author",
       "core": false,
-      "summary": "This section discusses the behavioral changes between `ansible-builder` version 3.0 and version 3.1.\n\nNote\n\nWe highly advise running `ansible-builder` with increased verbosity using the `-vvv` option (`--v3` for versions older than 3.1) to fully expose any error messages that may help in diagnosing any problems.\n\n## [Python Requirements Handling](#id3)[\uf0c1](#python-requirements-handling \"Link to this heading\")\n\nThe 3.1 release significantly changes how Python and system requirements are handled by simplifying dependency parsing.",
+      "summary": "This section discusses the behavioral changes between `ansible-builder` version 3.0 and version 3.1.\n\nNote\n\nWe highly advise running `ansible-builder` with increased verbosity using the `-vvv` option (`--v3` for versions older than 3.1) to fully expose any error messages that may help in diagnosing any problems.\n\n## [Python Requirements Handling](#id3)\n\nThe 3.1 release significantly changes how Python and system requirements are handled by simplifying dependency parsing.",
       "lines": 75,
       "tokens": 1539
     },
     {
       "path": "porting_guides/porting_guide_v3.0/",
       "topic": "porting_guides",
-      "title": "[Ansible Builder 3.0 Porting Guide](#id1)[\uf0c1](#ansible-builder-3-0-porting-guide \"Link to this heading\")",
+      "title": "[Ansible Builder 3.0 Porting Guide](#id1)",
       "audience": "author",
       "core": false,
-      "summary": "This section discusses the behavioral changes between `ansible-builder` version 1.2 and version 3.0.\n\nWe suggest you read this page along with [ansible-builder 3.0 release notes](https://github.com/ansible/ansible-builder/releases/tag/3.0.0) to understand what updates you may need to make.\n\n## [Overview](#id2)[\uf0c1](#overview \"Link to this heading\")\n\nThe Ansible Builder 3.x execution environment definition file accepts seven top-level sections:\n\n* additional\\_build\\_files\n* additional\\_build\\_steps\n* build\\_arg\\_defaults\n* dependencies\n* images\n* options\n* version\n\n## [Porting options](#id3)[\uf0c1](#porting-options \"Link to this heading\")\n\nYou need to change the configuration YAML keys in your older (v1 and v2) execution environment file to the one listed here.\n\n### [additional\\_build\\_files](#id4)[\uf0c1](#additional-build-files \"Link to this heading\")\n\nThis is a new configuration that can be used to specify files to be added to the build context directory.",
+      "summary": "This section discusses the behavioral changes between `ansible-builder` version 1.2 and version 3.0.\n\nWe suggest you read this page along with [ansible-builder 3.0 release notes](https://github.com/ansible/ansible-builder/releases/tag/3.0.0) to understand what updates you may need to make.\n\n## [Overview](#id2)\n\nThe Ansible Builder 3.x execution environment definition file accepts seven top-level sections:\n\n* additional\\_build\\_files\n* additional\\_build\\_steps\n* build\\_arg\\_defaults\n* dependencies\n* images\n* options\n* version\n\n## [Porting options](#id3)\n\nYou need to change the configuration YAML keys in your older (v1 and v2) execution environment file to the one listed here.\n\n### [additional\\_build\\_files](#id4)\n\nThis is a new configuration that can be used to specify files to be added to the build context directory.",
       "lines": 96,
       "tokens": 1270
     }

@@ -1,12 +1,12 @@
 {
   "version": "2.0",
-  "generated": "2026-06-23T06:04:29.208614+00:00",
+  "generated": "2026-06-23T21:18:42.010380+00:00",
   "base_url": "https://docs.ansible.com/projects/molecule",
   "files": [
     {
       "path": "",
       "topic": "overview",
-      "title": "About Ansible Molecule[\u00b6](#about-ansible-molecule \"Permanent link\")",
+      "title": "About Ansible Molecule",
       "audience": "author",
       "core": true,
       "summary": "Molecule is an Ansible testing framework designed for developing and testing [Ansible](https://ansible.com) collections, playbooks, and roles.\n\nMolecule leverages standard Ansible features including inventory, playbooks, and collections to provide flexible testing workflows.",
@@ -16,27 +16,27 @@
     {
       "path": "philosophy/",
       "topic": "philosophy",
-      "title": "Testing philosophy[\u00b6](#testing-philosophy \"Permanent link\")",
+      "title": "Testing philosophy",
       "audience": "author",
       "core": false,
-      "summary": "This document explores the fundamental principles of automation testing and how Molecule addresses the core needs of modern Ansible development across all domains.\n\n## What a testing suite provides[\u00b6](#what-a-testing-suite-provides \"Permanent link\")\n\nTesting frameworks serve as the foundation for reliable software development and deployment across diverse domains.",
+      "summary": "This document explores the fundamental principles of automation testing and how Molecule addresses the core needs of modern Ansible development across all domains.\n\n## What a testing suite provides\n\nTesting frameworks serve as the foundation for reliable software development and deployment across diverse domains.",
       "lines": 606,
       "tokens": 14418
     },
     {
       "path": "installation/",
       "topic": "installation",
-      "title": "Installation[\u00b6](#installation \"Permanent link\")",
+      "title": "Installation",
       "audience": "author",
       "core": false,
-      "summary": "This document assumes the developer has a basic understanding of Python packaging, and how to install and manage Python on the system executing Molecule.\n\n## Requirements[\u00b6](#requirements \"Permanent link\")\n\nA recent version of `ansible-core` that is still under support.\n\nDepending on the driver chosen, you may need to install additional OS packages.\n\nCentOSUbuntu\n\n`[](#%5F%5Fcodelineno-0-1)$ sudo dnf install -y gcc python3-pip python3-devel openssl-devel python3-libselinux\n`\n\n`[](#%5F%5Fcodelineno-1-1)$ sudo apt update\n[](#%5F%5Fcodelineno-1-2)$ sudo apt install -y python3-pip libssl-dev\n`\n\n## Pip[\u00b6](#pip \"Permanent link\")\n\n[pip](https://pip.pypa.io/en/stable/installation/) is the only supported installation method.\n\nRecommendation\n\nThe **recommended** approach to install `molecule` is using the `ansible-dev-tools` package.",
+      "summary": "This document assumes the developer has a basic understanding of Python packaging, and how to install and manage Python on the system executing Molecule.\n\n## Requirements\n\nA recent version of `ansible-core` that is still under support.\n\nDepending on the driver chosen, you may need to install additional OS packages.\n\nCentOSUbuntu\n\n`[](#%5F%5Fcodelineno-0-1)$ sudo dnf install -y gcc python3-pip python3-devel openssl-devel python3-libselinux\n`\n\n`[](#%5F%5Fcodelineno-1-1)$ sudo apt update\n[](#%5F%5Fcodelineno-1-2)$ sudo apt install -y python3-pip libssl-dev\n`\n\n## Pip\n\n[pip](https://pip.pypa.io/en/stable/installation/) is the only supported installation method.\n\nRecommendation\n\nThe **recommended** approach to install `molecule` is using the `ansible-dev-tools` package.",
       "lines": 103,
       "tokens": 1401
     },
     {
       "path": "getting-started-playbooks/",
       "topic": "getting-started-playbooks",
-      "title": "Playbook Testing[\u00b6](#playbook-testing \"Permanent link\")",
+      "title": "Playbook Testing",
       "audience": "author",
       "core": false,
       "summary": "This guide demonstrates testing Ansible playbooks using Molecule within an ansible-creator playbook project.",
@@ -46,17 +46,17 @@
     {
       "path": "collection/",
       "topic": "collection",
-      "title": "Molecule Collection[\u00b6](#molecule-collection \"Permanent link\")",
+      "title": "Molecule Collection",
       "audience": "author",
       "core": false,
-      "summary": "",
+      "summary": "[![CI](https://github.com/ansible/molecule/actions/workflows/tox.yml/badge.svg?event=push)](https://github.com/ansible/molecule/actions/workflows/tox.yml) [![Codecov](https://img.shields.io/codecov/c/",
       "lines": 33,
       "tokens": 627
     },
     {
       "path": "examples/docker/",
       "topic": "examples",
-      "title": "Using docker containers[\u00b6](#using-docker-containers \"Permanent link\")",
+      "title": "Using docker containers",
       "audience": "author",
       "core": false,
       "summary": "Note\n\nThis example demonstrates the use of a pre-ansible-native configuration.",
@@ -69,14 +69,14 @@
       "title": "Custom image",
       "audience": "author",
       "core": false,
-      "summary": "## Customizing the Docker Image Used by a Scenario/Platform[\u00b6](#customizing-the-docker-image-used-by-a-scenarioplatform \"Permanent link\")\n\nThe docker driver supports using pre-built images and `docker build`\\-ing local customizations for each scenario's platform.",
+      "summary": "## Customizing the Docker Image Used by a Scenario/Platform\n\nThe docker driver supports using pre-built images and `docker build`\\-ing local customizations for each scenario's platform.",
       "lines": 23,
       "tokens": 641
     },
     {
       "path": "execution/",
       "topic": "execution",
-      "title": "Molecule Execution[\u00b6](#molecule-execution \"Permanent link\")",
+      "title": "Molecule Execution",
       "audience": "author",
       "core": false,
       "summary": "This document aims to describe how molecule execution goes from commandline to playbook execution.",
@@ -86,27 +86,27 @@
     {
       "path": "faq/",
       "topic": "faq",
-      "title": "FAQ[\u00b6](#faq \"Permanent link\")",
+      "title": "FAQ",
       "audience": "author",
       "core": false,
-      "summary": "## Why is my idempotence action failing?[\u00b6](#why-is-my-idempotence-action-failing \"Permanent link\")\n\nIt is important to understand that Molecule does not do anything further than the default functionality of Ansible when determining if your tasks are idempotent or not.",
+      "summary": "## Why is my idempotence action failing?\n\nIt is important to understand that Molecule does not do anything further than the default functionality of Ansible when determining if your tasks are idempotent or not.",
       "lines": 91,
       "tokens": 1550
     },
     {
       "path": "contributing/",
       "topic": "contributing",
-      "title": "Contributing[\u00b6](#contributing \"Permanent link\")",
+      "title": "Contributing",
       "audience": "author",
       "core": false,
-      "summary": "Noticed a bug or have an idea to improve Ansible Molecule? Want to write some documentation or share your expertise on the forum? There are many ways to get involved and contribute, find out how.\n\n## Guidelines[\u00b6](#guidelines \"Permanent link\")\n\n* We are interested in various different kinds of improvement for Molecule; please feel free to raise an [Issue](https://github.com/ansible-community/molecule/issues/new/choose)if you would like to work on something major to ensure efficient collaboration and avoid duplicate effort.\n* Create a topic branch from where you want to base your work.\n* Make sure you have added tests for your changes.\n* Although not required, it is good to sign off commits using `git commit --signoff`, and agree that usage of `--signoff`constitutes agreement with the terms of [DCO 1.1](https://github.com/ansible-community/molecule/blob/main/DCO%5F1%5F1.md).\n* Run all the tests to ensure nothing else was accidentally broken.\n* Reformat the code by following the formatting section below.\n* Submit a pull request.\n\n## Talk to us[\u00b6](#talk-to-us \"Permanent link\")\n\nConnect with the Ansible community!\n\nJoin the Ansible forum to ask questions, get help, and interact with the community.\n\n* [Get Help](https://forum.ansible.com/c/help/6): get help or help others.",
+      "summary": "Noticed a bug or have an idea to improve Ansible Molecule? Want to write some documentation or share your expertise on the forum? There are many ways to get involved and contribute, find out how.\n\n## Guidelines\n\n* We are interested in various different kinds of improvement for Molecule; please feel free to raise an [Issue](https://github.com/ansible-community/molecule/issues/new/choose)if you would like to work on something major to ensure efficient collaboration and avoid duplicate effort.\n* Create a topic branch from where you want to base your work.\n* Make sure you have added tests for your changes.\n* Although not required, it is good to sign off commits using `git commit --signoff`, and agree that usage of `--signoff`constitutes agreement with the terms of [DCO 1.1](https://github.com/ansible-community/molecule/blob/main/DCO%5F1%5F1.md).\n* Run all the tests to ensure nothing else was accidentally broken.\n* Reformat the code by following the formatting section below.\n* Submit a pull request.\n\n## Talk to us\n\nConnect with the Ansible community!\n\nJoin the Ansible forum to ask questions, get help, and interact with the community.\n\n* [Get Help](https://forum.ansible.com/c/help/6): get help or help others.",
       "lines": 107,
       "tokens": 1324
     },
     {
       "path": "ansible-native/",
       "topic": "ansible-native",
-      "title": "Ansible-Native Configuration[\u00b6](#ansible-native-configuration \"Permanent link\")",
+      "title": "Ansible-Native Configuration",
       "audience": "author",
       "core": false,
       "summary": "This document provides technical reference for the ansible-native configuration approach.",
@@ -116,7 +116,7 @@
     {
       "path": "getting-started-collections/",
       "topic": "getting-started-collections",
-      "title": "Collection Testing[\u00b6](#collection-testing \"Permanent link\")",
+      "title": "Collection Testing",
       "audience": "author",
       "core": true,
       "summary": "This guide demonstrates how to use Molecule to test Ansible collections with multiple components and shared testing resources.",
@@ -126,37 +126,37 @@
     {
       "path": "usage/",
       "topic": "usage",
-      "title": "Command Line Reference[\u00b6](#command-line-reference \"Permanent link\")",
+      "title": "Command Line Reference",
       "audience": "author",
       "core": true,
-      "summary": "## Special commands[\u00b6](#special-commands \"Permanent link\")\n\n* drivers\n* init\n* list\n* login\n* matrix\n* reset\n\n## Valid actions[\u00b6](#valid-actions \"Permanent link\")\n\n* check\n* cleanup\n* This action has cleanup and is not enabled by default.",
+      "summary": "## Special commands\n\n* drivers\n* init\n* list\n* login\n* matrix\n* reset\n\n## Valid actions\n\n* check\n* cleanup\n* This action has cleanup and is not enabled by default.",
       "lines": 119,
       "tokens": 1304
     },
     {
       "path": "workflow/",
       "topic": "workflow",
-      "title": "Workflow Reference[\u00b6](#workflow-reference \"Permanent link\")",
+      "title": "Workflow Reference",
       "audience": "author",
       "core": false,
-      "summary": "This document provides a comprehensive reference for Molecule's actions, sequences, and subcommands in the ansible-native approach.\n\n## Overview[\u00b6](#overview \"Permanent link\")\n\nWhen running Molecule, you must provide a **subcommand** that determines what action or sequence of actions will be executed.\n\n`[](#%5F%5Fcodelineno-0-1)molecule <subcommand> [options]\n`\n\nEach subcommand executes either:\n\n* **A single action** \\- Runs one specific playbook\n* **A sequence** \\- Runs an ordered list of actions\n\n### Execution Flow[\u00b6](#execution-flow \"Permanent link\")\n\n**Subcommand** \u2192 **Sequence** \u2192 **Actions** \u2192 **Playbooks**\n\n1.",
+      "summary": "This document provides a comprehensive reference for Molecule's actions, sequences, and subcommands in the ansible-native approach.\n\n## Overview\n\nWhen running Molecule, you must provide a **subcommand** that determines what action or sequence of actions will be executed.\n\n`[](#%5F%5Fcodelineno-0-1)molecule <subcommand> [options]\n`\n\nEach subcommand executes either:\n\n* **A single action** \\- Runs one specific playbook\n* **A sequence** \\- Runs an ordered list of actions\n\n### Execution Flow\n\n**Subcommand** \u2192 **Sequence** \u2192 **Actions** \u2192 **Playbooks**\n\n1.",
       "lines": 770,
       "tokens": 8148
     },
     {
       "path": "configuration/",
       "topic": "configuration",
-      "title": "Configuration[\u00b6](#configuration \"Permanent link\")",
+      "title": "Configuration",
       "audience": "author",
       "core": true,
-      "summary": "## Prerun[\u00b6](#prerun \"Permanent link\")\n\nTo help Ansible find used modules and roles, molecule will perform a prerun set of actions.",
+      "summary": "## Prerun\n\nTo help Ansible find used modules and roles, molecule will perform a prerun set of actions.",
       "lines": 926,
       "tokens": 10451
     },
     {
       "path": "ci/",
       "topic": "ci",
-      "title": "Continuous integration[\u00b6](#continuous-integration \"Permanent link\")",
+      "title": "Continuous integration",
       "audience": "author",
       "core": false,
       "summary": "Molecule output will use `ANSI` colors if stdout is an interactive TTY and `TERM` value seems to support it.",
@@ -166,7 +166,7 @@
     {
       "path": "pre-ansible-native/",
       "topic": "pre-ansible-native",
-      "title": "Pre Ansible-Native Configuration[\u00b6](#pre-ansible-native-configuration \"Permanent link\")",
+      "title": "Pre Ansible-Native Configuration",
       "audience": "author",
       "core": false,
       "summary": "The pre ansible-native approach is maintained for compatibility with environments that still rely on third-party tools and pre ansible-native configurations.",
@@ -176,17 +176,17 @@
     {
       "path": "examples/podman/",
       "topic": "examples",
-      "title": "Using podman containers[\u00b6](#using-podman-containers \"Permanent link\")",
+      "title": "Using podman containers",
       "audience": "author",
       "core": false,
-      "summary": "Note\n\nThis example demonstrates the use of an ansible-native configuration.\n\nThis example demonstrates testing with Podman containers using standard Ansible inventory and playbooks for complete control over the testing environment.\n\n## Overview[\u00b6](#overview \"Permanent link\")\n\nThis scenario uses:\n\n* **Inventory management**: Standard Ansible inventory files for container definitions\n* **Container lifecycle**: Managed through Ansible playbooks with full customization\n* **Flexible configuration**: Container settings defined in inventory for easy modification\n\nWhen you run `molecule test --scenario-name podman`, Molecule executes the complete test sequence including create, converge, verify, cleanup, and destroy steps using your custom playbooks.\n\n## Configuration[\u00b6](#configuration \"Permanent link\")\n\nThe configuration uses standard Ansible patterns:\n\nmolecule.yml\n\n`[](#%5F%5Fcodelineno-0-1)---\n[](#%5F%5Fcodelineno-0-2)ansible:\n[](#%5F%5Fcodelineno-0-3)  cfg:\n[](#%5F%5Fcodelineno-0-4)    defaults:\n[](#%5F%5Fcodelineno-0-5)      deprecation_warnings: false\n[](#%5F%5Fcodelineno-0-6)  executor:\n[](#%5F%5Fcodelineno-0-7)    args:\n[](#%5F%5Fcodelineno-0-8)      ansible_playbook:\n[](#%5F%5Fcodelineno-0-9)        - --inventory=inventory/\n[](#%5F%5Fcodelineno-0-10)\n[](#%5F%5Fcodelineno-0-11)dependency:\n[](#%5F%5Fcodelineno-0-12)  name: galaxy\n[](#%5F%5Fcodelineno-0-13)  options:\n[](#%5F%5Fcodelineno-0-14)    requirements-file: ${MOLECULE_SCENARIO_DIRECTORY}/requirements.yml\n[](#%5F%5Fcodelineno-0-15)\n[](#%5F%5Fcodelineno-0-16)scenario:\n[](#%5F%5Fcodelineno-0-17)  test_sequence:\n[](#%5F%5Fcodelineno-0-18)    - dependency\n[](#%5F%5Fcodelineno-0-19)    - destroy\n[](#%5F%5Fcodelineno-0-20)    - create\n[](#%5F%5Fcodelineno-0-21)    - converge\n[](#%5F%5Fcodelineno-0-22)    - idempotence\n[](#%5F%5Fcodelineno-0-23)    - verify\n[](#%5F%5Fcodelineno-0-24)    - cleanup\n[](#%5F%5Fcodelineno-0-25)    - destroy\n`\n\n**Key points**: The `ansible` section configures inventory location and executor arguments.",
+      "summary": "Note\n\nThis example demonstrates the use of an ansible-native configuration.\n\nThis example demonstrates testing with Podman containers using standard Ansible inventory and playbooks for complete control over the testing environment.\n\n## Overview\n\nThis scenario uses:\n\n* **Inventory management**: Standard Ansible inventory files for container definitions\n* **Container lifecycle**: Managed through Ansible playbooks with full customization\n* **Flexible configuration**: Container settings defined in inventory for easy modification\n\nWhen you run `molecule test --scenario-name podman`, Molecule executes the complete test sequence including create, converge, verify, cleanup, and destroy steps using your custom playbooks.\n\n## Configuration\n\nThe configuration uses standard Ansible patterns:\n\nmolecule.yml\n\n`[](#%5F%5Fcodelineno-0-1)---\n[](#%5F%5Fcodelineno-0-2)ansible:\n[](#%5F%5Fcodelineno-0-3)  cfg:\n[](#%5F%5Fcodelineno-0-4)    defaults:\n[](#%5F%5Fcodelineno-0-5)      deprecation_warnings: false\n[](#%5F%5Fcodelineno-0-6)  executor:\n[](#%5F%5Fcodelineno-0-7)    args:\n[](#%5F%5Fcodelineno-0-8)      ansible_playbook:\n[](#%5F%5Fcodelineno-0-9)        - --inventory=inventory/\n[](#%5F%5Fcodelineno-0-10)\n[](#%5F%5Fcodelineno-0-11)dependency:\n[](#%5F%5Fcodelineno-0-12)  name: galaxy\n[](#%5F%5Fcodelineno-0-13)  options:\n[](#%5F%5Fcodelineno-0-14)    requirements-file: ${MOLECULE_SCENARIO_DIRECTORY}/requirements.yml\n[](#%5F%5Fcodelineno-0-15)\n[](#%5F%5Fcodelineno-0-16)scenario:\n[](#%5F%5Fcodelineno-0-17)  test_sequence:\n[](#%5F%5Fcodelineno-0-18)    - dependency\n[](#%5F%5Fcodelineno-0-19)    - destroy\n[](#%5F%5Fcodelineno-0-20)    - create\n[](#%5F%5Fcodelineno-0-21)    - converge\n[](#%5F%5Fcodelineno-0-22)    - idempotence\n[](#%5F%5Fcodelineno-0-23)    - verify\n[](#%5F%5Fcodelineno-0-24)    - cleanup\n[](#%5F%5Fcodelineno-0-25)    - destroy\n`\n\n**Key points**: The `ansible` section configures inventory location and executor arguments.",
       "lines": 292,
       "tokens": 3754
     },
     {
       "path": "examples/kubevirt/",
       "topic": "examples",
-      "title": "Using Kubevirt[\u00b6](#using-kubevirt \"Permanent link\")",
+      "title": "Using Kubevirt",
       "audience": "author",
       "core": false,
       "summary": "Note\n\nThis example demonstrates the use of a pre-ansible-native configuration.",
@@ -196,10 +196,10 @@
     {
       "path": "examples/ansible_native_inventory/",
       "topic": "examples",
-      "title": "Ansible native inventory[\u00b6](#ansible-native-inventory \"Permanent link\")",
+      "title": "Ansible native inventory",
       "audience": "author",
       "core": false,
-      "summary": "Note\n\nThis example demonstrates the use of an ansible-native configuration.\n\nThis example demonstrates how to use native Ansible inventory sources with Molecule instead of relying on platform-based inventory generation.\n\n## Overview[\u00b6](#overview \"Permanent link\")\n\nTraditional Molecule scenarios define infrastructure in the `platforms` section and let Molecule generate inventory.",
+      "summary": "Note\n\nThis example demonstrates the use of an ansible-native configuration.\n\nThis example demonstrates how to use native Ansible inventory sources with Molecule instead of relying on platform-based inventory generation.\n\n## Overview\n\nTraditional Molecule scenarios define infrastructure in the `platforms` section and let Molecule generate inventory.",
       "lines": 290,
       "tokens": 3601
     },
@@ -209,7 +209,7 @@
       "title": "Docker rootless",
       "audience": "author",
       "core": false,
-      "summary": "## Docker With Non-Privileged User[\u00b6](#docker-with-non-privileged-user \"Permanent link\")\n\nThe Molecule Docker driver executes Ansible playbooks as the root user.",
+      "summary": "## Docker With Non-Privileged User\n\nThe Molecule Docker driver executes Ansible playbooks as the root user.",
       "lines": 81,
       "tokens": 1223
     },
@@ -219,7 +219,7 @@
       "title": "Monolith",
       "audience": "author",
       "core": false,
-      "summary": "## Monolith Repo[\u00b6](#monolith-repo \"Permanent link\")\n\nMolecule is generally used to test playbooks or roles in isolation.",
+      "summary": "## Monolith Repo\n\nMolecule is generally used to test playbooks or roles in isolation.",
       "lines": 48,
       "tokens": 712
     },
@@ -229,7 +229,7 @@
       "title": "Inside a container",
       "audience": "author",
       "core": false,
-      "summary": "",
+      "summary": "## Running inside a container\n\nMolecule is built into a Docker image by the [Ansible Dev Tools](https://docs.ansible.com/projects/dev-tools/container/) project.\n\nAny questions or bugs related to use o",
       "lines": 9,
       "tokens": 327
     },
@@ -239,14 +239,14 @@
       "title": "Parallel",
       "audience": "author",
       "core": false,
-      "summary": "## Concurrent scenario execution with `--workers`[\u00b6](#concurrent-scenario-execution-with-workers \"Permanent link\")\n\nWarning\n\nThis functionality should be considered experimental.\n\nWhen testing Ansible collections with many scenarios, Molecule can run scenarios concurrently using the `--workers` flag.",
+      "summary": "## Concurrent scenario execution with `--workers`\n\nWarning\n\nThis functionality should be considered experimental.\n\nWhen testing Ansible collections with many scenarios, Molecule can run scenarios concurrently using the `--workers` flag.",
       "lines": 65,
       "tokens": 1028
     },
     {
       "path": "guides/podman-inside-docker/",
       "topic": "guides",
-      "title": "Podman inside Docker[\u00b6](#podman-inside-docker \"Permanent link\")",
+      "title": "Podman inside Docker",
       "audience": "author",
       "core": false,
       "summary": "Sometimes your CI system comes prepared to run with Docker but you want to test podman into it.",
@@ -259,7 +259,7 @@
       "title": "Sharing",
       "audience": "author",
       "core": false,
-      "summary": "",
+      "summary": "## Sharing Across Scenarios\n\nPlaybooks and tests can be shared across scenarios.\n\n`[](#%5F%5Fcodelineno-0-1)$ tree shared-tests\n[](#%5F%5Fcodelineno-0-2)shared-tests\n[](#%5F%5Fcodelineno-0-3)\u251c\u2500\u2500 molec",
       "lines": 47,
       "tokens": 642
     },
@@ -269,7 +269,7 @@
       "title": "Systemd container",
       "audience": "author",
       "core": false,
-      "summary": "",
+      "summary": "## Systemd Container\n\nTo start a service which requires systemd, [in a non-privileged container](https://developers.redhat.com/blog/2016/09/13/running-systemd-in-a-non-privileged-container/), configur",
       "lines": 60,
       "tokens": 855
     }
