@@ -1,0 +1,49 @@
+name: Update docs manifests
+
+on:
+  schedule:
+    - cron: '23 4 * * 1'  # Weekly on Monday at 04:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Build manifests
+        run: python scripts/build_docs_manifests.py
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet src/ansible_know/data/; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create PR
+        if: steps.changes.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: auto/update-docs-manifests
+          title: 'chore: update docs manifests'
+          body: |
+            Automated weekly rebuild of documentation manifests from
+            docs.ansible.com (objects.inv + sitemap + markdown endpoint).
+
+            Review the diff to verify no unexpected changes from upstream.
+          commit-message: 'chore: update docs manifests'
+          delete-branch: true
