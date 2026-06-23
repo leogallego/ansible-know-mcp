@@ -147,6 +147,56 @@ class TestSearchDocsFileLoading:
         assert any("version" in r.message.lower() for r in caplog.records)
 
 
+class TestManifestSizeLimit:
+    @pytest.mark.asyncio
+    async def test_rejects_large_content_length_url(self):
+        from ansible_know.docs import MAX_MANIFEST_SIZE
+
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.headers = {"content-length": str(MAX_MANIFEST_SIZE + 1)}
+        mock_resp.content = b"{}"
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_resp
+        mock_client.aclose = AsyncMock()
+
+        sources = {"test": {"url": "https://example.com/manifest.json", "description": "Test"}}
+        with patch("ansible_know.docs.get_doc_sources", return_value=sources):
+            results = await search_docs("test", http_client=mock_client)
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_rejects_large_body_url(self):
+        from ansible_know.docs import MAX_MANIFEST_SIZE
+
+        large_body = b"x" * (MAX_MANIFEST_SIZE + 1)
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.headers = {}
+        mock_resp.content = large_body
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_resp
+        mock_client.aclose = AsyncMock()
+
+        sources = {"test": {"url": "https://example.com/manifest.json", "description": "Test"}}
+        with patch("ansible_know.docs.get_doc_sources", return_value=sources):
+            results = await search_docs("test", http_client=mock_client)
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_rejects_large_file(self, tmp_path):
+        from ansible_know.docs import MAX_MANIFEST_SIZE
+
+        large_file = tmp_path / "large.json"
+        large_file.write_bytes(b"x" * (MAX_MANIFEST_SIZE + 1))
+        sources = {"test": {"file": str(large_file), "description": "Test"}}
+        with patch("ansible_know.docs.get_doc_sources", return_value=sources):
+            results = await search_docs("test")
+        assert results == []
+
+
 class TestCleanRtdMarkdown:
     def test_strips_breadcrumbs_before_h1(self):
         raw = "[Home](/) > [Guides](/guides)\n\n# My Page Title\n\nContent here."

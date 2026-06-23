@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import re
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -56,6 +57,23 @@ def _postprocess_entries(
     return entries
 
 
+def _check_manifest_version(data: Any, source_name: str) -> None:
+    """Log warning if manifest version is unrecognized."""
+    version = data.get("version", "1.0") if isinstance(data, dict) else "1.0"
+    if not version.startswith(f"{MANIFEST_VERSION_MAJOR}."):
+        logger.warning(
+            "Manifest '%s' has version %s (expected %s.x) — some fields may be unrecognized",
+            source_name, version, MANIFEST_VERSION_MAJOR,
+        )
+
+
+def _extract_manifest_entries(data: Any) -> tuple[list[dict[str, Any]], str]:
+    """Extract entries list and base_url from manifest data."""
+    base_url = data.get("base_url", "") if isinstance(data, dict) else ""
+    entries = data if isinstance(data, list) else data.get("files", data.get("documents", data.get("entries", [])))
+    return entries, base_url
+
+
 def _load_manifest_file(source_name: str, file_path: str) -> list[dict[str, Any]]:
     """Load manifest from a local JSON file. Returns empty on error."""
     cached = _manifest_cache.get(source_name)
@@ -63,6 +81,13 @@ def _load_manifest_file(source_name: str, file_path: str) -> list[dict[str, Any]
         return cached
 
     try:
+        file_size = Path(file_path).stat().st_size
+        if file_size > MAX_MANIFEST_SIZE:
+            logger.warning(
+                "Manifest file too large for '%s': %d bytes (max %d)",
+                source_name, file_size, MAX_MANIFEST_SIZE,
+            )
+            return []
         with open(file_path) as f:
             data = json.load(f)
     except FileNotFoundError:
@@ -72,15 +97,8 @@ def _load_manifest_file(source_name: str, file_path: str) -> list[dict[str, Any]
         logger.warning("Failed to load manifest '%s': %s", source_name, exc)
         return []
 
-    version = data.get("version", "1.0") if isinstance(data, dict) else "1.0"
-    if not version.startswith(f"{MANIFEST_VERSION_MAJOR}."):
-        logger.warning(
-            "Manifest '%s' has version %s (expected %s.x) — some fields may be unrecognized",
-            source_name, version, MANIFEST_VERSION_MAJOR,
-        )
-
-    base_url = data.get("base_url", "") if isinstance(data, dict) else ""
-    entries = data if isinstance(data, list) else data.get("files", data.get("documents", data.get("entries", [])))
+    _check_manifest_version(data, source_name)
+    entries, base_url = _extract_manifest_entries(data)
     entries = _postprocess_entries(entries, source_name, base_url)
 
     _manifest_cache.put(source_name, entries)
@@ -121,15 +139,8 @@ async def _fetch_manifest_url(
         if should_close:
             await client.aclose()
 
-    version = data.get("version", "1.0") if isinstance(data, dict) else "1.0"
-    if not version.startswith(f"{MANIFEST_VERSION_MAJOR}."):
-        logger.warning(
-            "Manifest '%s' has version %s (expected %s.x) — some fields may be unrecognized",
-            source_name, version, MANIFEST_VERSION_MAJOR,
-        )
-
-    base_url = data.get("base_url", "") if isinstance(data, dict) else ""
-    entries = data if isinstance(data, list) else data.get("files", data.get("documents", data.get("entries", [])))
+    _check_manifest_version(data, source_name)
+    entries, base_url = _extract_manifest_entries(data)
     entries = _postprocess_entries(entries, source_name, base_url)
 
     _manifest_cache.put(source_name, entries)
@@ -297,9 +308,6 @@ async def search_docs(
             results.extend(rtd_results)
         except Exception:
             pass
-    else:
-        # Deduplicate: if both manifest and RTD would return same URLs
-        pass
 
     return results[:SEARCH_DOCS_LIMIT]
 
