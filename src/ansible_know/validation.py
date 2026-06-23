@@ -4,8 +4,24 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 from ansible_know.errors import ValidationError
+
+__all__ = [
+    "sanitize_error",
+    "truncate_response",
+    "validate_doc_url",
+    "validate_fqcn",
+    "validate_install_path",
+    "validate_keyword",
+    "validate_namespace",
+    "validate_path_containment",
+    "validate_query",
+    "validate_skill_name",
+    "validate_tags",
+    "validate_version",
+]
 
 MAX_RESPONSE_SIZE = 500_000  # 500KB
 MAX_KEYWORD_LENGTH = 200
@@ -117,7 +133,11 @@ def validate_doc_url(url: str) -> None:
         raise ValidationError(
             f"URL must be non-empty and under {MAX_URL_LENGTH} characters."
         )
-    if not url.startswith("https://docs.ansible.com/"):
+    try:
+        parsed = urlparse(url)
+    except ValueError as exc:
+        raise ValidationError(f"Invalid URL format: {exc}") from exc
+    if parsed.scheme != "https" or parsed.netloc != "docs.ansible.com":
         raise ValidationError(
             "URL must start with https://docs.ansible.com/"
         )

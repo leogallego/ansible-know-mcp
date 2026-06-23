@@ -17,12 +17,14 @@ import httpx
 
 from ansible_know.cache import BoundedCache
 from ansible_know.config import RTD_PROJECT_SLUGS, SEARCH_DOCS_LIMIT, get_doc_sources
+from ansible_know.errors import ValidationError
 from ansible_know.types import ErrorResponse, FetchDocResult
-from ansible_know.validation import sanitize_error, truncate_response
+from ansible_know.validation import sanitize_error, truncate_response, validate_doc_url
 
 logger = logging.getLogger("ansible_know")
 
 __all__ = [
+    "clean_rtd_markdown",
     "clear_cache",
     "fetch_doc_content",
     "search_docs",
@@ -307,7 +309,7 @@ def clear_cache() -> None:
     _manifest_cache.clear()
 
 
-def _clean_rtd_markdown(raw: str) -> tuple[str, str]:
+def clean_rtd_markdown(raw: str) -> tuple[str, str]:
     """Clean RTD markdown output and extract title.
 
     Returns (cleaned_content, title). Title is empty string if no H1 found.
@@ -349,6 +351,11 @@ async def fetch_doc_content(
     Returns:
         FetchDocResult on success, ErrorResponse on failure.
     """
+    try:
+        validate_doc_url(url)
+    except ValidationError as exc:
+        return {"error": str(exc)}
+
     client = http_client
     should_close = False
     if client is None:
@@ -385,7 +392,7 @@ async def fetch_doc_content(
             f"Fetch without max_tokens or increase the limit.",
         }
 
-    content, title = _clean_rtd_markdown(resp.text)
+    content, title = clean_rtd_markdown(resp.text)
     content = truncate_response(content)
 
     return {

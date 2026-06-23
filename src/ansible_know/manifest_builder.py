@@ -22,9 +22,18 @@ from ansible_know.config import (
     GUIDE_TOPIC_PREFIXES,
     PROJECT_BASE_URLS,
 )
-from ansible_know.docs import _clean_rtd_markdown
+from ansible_know.docs import clean_rtd_markdown
 
 logger = logging.getLogger("ansible_know.builder")
+
+__all__ = [
+    "build_ansible_core_manifest",
+    "build_ecosystem_manifest",
+    "fetch_objects_inv",
+    "fetch_sitemap_urls",
+    "filter_guide_pages",
+    "write_manifest",
+]
 
 MANIFEST_VERSION = "2.0"
 
@@ -111,7 +120,7 @@ async def _fetch_page_metadata(
     except ValueError:
         tokens = 0
 
-    content, title = _clean_rtd_markdown(resp.text)
+    content, title = clean_rtd_markdown(resp.text)
     lines = content.count("\n") + 1 if content else 0
 
     dot = content.find(". ", content.find("\n"))
