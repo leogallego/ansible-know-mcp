@@ -452,7 +452,7 @@ class TestSkillTools:
         assert "ansible.builtin.copy" in text
         assert "Copy files" in text
 
-        skill_dir = tmp_path / "ansible.builtin.copy"
+        skill_dir = tmp_path / "ansible.builtin" / "copy"
         assert (skill_dir / "SKILL.md").exists()
         assert (skill_dir / "scripts").exists() or (skill_dir / "assets").exists()
 
