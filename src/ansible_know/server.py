@@ -1,6 +1,6 @@
 """Ansible Know MCP Server.
 
-Provides 13 tools, 5 resources, and 4 prompts for module and role discovery,
+Provides 14 tools, 5 resources, and 4 prompts for module and role discovery,
 documentation search, Galaxy collection discovery, and skill generation
 via the Model Context Protocol.
 """
@@ -29,6 +29,7 @@ from ansible_know.types import (
     CollectionSearchResult,
     EnsureCollectionResult,
     ErrorResponse,
+    FetchDocResult,
     GenerateCollectionSkillsResult,
     GetModuleDocResult,
     GetRoleDocResult,
@@ -40,6 +41,7 @@ from ansible_know.types import (
 from ansible_know.validation import (
     sanitize_error,
     truncate_response,
+    validate_doc_url,
     validate_fqcn,
     validate_install_path,
     validate_keyword,
@@ -425,6 +427,40 @@ async def search_docs(
         )
     except Exception as exc:
         logger.warning("search_docs failed: %s", exc)
+        return {"error": sanitize_error(str(exc))}
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+async def fetch_doc(
+    url: Annotated[str, "A docs.ansible.com URL to fetch as markdown"],
+    max_tokens: Annotated[
+        int | None,
+        "If set, return error instead of content when the page exceeds this token count. "
+        "Checked after fetching via the x-markdown-tokens response header.",
+    ] = None,
+    ctx: Context | None = None,
+) -> FetchDocResult | ErrorResponse:
+    """Fetch a page from docs.ansible.com as clean Markdown.
+
+    Returns documentation content ready for LLM consumption.
+    Use search_docs to discover relevant page URLs, or pass a known
+    docs.ansible.com URL directly. The url parameter must start with
+    https://docs.ansible.com/.
+    """
+    logger.info("fetch_doc url=%r max_tokens=%r", url, max_tokens)
+    try:
+        validate_doc_url(url)
+    except ValidationError as exc:
+        return {"error": str(exc)}
+
+    try:
+        from ansible_know import docs
+
+        return await docs.fetch_doc_content(
+            url=url, max_tokens=max_tokens, http_client=_get_http_client(ctx),
+        )
+    except Exception as exc:
+        logger.warning("fetch_doc failed: %s", exc)
         return {"error": sanitize_error(str(exc))}
 
 
