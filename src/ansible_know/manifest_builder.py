@@ -51,7 +51,7 @@ async def fetch_objects_inv(url: str) -> list[dict[str, str]]:
         resp = await client.get(url)
         resp.raise_for_status()
 
-    inv = soi.Inventory(plaintext=soi.readbytes(url))
+    inv = soi.Inventory(plaintext=soi.decompress(resp.content))
     entries = []
     for obj in inv.objects:
         if obj.domain == "std" and obj.role == "doc":
