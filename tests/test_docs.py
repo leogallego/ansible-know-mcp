@@ -112,7 +112,8 @@ class TestSearchDocsFileLoading:
 
     @pytest.mark.asyncio
     async def test_no_results(self, file_sources):
-        results = await search_docs("nonexistent_xyz_query")
+        with patch("ansible_know.docs._search_rtd_api", new_callable=AsyncMock, return_value=[]):
+            results = await search_docs("nonexistent_xyz_query")
         assert results == []
 
     @pytest.mark.asyncio
@@ -131,7 +132,8 @@ class TestSearchDocsFileLoading:
                 "description": "Missing",
             },
         }
-        with patch("ansible_know.docs.get_doc_sources", return_value=sources):
+        with patch("ansible_know.docs.get_doc_sources", return_value=sources), \
+             patch("ansible_know.docs._search_rtd_api", new_callable=AsyncMock, return_value=[]):
             results = await search_docs("anything")
         assert results == []
 
@@ -192,7 +194,8 @@ class TestManifestSizeLimit:
         large_file = tmp_path / "large.json"
         large_file.write_bytes(b"x" * (MAX_MANIFEST_SIZE + 1))
         sources = {"test": {"file": str(large_file), "description": "Test"}}
-        with patch("ansible_know.docs.get_doc_sources", return_value=sources):
+        with patch("ansible_know.docs.get_doc_sources", return_value=sources), \
+             patch("ansible_know.docs._search_rtd_api", new_callable=AsyncMock, return_value=[]):
             results = await search_docs("test")
         assert results == []
 
@@ -246,6 +249,14 @@ class TestCleanRtdMarkdown:
         assert title == "Title"
 
 
+def _mock_url(url_str: str = "https://docs.ansible.com/test"):
+    """Create a mock URL object with host attribute."""
+    m = MagicMock()
+    m.host = "docs.ansible.com"
+    m.__str__ = lambda self: url_str
+    return m
+
+
 class TestFetchDocContent:
     @pytest.mark.asyncio
     async def test_returns_cleaned_content(self):
@@ -256,8 +267,9 @@ class TestFetchDocContent:
             "x-markdown-tokens": "100",
         }
         mock_resp.text = "[Nav](/)\n\n# Test Page\n\nHello world."
+        mock_resp.content = mock_resp.text.encode()
         mock_resp.raise_for_status = MagicMock()
-        mock_resp.url = "https://docs.ansible.com/projects/ansible/latest/guide.html"
+        mock_resp.url = _mock_url("https://docs.ansible.com/projects/ansible/latest/guide.html")
 
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_resp)
@@ -273,6 +285,8 @@ class TestFetchDocContent:
 
     @pytest.mark.asyncio
     async def test_max_tokens_exceeded(self):
+        from ansible_know.errors import AnsibleKnowError
+
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.headers = {
@@ -280,47 +294,52 @@ class TestFetchDocContent:
             "x-markdown-tokens": "5000",
         }
         mock_resp.text = "# Big Page\n\nLots of content."
+        mock_resp.content = mock_resp.text.encode()
         mock_resp.raise_for_status = MagicMock()
+        mock_resp.url = _mock_url()
 
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_resp)
 
-        result = await fetch_doc_content(
-            "https://docs.ansible.com/projects/ansible/latest/big.html",
-            max_tokens=1000,
-            http_client=mock_client,
-        )
-        assert "error" in result
-        assert "5000" in result["error"]
+        with pytest.raises(AnsibleKnowError, match="5000"):
+            await fetch_doc_content(
+                "https://docs.ansible.com/projects/ansible/latest/big.html",
+                max_tokens=1000,
+                http_client=mock_client,
+            )
 
     @pytest.mark.asyncio
     async def test_non_markdown_content_type(self):
+        from ansible_know.errors import AnsibleKnowError
+
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.headers = {"content-type": "text/html"}
+        mock_resp.content = b"<html>not markdown</html>"
         mock_resp.raise_for_status = MagicMock()
+        mock_resp.url = _mock_url()
 
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(return_value=mock_resp)
 
-        result = await fetch_doc_content(
-            "https://docs.ansible.com/projects/ansible/latest/page.html",
-            http_client=mock_client,
-        )
-        assert "error" in result
+        with pytest.raises(AnsibleKnowError, match="text/markdown"):
+            await fetch_doc_content(
+                "https://docs.ansible.com/projects/ansible/latest/page.html",
+                http_client=mock_client,
+            )
 
     @pytest.mark.asyncio
-    async def test_http_error_returns_error(self):
+    async def test_http_error_raises(self):
         mock_client = AsyncMock()
         mock_client.get = AsyncMock(side_effect=httpx.HTTPStatusError(
             "404", request=MagicMock(), response=MagicMock(status_code=404),
         ))
 
-        result = await fetch_doc_content(
-            "https://docs.ansible.com/projects/ansible/latest/missing.html",
-            http_client=mock_client,
-        )
-        assert "error" in result
+        with pytest.raises(httpx.HTTPStatusError):
+            await fetch_doc_content(
+                "https://docs.ansible.com/projects/ansible/latest/missing.html",
+                http_client=mock_client,
+            )
 
 
 class TestSearchRtdApi:

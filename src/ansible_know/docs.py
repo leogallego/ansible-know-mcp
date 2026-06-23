@@ -17,10 +17,10 @@ import httpx
 
 from ansible_know.cache import BoundedCache
 from ansible_know.config import RTD_PROJECT_SLUGS, SEARCH_DOCS_LIMIT, get_doc_sources
-from ansible_know.errors import ValidationError
+from ansible_know.errors import AnsibleKnowError
 from ansible_know.text_utils import clean_rtd_markdown
-from ansible_know.types import ErrorResponse, FetchDocResult
-from ansible_know.validation import sanitize_error, truncate_response, validate_doc_url
+from ansible_know.types import FetchDocResult, SearchDocsEntry
+from ansible_know.validation import truncate_response
 
 logger = logging.getLogger("ansible_know")
 
@@ -163,7 +163,7 @@ async def _search_rtd_api(
     source: str | None = None,
     limit: int = 10,
     http_client: httpx.AsyncClient | None = None,
-) -> list[dict[str, Any]]:
+) -> list[SearchDocsEntry]:
     """Search RTD API as fallback when manifest search returns empty."""
     if source and source in RTD_PROJECT_SLUGS:
         slugs_to_search = [(source, RTD_PROJECT_SLUGS[source])]
@@ -178,7 +178,7 @@ async def _search_rtd_api(
         client = httpx.AsyncClient(timeout=10.0)
         should_close = True
 
-    async def _search_one(source_name: str, slug: str) -> list[dict[str, Any]]:
+    async def _search_one(source_name: str, slug: str) -> list[SearchDocsEntry]:
         params = {
             "q": f"project:{slug}/latest {query}",
             "page_size": min(limit, 20),
@@ -187,10 +187,11 @@ async def _search_rtd_api(
             resp = await client.get(RTD_SEARCH_URL, params=params, timeout=5.0)
             resp.raise_for_status()
             data = resp.json()
-        except (httpx.HTTPError, ValueError):
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.debug("RTD search for %s failed: %s", slug, exc)
             return []
 
-        hits: list[dict[str, Any]] = []
+        hits: list[SearchDocsEntry] = []
         for hit in data.get("results", []):
             blocks = hit.get("blocks", [])
             summary = ""
@@ -216,10 +217,12 @@ async def _search_rtd_api(
             *[_search_one(name, slug) for name, slug in slugs_to_search],
             return_exceptions=True,
         )
-        results: list[dict[str, Any]] = []
+        results: list[SearchDocsEntry] = []
         for hits in all_hits:
             if isinstance(hits, list):
                 results.extend(hits)
+            elif isinstance(hits, BaseException):
+                logger.debug("RTD search failed for one project: %s", hits)
     finally:
         if should_close:
             await client.aclose()
@@ -234,7 +237,7 @@ async def search_docs(
     audience: str | None = None,
     core_only: bool = False,
     http_client: httpx.AsyncClient | None = None,
-) -> list[dict[str, Any]]:
+) -> list[SearchDocsEntry]:
     """Search documentation manifests for conceptual guides.
 
     Args:
@@ -250,7 +253,7 @@ async def search_docs(
     """
     sources = get_doc_sources()
     query_lower = query.lower()
-    results: list[dict[str, Any]] = []
+    results: list[SearchDocsEntry] = []
 
     for src_name, src_config in sources.items():
         if source and src_name != source:
@@ -283,7 +286,7 @@ async def search_docs(
             searchable = f"{title} {summary} {topics_str}"
 
             if query_lower in searchable:
-                result = {
+                results.append({
                     "title": entry.get("title", ""),
                     "summary": entry.get("summary", ""),
                     "topic": entry_topics,
@@ -291,21 +294,19 @@ async def search_docs(
                     "lines": entry.get("lines", 0),
                     "source": src_name,
                     "url": entry.get("url", ""),
-                }
-                results.append(result)
+                })
 
             if len(results) >= SEARCH_DOCS_LIMIT:
                 break
 
-    # RTD Search API fallback when manifest search returns empty
     if not results:
         try:
             rtd_results = await _search_rtd_api(
                 query, source=source, http_client=http_client,
             )
             results.extend(rtd_results)
-        except Exception:
-            pass
+        except (httpx.HTTPError, ValueError, OSError) as exc:
+            logger.debug("RTD fallback search failed: %s", exc)
 
     return results[:SEARCH_DOCS_LIMIT]
 
@@ -315,26 +316,27 @@ def clear_cache() -> None:
     _manifest_cache.clear()
 
 
+MAX_DOC_FETCH_SIZE = 2_000_000  # 2MB
+
 async def fetch_doc_content(
     url: str,
     max_tokens: int | None = None,
     http_client: httpx.AsyncClient | None = None,
-) -> FetchDocResult | ErrorResponse:
+) -> FetchDocResult:
     """Fetch a docs.ansible.com page as clean markdown.
 
     Args:
-        url: Full docs.ansible.com URL.
-        max_tokens: If set, return error when page exceeds this token count.
+        url: Full docs.ansible.com URL (caller must validate first).
+        max_tokens: If set, raise when page exceeds this token count.
         http_client: Optional shared httpx client.
 
     Returns:
-        FetchDocResult on success, ErrorResponse on failure.
-    """
-    try:
-        validate_doc_url(url)
-    except ValidationError as exc:
-        return {"error": str(exc)}
+        FetchDocResult on success.
 
+    Raises:
+        httpx.HTTPError: On HTTP request failure.
+        AnsibleKnowError: On content-type mismatch, size/token limit, or redirect to unexpected domain.
+    """
     client = http_client
     should_close = False
     if client is None:
@@ -349,18 +351,25 @@ async def fetch_doc_content(
             timeout=30.0,
         )
         resp.raise_for_status()
+
+        if resp.url.host != "docs.ansible.com":
+            raise AnsibleKnowError(f"Redirect to unexpected domain: {resp.url.host}")
+
+        if len(resp.content) > MAX_DOC_FETCH_SIZE:
+            raise AnsibleKnowError(
+                f"Response too large: {len(resp.content)} bytes (max {MAX_DOC_FETCH_SIZE})"
+            )
+
         resp_text = resp.text
         resp_headers = resp.headers
         resp_url = str(resp.url)
-    except httpx.HTTPError as exc:
-        return {"error": sanitize_error(f"Failed to fetch {url}: {exc}")}
     finally:
         if should_close:
             await client.aclose()
 
     content_type = resp_headers.get("content-type", "")
     if "text/markdown" not in content_type:
-        return {"error": sanitize_error(f"Expected text/markdown but got {content_type!r} for {url}")}
+        raise AnsibleKnowError(f"Expected text/markdown but got {content_type!r} for {url}")
 
     tokens_str = resp_headers.get("x-markdown-tokens", "0")
     try:
@@ -369,10 +378,10 @@ async def fetch_doc_content(
         tokens = 0
 
     if max_tokens is not None and tokens > max_tokens:
-        return {
-            "error": f"Page has {tokens} tokens (max_tokens={max_tokens}). "
-            f"Fetch without max_tokens or increase the limit.",
-        }
+        raise AnsibleKnowError(
+            f"Page has {tokens} tokens (max_tokens={max_tokens}). "
+            f"Fetch without max_tokens or increase the limit."
+        )
 
     content, title = clean_rtd_markdown(resp_text)
     content = truncate_response(content)

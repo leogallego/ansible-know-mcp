@@ -22,7 +22,7 @@ from fastmcp.server.lifespan import lifespan
 from mcp.types import ToolAnnotations
 
 from ansible_know.async_utils import run_in_executor
-from ansible_know.errors import AnsibleDocError, ValidationError, collection_hint, maybe_add_hint
+from ansible_know.errors import AnsibleDocError, AnsibleKnowError, ValidationError, collection_hint, maybe_add_hint
 from ansible_know.state import LifespanContext, ServerState, SessionManager, SharedState
 from ansible_know.types import (
     ClearCacheResult,
@@ -459,6 +459,8 @@ async def fetch_doc(
         return await docs.fetch_doc_content(
             url=url, max_tokens=max_tokens, http_client=_get_http_client(ctx),
         )
+    except (AnsibleKnowError, ValidationError) as exc:
+        return {"error": str(exc)}
     except Exception as exc:
         logger.warning("fetch_doc failed: %s", exc)
         return {"error": sanitize_error(str(exc))}
