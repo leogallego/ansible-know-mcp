@@ -1,40 +1,49 @@
 """Tests for ansible_know.docs."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
-from ansible_know.docs import MAX_MANIFEST_SIZE, clear_cache, search_docs
+from ansible_know.docs import clear_cache, search_docs
 
-MOCK_MANIFEST = [
-    {
-        "title": "Ansible Playbook Guide",
-        "summary": "How to write and run Ansible playbooks",
-        "topics": ["playbooks", "getting-started"],
-        "audience": ["beginner", "developer"],
-        "core": True,
-        "lines": 500,
-        "url": "https://example.com/docs/playbook-guide.md",
-    },
-    {
-        "title": "Variable Precedence",
-        "summary": "Understanding Ansible variable precedence rules",
-        "topics": ["variables", "reference"],
-        "audience": ["advanced"],
-        "core": True,
-        "lines": 200,
-        "url": "https://example.com/docs/variable-precedence.md",
-    },
-    {
-        "title": "Galaxy User Guide",
-        "summary": "How to use Ansible Galaxy to find and install roles",
-        "topics": ["galaxy", "roles"],
-        "audience": ["beginner"],
-        "core": False,
-        "lines": 300,
-        "url": "https://example.com/docs/galaxy-guide.md",
-    },
-]
+MOCK_MANIFEST = {
+    "version": "2.0",
+    "generated": "2026-01-01T00:00:00Z",
+    "base_url": "https://docs.example.com",
+    "files": [
+        {
+            "path": "guide/intro.html",
+            "topic": "guide",
+            "title": "Introduction Guide",
+            "summary": "How to get started with Ansible playbooks",
+            "audience": "author",
+            "core": True,
+            "lines": 500,
+        },
+        {
+            "path": "reference/variables.html",
+            "topic": "reference",
+            "title": "Variable Precedence",
+            "summary": "Understanding Ansible variable precedence rules",
+            "audience": "advanced",
+            "core": True,
+            "lines": 200,
+        },
+        {
+            "path": "guide/galaxy.html",
+            "topic": "guide",
+            "title": "Galaxy User Guide",
+            "summary": "How to use Ansible Galaxy to find and install roles",
+            "audience": "beginner",
+            "core": False,
+            "lines": 300,
+        },
+    ],
+}
 
 
 @pytest.fixture(autouse=True)
@@ -44,125 +53,94 @@ def _clear_manifest_cache():
     clear_cache()
 
 
-def _mock_httpx_response():
-    mock_resp = MagicMock()
-    mock_resp.json.return_value = MOCK_MANIFEST
-    mock_resp.raise_for_status.return_value = None
-    return mock_resp
+@pytest.fixture
+def manifest_file(tmp_path):
+    """Write MOCK_MANIFEST to a temp file and return its path."""
+    p = tmp_path / "test_manifest.json"
+    p.write_text(json.dumps(MOCK_MANIFEST))
+    return str(p)
 
 
 @pytest.fixture
-def mock_httpx():
-    mock_client = AsyncMock()
-    mock_client.get.return_value = _mock_httpx_response()
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=False)
-    with patch("ansible_know.docs.httpx.AsyncClient", return_value=mock_client):
-        yield mock_client
+def file_sources(manifest_file):
+    """Patch get_doc_sources to return a file-based source."""
+    sources = {
+        "test-source": {
+            "file": manifest_file,
+            "description": "Test source",
+        },
+    }
+    with patch("ansible_know.docs.get_doc_sources", return_value=sources):
+        yield
 
 
-class TestSearchDocs:
+class TestSearchDocsFileLoading:
     @pytest.mark.asyncio
-    async def test_search_by_keyword(self, mock_httpx):
+    async def test_search_by_keyword(self, file_sources):
         results = await search_docs("playbook")
         assert len(results) == 1
-        assert results[0]["title"] == "Ansible Playbook Guide"
-        assert results[0]["source"] == "ansible-core"
+        assert results[0]["title"] == "Introduction Guide"
+        assert results[0]["source"] == "test-source"
 
     @pytest.mark.asyncio
-    async def test_search_returns_multiple(self, mock_httpx):
+    async def test_search_returns_url(self, file_sources):
+        results = await search_docs("playbook")
+        assert results[0]["url"] == "https://docs.example.com/guide/intro.html"
+
+    @pytest.mark.asyncio
+    async def test_search_returns_multiple(self, file_sources):
         results = await search_docs("ansible")
         assert len(results) >= 2
 
     @pytest.mark.asyncio
-    async def test_filter_by_topic(self, mock_httpx):
-        results = await search_docs("", topic="variables")
+    async def test_filter_by_topic(self, file_sources):
+        results = await search_docs("", topic="reference")
         assert len(results) == 1
         assert results[0]["title"] == "Variable Precedence"
 
     @pytest.mark.asyncio
-    async def test_filter_by_audience(self, mock_httpx):
+    async def test_filter_by_audience(self, file_sources):
         results = await search_docs("", audience="advanced")
         assert len(results) == 1
-        assert results[0]["title"] == "Variable Precedence"
 
     @pytest.mark.asyncio
-    async def test_core_only(self, mock_httpx):
+    async def test_core_only(self, file_sources):
         results = await search_docs("", core_only=True)
-        for r in results:
-            assert r["title"] != "Galaxy User Guide"
+        titles = [r["title"] for r in results]
+        assert "Galaxy User Guide" not in titles
 
     @pytest.mark.asyncio
-    async def test_result_fields(self, mock_httpx):
-        results = await search_docs("playbook")
-        r = results[0]
-        assert "title" in r
-        assert "summary" in r
-        assert "topic" in r
-        assert "audience" in r
-        assert "lines" in r
-        assert "source" in r
-        assert "url" in r
-
-    @pytest.mark.asyncio
-    async def test_caches_manifest(self, mock_httpx):
-        await search_docs("playbook")
-        await search_docs("variable")
-        assert mock_httpx.get.call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_no_results(self, mock_httpx):
+    async def test_no_results(self, file_sources):
         results = await search_docs("nonexistent_xyz_query")
         assert results == []
 
-
-class TestManifestSizeLimit:
     @pytest.mark.asyncio
-    async def test_rejects_large_content_length(self):
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status.return_value = None
-        mock_resp.headers = {"content-length": str(MAX_MANIFEST_SIZE + 1)}
-        mock_resp.content = b"{}"
+    async def test_caches_after_first_load(self, file_sources, manifest_file):
+        await search_docs("playbook")
+        # Delete the file — cached version should still work
+        Path(manifest_file).unlink()
+        results = await search_docs("variable")
+        assert len(results) >= 1
 
-        mock_client = AsyncMock()
-        mock_client.get.return_value = mock_resp
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("ansible_know.docs.httpx.AsyncClient", return_value=mock_client):
-            results = await search_docs("test")
+    @pytest.mark.asyncio
+    async def test_missing_file_returns_empty(self):
+        sources = {
+            "missing": {
+                "file": "/nonexistent/path/manifest.json",
+                "description": "Missing",
+            },
+        }
+        with patch("ansible_know.docs.get_doc_sources", return_value=sources):
+            results = await search_docs("anything")
         assert results == []
 
     @pytest.mark.asyncio
-    async def test_rejects_large_body(self):
-        large_body = b"x" * (MAX_MANIFEST_SIZE + 1)
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status.return_value = None
-        mock_resp.headers = {}
-        mock_resp.content = large_body
-
-        mock_client = AsyncMock()
-        mock_client.get.return_value = mock_resp
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("ansible_know.docs.httpx.AsyncClient", return_value=mock_client):
-            results = await search_docs("test")
-        assert results == []
-
-    @pytest.mark.asyncio
-    async def test_malformed_content_length_falls_through(self):
-        mock_resp = MagicMock()
-        mock_resp.raise_for_status.return_value = None
-        mock_resp.headers = {"content-length": "not-a-number"}
-        mock_resp.content = b"[]"
-        mock_resp.json.return_value = []
-
-        mock_client = AsyncMock()
-        mock_client.get.return_value = mock_resp
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("ansible_know.docs.httpx.AsyncClient", return_value=mock_client):
-            results = await search_docs("test")
-        assert results == []
+    async def test_manifest_version_warning(self, tmp_path, caplog):
+        manifest = {**MOCK_MANIFEST, "version": "3.0"}
+        p = tmp_path / "v3.json"
+        p.write_text(json.dumps(manifest))
+        sources = {"future": {"file": str(p), "description": "Future"}}
+        with patch("ansible_know.docs.get_doc_sources", return_value=sources):
+            results = await search_docs("playbook")
+        assert len(results) >= 1
+        assert any("version" in r.message.lower() for r in caplog.records)

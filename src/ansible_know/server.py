@@ -403,6 +403,7 @@ async def search_docs(
     topic: Annotated[str | None, "Filter by topic tag"] = None,
     audience: Annotated[str | None, "Filter by audience tag"] = None,
     core_only: Annotated[bool, "If true, only return entries marked as core"] = False,
+    ctx: Context | None = None,
 ) -> list[SearchDocsEntry] | ErrorResponse:
     """Search documentation manifests for conceptual guides.
 
@@ -419,7 +420,8 @@ async def search_docs(
         from ansible_know import docs
 
         return await docs.search_docs(
-            query=query, source=source, topic=topic, audience=audience, core_only=core_only,
+            query=query, source=source, topic=topic, audience=audience,
+            core_only=core_only, http_client=_get_http_client(ctx),
         )
     except Exception as exc:
         logger.warning("search_docs failed: %s", exc)
