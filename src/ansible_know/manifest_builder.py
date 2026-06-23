@@ -14,7 +14,6 @@ from typing import Any
 from urllib.parse import urlparse
 
 import httpx
-import sphobjinv as soi
 
 from ansible_know.config import (
     AUDIENCE_MAP,
@@ -22,7 +21,7 @@ from ansible_know.config import (
     GUIDE_TOPIC_PREFIXES,
     PROJECT_BASE_URLS,
 )
-from ansible_know.docs import clean_rtd_markdown
+from ansible_know.text_utils import clean_rtd_markdown
 
 logger = logging.getLogger("ansible_know.builder")
 
@@ -56,6 +55,8 @@ def filter_guide_pages(
 
 async def fetch_objects_inv(url: str) -> list[dict[str, str]]:
     """Download and parse objects.inv, returning std:doc entries."""
+    import sphobjinv as soi
+
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.get(url)
         resp.raise_for_status()

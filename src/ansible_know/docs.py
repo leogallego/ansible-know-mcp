@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import re
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +18,7 @@ import httpx
 from ansible_know.cache import BoundedCache
 from ansible_know.config import RTD_PROJECT_SLUGS, SEARCH_DOCS_LIMIT, get_doc_sources
 from ansible_know.errors import ValidationError
+from ansible_know.text_utils import clean_rtd_markdown
 from ansible_know.types import ErrorResponse, FetchDocResult
 from ansible_know.validation import sanitize_error, truncate_response, validate_doc_url
 
@@ -41,9 +41,6 @@ _manifest_cache: BoundedCache[str, list[dict[str, Any]]] = BoundedCache(
     max_size=50, ttl=CACHE_TTL_SECONDS,
 )
 
-_DOCTYPE_RE = re.compile(r"<!DOCTYPE\s+html>", re.IGNORECASE)
-_H1_RE = re.compile(r"^# (.+?)(?:\s*\{#[\w-]+\})?\s*$", re.MULTILINE)
-_EXCESS_BLANKS_RE = re.compile(r"\n{3,}")
 
 
 def _postprocess_entries(
@@ -88,7 +85,7 @@ def _load_manifest_file(source_name: str, file_path: str) -> list[dict[str, Any]
                 source_name, file_size, MAX_MANIFEST_SIZE,
             )
             return []
-        with open(file_path) as f:
+        with open(file_path, encoding="utf-8") as f:
             data = json.load(f)
     except FileNotFoundError:
         logger.warning("Manifest file not found for '%s': %s", source_name, file_path)
@@ -168,9 +165,10 @@ async def _search_rtd_api(
     http_client: httpx.AsyncClient | None = None,
 ) -> list[dict[str, Any]]:
     """Search RTD API as fallback when manifest search returns empty."""
-    slugs_to_search: list[tuple[str, str]] = []
     if source and source in RTD_PROJECT_SLUGS:
         slugs_to_search = [(source, RTD_PROJECT_SLUGS[source])]
+    elif source:
+        return []
     else:
         slugs_to_search = list(RTD_PROJECT_SLUGS.items())
 
@@ -317,33 +315,6 @@ def clear_cache() -> None:
     _manifest_cache.clear()
 
 
-def clean_rtd_markdown(raw: str) -> tuple[str, str]:
-    """Clean RTD markdown output and extract title.
-
-    Returns (cleaned_content, title). Title is empty string if no H1 found.
-    """
-    if not raw:
-        return "", ""
-
-    lines = raw.split("\n")
-    for i, line in enumerate(lines[:5]):
-        if _DOCTYPE_RE.search(line):
-            lines[i] = ""
-            break
-
-    text = "\n".join(lines)
-
-    match = _H1_RE.search(text)
-    if match:
-        text = text[match.start():]
-        title = match.group(1).strip()
-    else:
-        title = ""
-
-    text = _EXCESS_BLANKS_RE.sub("\n\n", text)
-    return text.strip(), title
-
-
 async def fetch_doc_content(
     url: str,
     max_tokens: int | None = None,
@@ -378,17 +349,20 @@ async def fetch_doc_content(
             timeout=30.0,
         )
         resp.raise_for_status()
+        resp_text = resp.text
+        resp_headers = resp.headers
+        resp_url = str(resp.url)
     except httpx.HTTPError as exc:
         return {"error": sanitize_error(f"Failed to fetch {url}: {exc}")}
     finally:
         if should_close:
             await client.aclose()
 
-    content_type = resp.headers.get("content-type", "")
+    content_type = resp_headers.get("content-type", "")
     if "text/markdown" not in content_type:
         return {"error": sanitize_error(f"Expected text/markdown but got {content_type!r} for {url}")}
 
-    tokens_str = resp.headers.get("x-markdown-tokens", "0")
+    tokens_str = resp_headers.get("x-markdown-tokens", "0")
     try:
         tokens = int(tokens_str)
     except ValueError:
@@ -400,12 +374,12 @@ async def fetch_doc_content(
             f"Fetch without max_tokens or increase the limit.",
         }
 
-    content, title = clean_rtd_markdown(resp.text)
+    content, title = clean_rtd_markdown(resp_text)
     content = truncate_response(content)
 
     return {
         "content": content,
         "title": title,
         "tokens": tokens,
-        "source_url": str(resp.url),
+        "source_url": resp_url,
     }
