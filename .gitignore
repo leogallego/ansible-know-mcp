@@ -13,3 +13,7 @@ build/
 skills/*
 !skills/pr-architecture-review/
 docs/research/
+demo/*.cast
+demo/*.gif
+demo/*.mp4
+demo/*.webm
