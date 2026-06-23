@@ -9,7 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from ansible_know.docs import _search_rtd_api, clean_rtd_markdown, clear_cache, fetch_doc_content, search_docs
+from ansible_know.docs import _search_rtd_api, clear_cache, fetch_doc_content, search_docs
+from ansible_know.text_utils import clean_rtd_markdown
 
 MOCK_MANIFEST = {
     "version": "2.0",
@@ -449,3 +450,23 @@ class TestSearchDocsFallback:
 
         assert len(results) >= 1
         assert results[0]["source"].startswith("rtd-search:")
+
+    @pytest.mark.asyncio
+    async def test_no_rtd_fallback_when_filters_cause_empty(self, file_sources):
+        """RTD fallback must not fire when manifest had entries but filters narrowed to zero."""
+        with patch("ansible_know.docs._search_rtd_api", new_callable=AsyncMock) as mock_rtd:
+            mock_rtd.return_value = [{"title": "RTD hit", "summary": "", "topic": [],
+                                      "audience": [], "lines": 0, "source": "rtd-search:x", "url": ""}]
+            results = await search_docs("", core_only=True, topic="nonexistent_topic")
+        mock_rtd.assert_not_called()
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_no_rtd_fallback_when_topic_filter_excludes_all(self, file_sources):
+        """Topic filter narrows to zero — RTD must not bypass the filter."""
+        with patch("ansible_know.docs._search_rtd_api", new_callable=AsyncMock) as mock_rtd:
+            mock_rtd.return_value = [{"title": "RTD hit", "summary": "", "topic": [],
+                                      "audience": [], "lines": 0, "source": "rtd-search:x", "url": ""}]
+            results = await search_docs("ansible", topic="nonexistent_topic_xyz")
+        mock_rtd.assert_not_called()
+        assert results == []

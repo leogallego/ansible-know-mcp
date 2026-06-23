@@ -88,8 +88,10 @@ async def fetch_sitemap_urls(
     ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
     urls = []
     for loc in root.findall(".//sm:loc", ns):
-        if loc.text and project_prefix in loc.text:
-            urls.append(loc.text)
+        if loc.text:
+            loc_path = urlparse(loc.text).path
+            if loc_path.startswith(project_prefix):
+                urls.append(loc.text)
     return urls
 
 
@@ -124,14 +126,16 @@ async def _fetch_page_metadata(
     content, title = clean_rtd_markdown(resp.text)
     lines = content.count("\n") + 1 if content else 0
 
-    dot = content.find(". ", content.find("\n"))
     summary = ""
-    if dot > 0:
-        first_para_start = content.find("\n\n")
-        if first_para_start > 0:
-            first_para = content[first_para_start:].strip()
-            dot2 = first_para.find(". ")
-            summary = (first_para[: dot2 + 1] if dot2 > 0 else first_para[:200]).strip()
+    first_para_start = content.find("\n\n")
+    if first_para_start >= 0:
+        first_para = content[first_para_start:].strip()
+    else:
+        first_newline = content.find("\n")
+        first_para = content[first_newline + 1:].strip() if first_newline >= 0 else content.strip()
+    if first_para:
+        dot = first_para.find(". ")
+        summary = (first_para[: dot + 1] if dot > 0 else first_para[:200]).strip()
 
     return {"title": title, "summary": summary, "lines": lines, "tokens": tokens}
 
@@ -197,7 +201,7 @@ async def build_ecosystem_manifest(
         for url in all_urls:
             parsed_url = urlparse(url)
             path = parsed_url.path
-            if prefix:
+            if prefix and path.startswith(prefix):
                 path = path[len(prefix):]
             path = path.lstrip("/")
 

@@ -25,7 +25,6 @@ from ansible_know.validation import truncate_response
 logger = logging.getLogger("ansible_know")
 
 __all__ = [
-    "clean_rtd_markdown",
     "clear_cache",
     "fetch_doc_content",
     "search_docs",
@@ -254,6 +253,8 @@ async def search_docs(
     sources = get_doc_sources()
     query_lower = query.lower()
     results: list[SearchDocsEntry] = []
+    has_filters = bool(topic or audience or core_only)
+    manifest_had_entries = False
 
     for src_name, src_config in sources.items():
         if source and src_name != source:
@@ -263,6 +264,9 @@ async def search_docs(
             entries = await _get_manifest(src_name, src_config, http_client)
         except (httpx.HTTPError, ValueError):
             continue
+
+        if entries:
+            manifest_had_entries = True
 
         for entry in entries:
             if core_only and not entry.get("core", False):
@@ -299,7 +303,7 @@ async def search_docs(
             if len(results) >= SEARCH_DOCS_LIMIT:
                 break
 
-    if not results:
+    if not results and not (has_filters and manifest_had_entries):
         try:
             rtd_results = await _search_rtd_api(
                 query, source=source, http_client=http_client,

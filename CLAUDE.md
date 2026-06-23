@@ -27,8 +27,11 @@ src/ansible_know/
 ├── config.py              # paths, constants, doc source registry
 ├── collection_manifest.py # collection-level MANIFEST.json generation/caching
 ├── docs.py                # multi-manifest documentation client (httpx)
+├── text_utils.py          # RTD markdown cleaning (Foundation)
 ├── galaxy.py              # Galaxy v3 API client — search, docs-blob, format conversion
 ├── tagging.py             # Tag derivation from module metadata (Foundation)
+├── manifest_builder.py    # Build-time: generate doc manifests from objects.inv/sitemap
+├── data/                  # Shipped JSON doc manifests (ansible-core, lint, navigator, etc.)
 └── templates/             # Jinja2 templates for skill packages
 ```
 
@@ -84,10 +87,11 @@ src/ansible_know/
 - Tests mock `_run_ansible_doc` — no real `ansible-doc` needed.
 - `readme_parser.py` parses Galaxy role README HTML using stdlib `html.parser`. Handles four variable documentation patterns: tables, heading-per-variable, code-block-per-variable, and graceful degradation.
 - `get_role_doc` uses three-tier resolution: local ansible-doc → Galaxy readme_html → graceful degradation.
-- `_clean_rtd_markdown` in `docs.py` strips breadcrumbs/artifacts from RTD markdown responses.
-- `fetch_doc` uses Cloudflare's `Accept: text/markdown` content negotiation (per-request `follow_redirects=True`).
-- RTD Search API (`_search_rtd_api`) serves as fallback when manifest search returns empty.
+- `text_utils.clean_rtd_markdown` (Foundation) strips breadcrumbs/artifacts from RTD markdown responses.
+- `fetch_doc_content` in `docs.py` uses Cloudflare's `Accept: text/markdown` content negotiation, raises `AnsibleKnowError` on content-type mismatch, size/token limits, or redirect to unexpected domain.
+- RTD Search API (`_search_rtd_api`) serves as fallback when manifest search returns empty (only when no filters caused the empty result).
 - Doc manifests shipped as JSON in `src/ansible_know/data/`, loaded from disk (no HTTP at startup).
+- `manifest_builder.py` generates manifests at build time from objects.inv and sitemap sources (requires `[build]` optional deps: `sphobjinv`, `defusedxml`).
 
 ## Testing
 
