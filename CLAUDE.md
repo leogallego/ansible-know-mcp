@@ -18,7 +18,7 @@ Runtime requirement: `ansible-core` must be installed in the same environment (f
 
 ```
 src/ansible_know/
-├── server.py              # FastMCP server: 13 tools, 4 resources, 4 prompts (entrypoint)
+├── server.py              # FastMCP server: 14 tools, 5 resources, 4 prompts (entrypoint)
 ├── parser.py              # ansible-doc wrapper — module discovery and metadata extraction
 ├── resolution.py          # local-then-Galaxy doc resolution + multi-server search
 ├── readme_parser.py       # Parse Galaxy role README HTML into structured data
@@ -40,6 +40,7 @@ src/ansible_know/
 | `get_module_doc` | read-only | Get full module documentation |
 | `get_role_doc` | read-only | Get full role documentation (local or Galaxy README) |
 | `search_docs` | read-only | Search conceptual doc manifests |
+| `fetch_doc` | read-only | Fetch a docs.ansible.com page as clean Markdown |
 | `search_collections` | read-only | Search Galaxy for collections by keyword |
 | `get_collection_manifest` | read-only | Get collection-level module and role summary |
 | `ensure_collection` | idempotent write | Install a collection for this session |
@@ -83,6 +84,10 @@ src/ansible_know/
 - Tests mock `_run_ansible_doc` — no real `ansible-doc` needed.
 - `readme_parser.py` parses Galaxy role README HTML using stdlib `html.parser`. Handles four variable documentation patterns: tables, heading-per-variable, code-block-per-variable, and graceful degradation.
 - `get_role_doc` uses three-tier resolution: local ansible-doc → Galaxy readme_html → graceful degradation.
+- `_clean_rtd_markdown` in `docs.py` strips breadcrumbs/artifacts from RTD markdown responses.
+- `fetch_doc` uses Cloudflare's `Accept: text/markdown` content negotiation (per-request `follow_redirects=True`).
+- RTD Search API (`_search_rtd_api`) serves as fallback when manifest search returns empty.
+- Doc manifests shipped as JSON in `src/ansible_know/data/`, loaded from disk (no HTTP at startup).
 
 ## Testing
 

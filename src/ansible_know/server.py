@@ -150,7 +150,7 @@ mcp = FastMCP(
         "(2) ensure_collection to install one for this session, "
         "(3) search_modules/get_collection_manifest to find modules and roles, "
         "(4) get_module_doc or get_role_doc for structured docs, "
-        "(5) search_docs for conceptual guides, "
+        "(5) search_docs for conceptual guides, then fetch_doc to retrieve full content, "
         "(6) generate_skill or generate_role_skill to create skill packages. "
         "Resources: server://version for version and upgrade status, "
         "galaxy://installed for session collections, "
@@ -1164,10 +1164,17 @@ def resource_doc_sources() -> str:
     from ansible_know.config import get_doc_sources
 
     sources = get_doc_sources()
-    return json.dumps(
-        {name: cfg["description"] for name, cfg in sources.items()},
-        indent=2,
-    )
+    result = {}
+    for name, cfg in sources.items():
+        entry: dict[str, str] = {"description": cfg.get("description", "")}
+        if "file" in cfg:
+            entry["type"] = "file"
+            entry["path"] = cfg["file"]
+        elif "url" in cfg:
+            entry["type"] = "url"
+            entry["url"] = cfg["url"]
+        result[name] = entry
+    return json.dumps(result, indent=2)
 
 
 # --- Prompts (reusable templates) ---
