@@ -141,3 +141,7 @@ def validate_doc_url(url: str) -> None:
         raise ValidationError(
             "URL must start with https://docs.ansible.com/"
         )
+    if not parsed.path or parsed.path == "/":
+        raise ValidationError(
+            "URL must include a document path after https://docs.ansible.com/"
+        )

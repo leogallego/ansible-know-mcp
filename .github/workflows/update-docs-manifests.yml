@@ -20,7 +20,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev,build]"
 
       - name: Build manifests
         run: python scripts/build_docs_manifests.py
@@ -28,7 +28,7 @@ jobs:
       - name: Check for changes
         id: changes
         run: |
-          if git diff --quiet src/ansible_know/data/; then
+          if git diff -I '"generated":' --quiet src/ansible_know/data/; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
