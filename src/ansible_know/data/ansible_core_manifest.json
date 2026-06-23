@@ -1,0 +1,107 @@
+{
+  "version": "2.0",
+  "generated": "2026-06-22T00:00:00Z",
+  "base_url": "https://docs.ansible.com/projects/ansible/latest",
+  "files": [
+    {
+      "path": "playbook_guide/playbooks_intro.html",
+      "topic": "playbook_guide",
+      "title": "Ansible playbooks",
+      "audience": "author",
+      "core": true,
+      "summary": "Playbooks are automation blueprints, in a simple, repeatable, re-usable, and sharable format.",
+      "lines": 150,
+      "tokens": 2855
+    },
+    {
+      "path": "playbook_guide/playbooks_variables.html",
+      "topic": "playbook_guide",
+      "title": "Using Variables",
+      "audience": "author",
+      "core": true,
+      "summary": "Ansible uses variables to manage differences between systems.",
+      "lines": 300,
+      "tokens": 5200
+    },
+    {
+      "path": "playbook_guide/playbooks_loops.html",
+      "topic": "playbook_guide",
+      "title": "Loops",
+      "audience": "author",
+      "core": true,
+      "summary": "Sometimes you want to repeat a task multiple times with different values.",
+      "lines": 200,
+      "tokens": 3100
+    },
+    {
+      "path": "inventory_guide/intro_inventory.html",
+      "topic": "inventory_guide",
+      "title": "How to build your inventory",
+      "audience": "author",
+      "core": true,
+      "summary": "Ansible automates tasks on managed nodes or hosts in your infrastructure.",
+      "lines": 400,
+      "tokens": 7000
+    },
+    {
+      "path": "vault_guide/vault_encrypting_content.html",
+      "topic": "vault_guide",
+      "title": "Encrypting content with Ansible Vault",
+      "audience": "author",
+      "core": true,
+      "summary": "Ansible Vault encrypts variables and files so you can protect sensitive content.",
+      "lines": 180,
+      "tokens": 3200
+    },
+    {
+      "path": "reference_appendices/config.html",
+      "topic": "reference_appendices",
+      "title": "Ansible Configuration Settings",
+      "audience": "both",
+      "core": true,
+      "summary": "Ansible supports several sources for configuring its behavior.",
+      "lines": 800,
+      "tokens": 15000
+    },
+    {
+      "path": "dev_guide/developing_collections.html",
+      "topic": "dev_guide",
+      "title": "Developing collections",
+      "audience": "developer",
+      "core": true,
+      "summary": "Collections are a distribution format for Ansible content.",
+      "lines": 350,
+      "tokens": 6000
+    },
+    {
+      "path": "getting_started/basic_concepts.html",
+      "topic": "getting_started",
+      "title": "Ansible concepts",
+      "audience": "author",
+      "core": true,
+      "summary": "These concepts are common to all uses of Ansible.",
+      "lines": 120,
+      "tokens": 2000
+    },
+    {
+      "path": "playbook_guide/playbooks_filters.html",
+      "topic": "playbook_guide",
+      "title": "Using filters to manipulate data",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_core_2.18.html",
+      "topic": "porting_guides",
+      "title": "Porting guide for Ansible-core 2.18",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    }
+  ]
+}

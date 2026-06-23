@@ -21,10 +21,148 @@ def __getattr__(name: str):
         return value
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
+
+AUDIENCE_MAP: dict[str, str] = {
+    "dev_guide": "developer",
+    "playbook_guide": "author",
+    "inventory_guide": "author",
+    "getting_started": "author",
+    "getting_started_ee": "author",
+    "vault_guide": "author",
+    "tips_tricks": "author",
+    "command_guide": "author",
+}
+
+GUIDE_TOPIC_PREFIXES: set[str] = {
+    "playbook_guide",
+    "inventory_guide",
+    "dev_guide",
+    "vault_guide",
+    "getting_started",
+    "getting_started_ee",
+    "reference_appendices",
+    "porting_guides",
+    "collections_guide",
+    "command_guide",
+    "tips_tricks",
+    "network",
+    "os_guide",
+    "scenario_guides",
+    "user_guide",
+    "community",
+    "roadmap",
+}
+
+CORE_PAGES: dict[str, list[str]] = {
+    "ansible": [
+        "playbook_guide/playbooks_intro.html",
+        "playbook_guide/playbooks_variables.html",
+        "playbook_guide/playbooks_loops.html",
+        "playbook_guide/playbooks_conditionals.html",
+        "playbook_guide/playbooks_error_handling.html",
+        "playbook_guide/playbooks_reuse_roles.html",
+        "playbook_guide/playbooks_handlers.html",
+        "playbook_guide/playbooks_blocks.html",
+        "playbook_guide/playbooks_filters.html",
+        "playbook_guide/playbooks_tests.html",
+        "playbook_guide/playbooks_vars_facts.html",
+        "playbook_guide/playbooks_tags.html",
+        "playbook_guide/playbooks_privilege_escalation.html",
+        "inventory_guide/intro_inventory.html",
+        "inventory_guide/intro_dynamic_inventory.html",
+        "inventory_guide/intro_patterns.html",
+        "inventory_guide/connection_details.html",
+        "vault_guide/vault_encrypting_content.html",
+        "vault_guide/vault_managing_passwords.html",
+        "vault_guide/vault_using_encrypted_content.html",
+        "reference_appendices/config.html",
+        "reference_appendices/playbooks_keywords.html",
+        "reference_appendices/special_variables.html",
+        "reference_appendices/general_precedence.html",
+        "collections_guide/collections_using.html",
+        "collections_guide/collections_installing.html",
+        "dev_guide/developing_collections.html",
+        "dev_guide/developing_modules_general.html",
+        "dev_guide/developing_plugins.html",
+        "dev_guide/testing.html",
+        "dev_guide/developing_collections_structure.html",
+        "getting_started/get_started_playbook.html",
+        "getting_started/basic_concepts.html",
+        "getting_started/get_started_inventory.html",
+    ],
+    "lint": [
+        "",
+        "configuring/",
+        "rules/",
+        "profiles/",
+        "usage/",
+    ],
+    "navigator": [
+        "",
+        "installation/",
+        "settings/",
+        "subcommands/",
+    ],
+    "builder": [
+        "",
+        "definition/",
+        "usage/",
+    ],
+    "creator": [
+        "",
+        "content_creation/",
+        "ee_scaffolding/",
+    ],
+    "molecule": [
+        "",
+        "getting-started-collections/",
+        "configuration/",
+        "usage/",
+    ],
+}
+
+PROJECT_BASE_URLS: dict[str, str] = {
+    "ansible": "https://docs.ansible.com/projects/ansible/latest",
+    "lint": "https://docs.ansible.com/projects/lint",
+    "navigator": "https://docs.ansible.com/projects/navigator",
+    "builder": "https://docs.ansible.com/projects/builder/en/latest",
+    "creator": "https://docs.ansible.com/projects/creator",
+    "molecule": "https://docs.ansible.com/projects/molecule",
+}
+
+RTD_PROJECT_SLUGS: dict[str, str] = {
+    "ansible-core": "package-doc-builds",
+    "ansible-lint": "ansible-lint",
+    "ansible-navigator": "ansible-navigator",
+    "ansible-builder": "ansible-builder",
+    "ansible-creator": "ansible-creator",
+    "molecule": "molecule",
+}
+
 DEFAULT_DOC_SOURCES: dict[str, dict[str, str]] = {
     "ansible-core": {
-        "url": "https://raw.githubusercontent.com/leogallego/ansible-documentation/ai-docs/manifest.json",
-        "description": "Ansible core documentation — playbook guides, developer guides, reference",
+        "file": str(_PKG_DIR / "data" / "ansible_core_manifest.json"),
+        "description": "Ansible core — playbook guides, inventory, vault, developer guides, reference",
+    },
+    "ansible-lint": {
+        "file": str(_PKG_DIR / "data" / "ansible_lint_manifest.json"),
+        "description": "ansible-lint — rules, configuration, profiles",
+    },
+    "ansible-navigator": {
+        "file": str(_PKG_DIR / "data" / "ansible_navigator_manifest.json"),
+        "description": "ansible-navigator — settings, subcommands",
+    },
+    "ansible-builder": {
+        "file": str(_PKG_DIR / "data" / "ansible_builder_manifest.json"),
+        "description": "ansible-builder — EE definitions, scenarios, usage",
+    },
+    "ansible-creator": {
+        "file": str(_PKG_DIR / "data" / "ansible_creator_manifest.json"),
+        "description": "ansible-creator — content creation, EE scaffolding",
+    },
+    "molecule": {
+        "file": str(_PKG_DIR / "data" / "molecule_manifest.json"),
+        "description": "molecule — test scenarios, configuration, getting started",
     },
 }
 
