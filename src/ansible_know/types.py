@@ -240,6 +240,15 @@ class SearchDocsEntry(TypedDict):
     url: str
 
 
+class FetchDocResult(TypedDict):
+    """Result of fetch_doc tool."""
+
+    content: str
+    title: str
+    tokens: int
+    source_url: str
+
+
 class GenerateCollectionSkillsResult(TypedDict):
     """Result of generate_collection_skills tool."""
 
