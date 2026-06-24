@@ -1,6 +1,6 @@
 """Ansible Know MCP Server.
 
-Provides 14 tools, 5 resources, and 4 prompts for module and role discovery,
+Provides 17 tools, 5 resources, and 5 prompts for module, role, and plugin discovery,
 documentation search, Galaxy collection discovery, and skill generation
 via the Model Context Protocol.
 """
@@ -12,6 +12,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 from importlib.metadata import version as pkg_version
 from pathlib import Path
 from typing import Annotated, Any
@@ -32,6 +33,7 @@ from ansible_know.types import (
     FetchDocResult,
     GenerateCollectionSkillsResult,
     GetModuleDocResult,
+    GetPluginDocResult,
     GetRoleDocResult,
     ManifestResult,
     SearchDocsEntry,
@@ -56,6 +58,8 @@ from ansible_know.validation import (
 logger = logging.getLogger("ansible_know")
 
 _VERSION = pkg_version("ansible-know-mcp")
+
+_PLUGIN_SKILL_DIR_RE = re.compile(r"^([a-z]+)__(.+)$")
 
 _VERSION_CHECK_INTERVAL = 6 * 3600  # 6 hours
 
@@ -145,13 +149,13 @@ mcp = FastMCP(
     name="Ansible Know",
     version=_VERSION,
     instructions=(
-        "Ansible module and role discovery, documentation, and skill generation. "
+        "Ansible module, role, and plugin discovery, documentation, and skill generation. "
         "Workflow: (1) search_collections to discover collections on Galaxy, "
         "(2) ensure_collection to install one for this session, "
-        "(3) search_modules/get_collection_manifest to find modules and roles, "
-        "(4) get_module_doc or get_role_doc for structured docs, "
+        "(3) search_modules/search_plugins/get_collection_manifest to find content, "
+        "(4) get_module_doc, get_role_doc, or get_plugin_doc for structured docs, "
         "(5) search_docs for conceptual guides, then fetch_doc to retrieve full content, "
-        "(6) generate_skill or generate_role_skill to create skill packages. "
+        "(6) generate_skill, generate_role_skill, or generate_plugin_skill for skill packages. "
         "Resources: server://version for version and upgrade status, "
         "galaxy://installed for session collections, "
         "docs://sources for configured doc sources, "
@@ -314,6 +318,79 @@ async def search_modules(
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+async def search_plugins(
+    keyword: Annotated[str, "Search term to match against plugin names and descriptions"],
+    plugin_type: Annotated[
+        str | None,
+        "Plugin type filter (e.g. 'lookup', 'filter'). If omitted, searches all types.",
+    ] = None,
+    namespace: Annotated[str | None, "Optional collection namespace filter (e.g. 'netbox.netbox')"] = None,
+    ctx: Context | None = None,
+) -> dict[str, str] | ErrorResponse:
+    """Find Ansible plugins by keyword. Returns up to 50 matches as {fqcn: short_description}.
+
+    Plugin types: lookup, filter, test, connection, become, strategy,
+    callback, inventory, cache, cliconf, httpapi, netconf, shell, vars.
+    On failure returns {"error": str}.
+    """
+    logger.info("search_plugins keyword=%r type=%r namespace=%r", keyword, plugin_type, namespace)
+    try:
+        validate_keyword(keyword)
+        if namespace:
+            validate_namespace(namespace)
+        if plugin_type:
+            from ansible_know.config import PLUGIN_TYPES
+            if plugin_type not in PLUGIN_TYPES:
+                return {"error": f"Invalid plugin type '{plugin_type}'. Valid: {', '.join(sorted(PLUGIN_TYPES))}"}
+    except ValidationError as exc:
+        return {"error": str(exc)}
+
+    try:
+        from ansible_know import parser
+        from ansible_know.config import PLUGIN_TYPES, SEARCH_MODULES_LIMIT
+
+        state = await _get_state(ctx)
+        cpath = state.collection_manager.get_collections_path()
+
+        if plugin_type is not None:
+            results = await run_in_executor(
+                parser.search_plugins, keyword, plugin_type=plugin_type,
+                collection_filter=namespace, collections_path=cpath,
+            )
+        else:
+            # Parallelize across all 14 types
+            async def _search_one_type(pt):
+                try:
+                    return await run_in_executor(
+                        parser.search_plugins, keyword, plugin_type=pt,
+                        collection_filter=namespace, collections_path=cpath,
+                    )
+                except (AnsibleDocError, OSError, ValidationError):
+                    return None
+
+            type_results = await asyncio.gather(
+                *[_search_one_type(pt) for pt in PLUGIN_TYPES]
+            )
+            results = {}
+            error_count = 0
+            for r in type_results:
+                if r is None:
+                    error_count += 1
+                else:
+                    results.update(r)
+
+            if not results and error_count == len(PLUGIN_TYPES):
+                return {"error": "Plugin discovery failed for all plugin types. Check ansible-core installation."}
+
+        if len(results) > SEARCH_MODULES_LIMIT:
+            results = dict(list(results.items())[:SEARCH_MODULES_LIMIT])
+        return results
+    except Exception as exc:
+        logger.warning("search_plugins failed: %s", exc)
+        return {"error": maybe_add_hint(sanitize_error(str(exc)), namespace)}
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_module_doc(
     module_name: Annotated[str, "Fully-qualified collection name (e.g. 'ansible.builtin.copy')"],
     ctx: Context | None = None,
@@ -395,6 +472,52 @@ async def get_role_doc(
     except Exception as exc:
         logger.warning("get_role_doc failed: %s", exc)
         ns = ".".join(role_name.split(".")[:2]) if "." in role_name else None
+        return {"error": maybe_add_hint(sanitize_error(str(exc)), ns)}
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+async def get_plugin_doc(
+    plugin_name: Annotated[str, "Fully-qualified plugin name (e.g. 'netbox.netbox.nb_lookup')"],
+    plugin_type: Annotated[
+        str,
+        "Plugin type (lookup, filter, test, connection, become, "
+        "strategy, callback, inventory, cache, cliconf, httpapi, "
+        "netconf, shell, or vars)",
+    ],
+    ctx: Context | None = None,
+) -> GetPluginDocResult | ErrorResponse:
+    """Get full structured documentation for one plugin.
+
+    Returns: plugin_name, plugin_type, short_description, params, examples,
+    doc_source ('local' or 'galaxy').
+    Falls back to Galaxy if collection is not installed locally.
+    On failure returns {"error": str}.
+    """
+    logger.info("get_plugin_doc plugin=%r type=%r", plugin_name, plugin_type)
+    await _maybe_warn_upgrade(ctx)
+    try:
+        validate_fqcn(plugin_name)
+        from ansible_know.config import PLUGIN_TYPES
+        if plugin_type not in PLUGIN_TYPES:
+            return {"error": f"Invalid plugin type '{plugin_type}'. Valid: {', '.join(sorted(PLUGIN_TYPES))}"}
+    except ValidationError as exc:
+        return {"error": str(exc)}
+
+    try:
+        from ansible_know import resolution
+
+        state = await _get_state(ctx)
+        http_client = _get_http_client(ctx)
+        return await resolution.resolve_plugin_doc(
+            plugin_name, plugin_type,
+            http_client=http_client, galaxy_servers=state.galaxy_servers,
+            client_factory=_galaxy_factory(ctx),
+            missing_collections=state.missing_collections,
+            collections_path=state.collection_manager.get_collections_path(),
+        )
+    except Exception as exc:
+        logger.warning("get_plugin_doc failed: %s", exc)
+        ns = ".".join(plugin_name.split(".")[:2]) if "." in plugin_name else None
         return {"error": maybe_add_hint(sanitize_error(str(exc)), ns)}
 
 
@@ -555,9 +678,30 @@ async def get_collection_manifest(
         except (AnsibleDocError, OSError) as exc:
             logger.warning("list_roles failed for %s: %s", collection_namespace, exc)
 
-        if not modules and not roles_raw:
+        # Discover plugins across all types (parallel — 14 types via asyncio.gather)
+        from ansible_know.config import PLUGIN_TYPES
+
+        async def _list_one_plugin_type(ptype):
+            try:
+                return ptype, await run_in_executor(
+                    parser.list_plugins, ptype,
+                    collection_filter=collection_namespace,
+                    collections_path=cpath,
+                )
+            except (AnsibleDocError, OSError, ValidationError):
+                return ptype, {}
+
+        plugin_results = await asyncio.gather(
+            *[_list_one_plugin_type(pt) for pt in PLUGIN_TYPES]
+        )
+        plugins_raw: dict[str, dict[str, str]] = {}
+        for ptype, type_plugins in plugin_results:
+            for pfqcn, pdesc in type_plugins.items():
+                plugins_raw[pfqcn] = {"description": pdesc, "plugin_type": ptype}
+
+        if not modules and not roles_raw and not plugins_raw:
             return {"error": (
-                f"No modules or roles found in collection '{collection_namespace}'."
+                f"No modules, roles, or plugins found in collection '{collection_namespace}'."
                 + collection_hint(collection_namespace)
             )}
 
@@ -582,10 +726,20 @@ async def get_collection_manifest(
                 "entry_points": entry_points,
             })
 
+        plugins_metadata = []
+        for pfqcn, pinfo in sorted(plugins_raw.items()):
+            plugins_metadata.append({
+                "fqcn": pfqcn,
+                "plugin_type": pinfo["plugin_type"],
+                "description": pinfo["description"],
+                "param_count": 0,
+            })
+
         manifest = await run_in_executor(
             collection_manifest.generate_manifest,
             collection_namespace, metadata_list,
             roles_metadata=roles_metadata,
+            plugins_metadata=plugins_metadata,
             collection_version=installed_version,
         )
         await run_in_executor(
@@ -678,8 +832,16 @@ def _list_skills_sync(
             try:
                 skill_md = sub_dir / "SKILL.md"
                 if sub_dir.is_dir() and not sub_dir.is_symlink() and skill_md.exists():
+                    dir_name = sub_dir.name
+                    # Strip {type}__ prefix for plugin skills
+                    from ansible_know.config import PLUGIN_TYPES
+                    match = _PLUGIN_SKILL_DIR_RE.match(dir_name)
+                    if match and match.group(1) in PLUGIN_TYPES:
+                        display_name = f"{collection}.{match.group(2)}"
+                    else:
+                        display_name = f"{collection}.{dir_name}"
                     results.append({
-                        "name": f"{collection}.{sub_dir.name}",
+                        "name": display_name,
                         "description": _extract_skill_description(skill_md),
                         "path": str(sub_dir),
                     })
@@ -746,10 +908,20 @@ def _get_skill_sync(skills_dir: Path, skill_name: str) -> str:
     if len(parts) >= 3:
         namespace = ".".join(parts[:2])
         short_name = ".".join(parts[2:])
+
+        # Module/role skill (direct short_name)
         nested_path = (skills_dir / namespace / short_name / "SKILL.md").resolve()
         validate_path_containment(nested_path, skills_dir)
         if nested_path.exists():
             return truncate_response(nested_path.read_text())
+
+        # Plugin skill ({type}__{short_name} convention)
+        from ansible_know.config import PLUGIN_TYPES
+        for ptype in PLUGIN_TYPES:
+            plugin_path = (skills_dir / namespace / f"{ptype}__{short_name}" / "SKILL.md").resolve()
+            validate_path_containment(plugin_path, skills_dir)
+            if plugin_path.exists():
+                return truncate_response(plugin_path.read_text())
 
         flat_path = (skills_dir / skill_name / "SKILL.md").resolve()
         validate_path_containment(flat_path, skills_dir)
@@ -924,6 +1096,78 @@ async def generate_role_skill(
 
 
 @mcp.tool(annotations=ToolAnnotations(idempotentHint=True))
+async def generate_plugin_skill(
+    plugin_name: Annotated[str, "Fully-qualified plugin name (e.g. 'netbox.netbox.nb_lookup')"],
+    plugin_type: Annotated[
+        str,
+        "Plugin type (lookup, filter, test, connection, become, "
+        "strategy, callback, inventory, cache, cliconf, httpapi, "
+        "netconf, shell, or vars)",
+    ],
+    install_to: Annotated[str | None, "Optional absolute path to install the skill to"] = None,
+    ctx: Context | None = None,
+) -> str | ErrorResponse:
+    """Generate a skill package for one plugin.
+
+    Writes SKILL.md to disk (no scripts/ or assets/).
+    Returns the SKILL.md content as str, or {"error": str} on failure.
+    """
+    logger.info("generate_plugin_skill plugin=%r type=%r install_to=%r", plugin_name, plugin_type, install_to)
+    await _maybe_warn_upgrade(ctx)
+    try:
+        validate_fqcn(plugin_name)
+        from ansible_know.config import PLUGIN_TYPES
+        if plugin_type not in PLUGIN_TYPES:
+            return {"error": f"Invalid plugin type '{plugin_type}'. Valid: {', '.join(sorted(PLUGIN_TYPES))}"}
+        if install_to:
+            validate_install_path(install_to)
+    except ValidationError as exc:
+        return {"error": str(exc)}
+
+    try:
+        from ansible_know import resolution, skills
+        from ansible_know.config import SKILLS_DIR
+
+        if ctx:
+            await ctx.report_progress(progress=0, total=100)
+
+        state = await _get_state(ctx)
+        http_client = _get_http_client(ctx)
+        metadata = await resolution.resolve_plugin_doc(
+            plugin_name, plugin_type,
+            http_client=http_client, galaxy_servers=state.galaxy_servers,
+            client_factory=_galaxy_factory(ctx),
+            missing_collections=state.missing_collections,
+            collections_path=state.collection_manager.get_collections_path(),
+        )
+
+        if metadata.get("doc_source") == "unavailable":
+            return {"error": metadata.get("error", f"No documentation found for plugin '{plugin_name}'.")}
+
+        if ctx:
+            await ctx.report_progress(progress=50, total=100)
+
+        namespace = ".".join(plugin_name.split(".")[:2])
+        short_name = plugin_name.rsplit(".", 1)[-1]
+        base_dir = validate_install_path(install_to) if install_to else SKILLS_DIR
+        output_dir = base_dir / namespace / f"{plugin_type}__{short_name}"
+
+        await run_in_executor(skills.write_plugin_skill_package, output_dir, metadata)
+        logger.info("generate_plugin_skill wrote to %s", output_dir)
+
+        if ctx:
+            await ctx.report_progress(progress=100, total=100)
+
+        return truncate_response(skills.render_plugin_skill(metadata))
+    except ValidationError as exc:
+        return {"error": str(exc)}
+    except Exception as exc:
+        logger.warning("generate_plugin_skill failed: %s", exc)
+        ns = ".".join(plugin_name.split(".")[:2]) if "." in plugin_name else None
+        return {"error": maybe_add_hint(sanitize_error(str(exc)), ns)}
+
+
+@mcp.tool(annotations=ToolAnnotations(idempotentHint=True))
 async def generate_collection_skills(
     collection_namespace: Annotated[str, "Collection namespace (e.g. 'netbox.netbox')"],
     install_to: Annotated[str | None, "Optional absolute path to install skills to"] = None,
@@ -950,28 +1194,64 @@ async def generate_collection_skills(
 
         state = await _get_state(ctx)
         cpath = state.collection_manager.get_collections_path()
+
+        # Discover modules
         modules = await run_in_executor(
             parser.search_modules, "", collection_filter=collection_namespace,
             collections_path=cpath,
         )
-        if not modules:
+
+        # Discover roles
+        roles_raw = {}
+        try:
+            roles_raw = await run_in_executor(
+                parser.list_roles, collection_filter=collection_namespace,
+                collections_path=cpath,
+            )
+        except (AnsibleDocError, OSError) as exc:
+            logger.warning("list_roles failed for %s: %s", collection_namespace, exc)
+
+        # Discover plugins across all types (parallel)
+        from ansible_know.config import PLUGIN_TYPES
+
+        async def _list_plugin_type(ptype):
+            try:
+                return ptype, await run_in_executor(
+                    parser.list_plugins, ptype,
+                    collection_filter=collection_namespace,
+                    collections_path=cpath,
+                )
+            except (AnsibleDocError, OSError, ValidationError):
+                return ptype, {}
+
+        plugin_list_results = await asyncio.gather(
+            *[_list_plugin_type(pt) for pt in PLUGIN_TYPES]
+        )
+
+        # Combined guard — reject only if ALL content types are empty
+        has_plugins = any(plugins for _, plugins in plugin_list_results)
+        if not modules and not roles_raw and not has_plugins:
             return {"error": (
-                f"No modules found in collection '{collection_namespace}'."
+                f"No modules, roles, or plugins found in collection '{collection_namespace}'."
                 + collection_hint(collection_namespace)
             )}
 
-        total = len(modules)
+        plugin_count = sum(len(plugins) for _, plugins in plugin_list_results)
+        total = len(modules) + len(roles_raw) + plugin_count
         succeeded = 0
         failed = 0
+        current = 0
         metadata_list = []
 
         base_dir = validate_install_path(install_to) if install_to else SKILLS_DIR
 
         installed_version = state.collection_manager.list_installed().get(collection_namespace)
 
-        for i, module_name in enumerate(sorted(modules)):
+        # Generate module skills
+        for module_name in sorted(modules):
             if ctx:
-                await ctx.report_progress(progress=i, total=total)
+                await ctx.report_progress(progress=current, total=total)
+            current += 1
             try:
                 raw_doc = await run_in_executor(
                     parser.get_module_doc, module_name, collections_path=cpath,
@@ -984,12 +1264,87 @@ async def generate_collection_skills(
                 await run_in_executor(skills.write_module_skill_package, output_dir, metadata)
                 succeeded += 1
             except Exception as exc:
-                logger.warning("Skill generation failed for %s: %s", module_name, exc)
+                logger.warning("Module skill generation failed for %s: %s", module_name, exc)
                 failed += 1
+
+        # Generate role skills
+        from ansible_know import resolution
+
+        roles_metadata = []
+        for role_fqcn, role_data in sorted(roles_raw.items()):
+            if ctx:
+                await ctx.report_progress(progress=current, total=total)
+            current += 1
+            try:
+                http_client = _get_http_client(ctx)
+                role_meta = await resolution.resolve_role_doc(
+                    role_fqcn, http_client=http_client,
+                    galaxy_servers=state.galaxy_servers,
+                    client_factory=_galaxy_factory(ctx),
+                    missing_collections=state.missing_collections,
+                    collections_path=cpath,
+                )
+
+                if role_meta.get("doc_source") == "unavailable":
+                    logger.warning("Role doc unavailable for %s, skipping skill", role_fqcn)
+                    failed += 1
+                    continue
+
+                entry_points = list(role_data.get("entry_points", {}).keys()) or ["main"]
+                has_specs = bool(role_data.get("entry_points", {}))
+                roles_metadata.append({
+                    "fqcn": role_fqcn,
+                    "description": role_data.get("description", ""),
+                    "has_argument_specs": has_specs,
+                    "entry_points": entry_points,
+                })
+
+                short_name = role_fqcn.rsplit(".", 1)[-1]
+                output_dir = base_dir / collection_namespace / short_name
+                await run_in_executor(
+                    skills.write_role_skill_package, output_dir, role_meta,
+                )
+                succeeded += 1
+            except Exception as exc:
+                logger.warning("Role skill generation failed for %s: %s", role_fqcn, exc)
+                failed += 1
+
+        # Generate plugin skills
+        plugins_metadata = []
+        for ptype, type_plugins in plugin_list_results:
+            for pfqcn in sorted(type_plugins):
+                if ctx:
+                    await ctx.report_progress(progress=current, total=total)
+                current += 1
+                try:
+                    raw_doc = await run_in_executor(
+                        parser.get_plugin_doc, pfqcn, ptype,
+                        collections_path=cpath,
+                    )
+                    meta = parser.extract_plugin_metadata(raw_doc, ptype)
+                    plugins_metadata.append({
+                        "fqcn": pfqcn,
+                        "plugin_type": ptype,
+                        "description": meta["short_description"],
+                        "param_count": len(meta["params"]),
+                    })
+
+                    short_name = pfqcn.rsplit(".", 1)[-1]
+                    output_dir = base_dir / collection_namespace / f"{ptype}__{short_name}"
+                    await run_in_executor(
+                        skills.write_plugin_skill_package, output_dir, meta,
+                    )
+                    succeeded += 1
+                except Exception as exc:
+                    logger.warning("Plugin skill generation failed for %s: %s", pfqcn, exc)
+                    failed += 1
 
         manifest = await run_in_executor(
             collection_manifest.generate_manifest,
-            collection_namespace, metadata_list, skills_dir=base_dir,
+            collection_namespace, metadata_list,
+            roles_metadata=roles_metadata,
+            plugins_metadata=plugins_metadata,
+            skills_dir=base_dir,
             collection_version=installed_version,
         )
         await run_in_executor(
@@ -1000,7 +1355,7 @@ async def generate_collection_skills(
         await run_in_executor(
             skills.write_collection_skill_package,
             base_dir / collection_namespace, collection_namespace,
-            metadata_list, installed_version,
+            metadata_list, installed_version, plugins_metadata,
         )
 
         if ctx:
@@ -1063,7 +1418,7 @@ async def clear_cache(
 def resource_skills_list() -> str:
     import json
 
-    from ansible_know.config import SKILLS_DIR
+    from ansible_know.config import PLUGIN_TYPES, SKILLS_DIR
 
     skills_list: list[str] = []
     if SKILLS_DIR.exists():
@@ -1075,7 +1430,12 @@ def resource_skills_list() -> str:
                 skills_list.append(skill_dir.name)
             for sub_dir in sorted(skill_dir.iterdir()):
                 if sub_dir.is_dir() and not sub_dir.is_symlink() and (sub_dir / "SKILL.md").exists():
-                    skills_list.append(f"{skill_dir.name}.{sub_dir.name}")
+                    dir_name = sub_dir.name
+                    match = _PLUGIN_SKILL_DIR_RE.match(dir_name)
+                    if match and match.group(1) in PLUGIN_TYPES:
+                        skills_list.append(f"{skill_dir.name}.{match.group(2)}")
+                    else:
+                        skills_list.append(f"{skill_dir.name}.{dir_name}")
     return json.dumps(skills_list, indent=2)
 
 
