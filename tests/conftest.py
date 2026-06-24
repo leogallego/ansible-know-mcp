@@ -246,7 +246,8 @@ SAMPLE_PLUGIN_DOC = {
         "examples": (
             "- name: Obtain list of sites from NetBox\n"
             "  debug:\n"
-            "    msg: \"{{ query('netbox.netbox.nb_lookup', 'sites', api_endpoint='http://localhost', token='mytoken') }}\"\n"
+            "    msg: \"{{ query('netbox.netbox.nb_lookup', 'sites', "
+            "api_endpoint='http://localhost', token='mytoken') }}\"\n"
         ),
     },
 }
