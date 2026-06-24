@@ -594,7 +594,10 @@ def _extract_data(result):
     - .content: list of TextContent/ImageContent blocks
     - .is_error: bool
 
-    Always prefer JSON-parsing from .content to handle TypedDict Root objects.
+    Prefer JSON-parsing from .content because FastMCP returns Root objects
+    (not plain dicts) for TypedDict tool returns — Root is not subscriptable
+    or iterable, so .data is unusable for those. JSON parsing always returns
+    plain Python types.
     """
     if hasattr(result, "content"):
         for item in result.content:
