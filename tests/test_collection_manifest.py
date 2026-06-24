@@ -183,3 +183,54 @@ class TestLoadCachedManifest:
         cached = load_cached_manifest("ansible.builtin", skills_dir=tmp_path)
         assert cached is not None
         assert cached["collection"] == "ansible.builtin"
+
+
+class TestManifestPluginEntries:
+    def test_includes_plugins_in_manifest(self, tmp_path):
+        plugins_metadata = [
+            {
+                "fqcn": "netbox.netbox.nb_lookup",
+                "plugin_type": "lookup",
+                "description": "Queries NetBox",
+                "param_count": 3,
+            },
+            {
+                "fqcn": "netbox.netbox.nb_inventory",
+                "plugin_type": "inventory",
+                "description": "NetBox dynamic inventory",
+                "param_count": 5,
+            },
+        ]
+        manifest = generate_manifest(
+            "netbox.netbox", [], plugins_metadata=plugins_metadata,
+            skills_dir=tmp_path,
+        )
+        assert manifest["plugin_count"] == 2
+        assert len(manifest["plugins"]) == 2
+        lookup = next(p for p in manifest["plugins"] if p["fqcn"] == "netbox.netbox.nb_lookup")
+        assert lookup["plugin_type"] == "lookup"
+        assert lookup["has_skill"] is False
+
+    def test_empty_plugins_defaults(self, tmp_path):
+        manifest = generate_manifest("test.test", [], skills_dir=tmp_path)
+        assert manifest["plugin_count"] == 0
+        assert manifest["plugins"] == []
+
+    def test_plugin_skill_detection(self, tmp_path):
+        skill_dir = tmp_path / "netbox.netbox" / "lookup__nb_lookup"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("---\nname: test\n---\n")
+
+        plugins_metadata = [
+            {
+                "fqcn": "netbox.netbox.nb_lookup",
+                "plugin_type": "lookup",
+                "description": "Queries NetBox",
+                "param_count": 3,
+            },
+        ]
+        manifest = generate_manifest(
+            "netbox.netbox", [], plugins_metadata=plugins_metadata,
+            skills_dir=tmp_path,
+        )
+        assert manifest["plugins"][0]["has_skill"] is True

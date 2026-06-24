@@ -29,15 +29,17 @@ def generate_manifest(
     collection_namespace: str,
     modules_metadata: list[ModuleMetadata],
     roles_metadata: list[dict[str, Any]] | None = None,
+    plugins_metadata: list[dict[str, Any]] | None = None,
     skills_dir: Path | None = None,
     collection_version: str | None = None,
 ) -> ManifestResult:
-    """Generate a collection manifest from module and role metadata.
+    """Generate a collection manifest from module, role, and plugin metadata.
 
     Args:
         collection_namespace: e.g. "netbox.netbox"
         modules_metadata: list of extract_module_metadata() results
         roles_metadata: list of role metadata dicts (optional)
+        plugins_metadata: list of plugin metadata dicts (optional)
         skills_dir: where to check for existing skill packages
         collection_version: installed version to store for cache invalidation
 
@@ -81,6 +83,21 @@ def generate_manifest(
             "has_skill": has_skill,
         })
 
+    plugins_list = []
+    for plugin_meta in (plugins_metadata or []):
+        fqcn = plugin_meta["fqcn"]
+        ptype = plugin_meta.get("plugin_type", "")
+        short_name = fqcn.rsplit(".", 1)[-1]
+        has_skill = (collection_dir / f"{ptype}__{short_name}" / "SKILL.md").exists()
+
+        plugins_list.append({
+            "fqcn": fqcn,
+            "plugin_type": ptype,
+            "description": plugin_meta.get("description", ""),
+            "param_count": plugin_meta.get("param_count", 0),
+            "has_skill": has_skill,
+        })
+
     has_collection_skill = (collection_dir / "SKILL.md").exists()
 
     manifest = {
@@ -89,11 +106,11 @@ def generate_manifest(
         "generated": datetime.now(timezone.utc).isoformat(),
         "module_count": len(modules_list),
         "role_count": len(roles_list),
-        "plugin_count": 0,
+        "plugin_count": len(plugins_list),
         "has_collection_skill": has_collection_skill,
         "modules": modules_list,
         "roles": roles_list,
-        "plugins": [],
+        "plugins": plugins_list,
     }
 
     return manifest
