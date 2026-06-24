@@ -11,10 +11,12 @@ from ansible_know.skills import (
     module_to_skill_name,
     render_collection_skill,
     render_module_skill,
+    render_plugin_skill,
     render_role_skill,
     render_skill,
     write_collection_skill_package,
     write_module_skill_package,
+    write_plugin_skill_package,
     write_role_skill_package,
     write_skill_package,
 )
@@ -385,3 +387,98 @@ class TestWriteCollectionSkillPackage:
         content = (output_dir / "SKILL.md").read_text()
         assert "netbox.netbox" in content
         assert "Playbook Guide" in content
+
+
+class TestRenderPluginSkill:
+    def test_renders_lookup_skill(self):
+        metadata = {
+            "plugin_name": "netbox.netbox.nb_lookup",
+            "plugin_type": "lookup",
+            "short_description": "Queries and returns elements from NetBox",
+            "params": [
+                {"name": "api_endpoint", "type": "str", "required": True,
+                 "default": None, "choices": None, "description": "NetBox URL", "aliases": []},
+                {"name": "token", "type": "str", "required": True,
+                 "default": None, "choices": None, "description": "API token", "aliases": []},
+            ],
+            "examples": "- debug: msg=\"{{ query('netbox.netbox.nb_lookup', 'sites') }}\"",
+        }
+        result = render_plugin_skill(metadata)
+        assert "lookup plugin" in result
+        assert "query('netbox.netbox.nb_lookup'" in result
+        assert "lookup('netbox.netbox.nb_lookup'" in result
+        assert "ansible.builtin.uri" in result  # the "prefer this over uri" guidance
+
+    def test_renders_filter_skill(self):
+        metadata = {
+            "plugin_name": "ansible.builtin.to_yaml",
+            "plugin_type": "filter",
+            "short_description": "Convert to YAML",
+            "params": [],
+            "examples": "",
+        }
+        result = render_plugin_skill(metadata)
+        assert "filter plugin" in result
+        assert "ansible.builtin.to_yaml" in result
+
+    def test_renders_inventory_skill(self):
+        metadata = {
+            "plugin_name": "netbox.netbox.nb_inventory",
+            "plugin_type": "inventory",
+            "short_description": "NetBox inventory source",
+            "params": [
+                {"name": "api_endpoint", "type": "str", "required": True,
+                 "default": None, "choices": None, "description": "NetBox URL", "aliases": []},
+            ],
+            "examples": "",
+        }
+        result = render_plugin_skill(metadata)
+        assert "inventory plugin" in result
+        assert "plugin: netbox.netbox.nb_inventory" in result
+
+    def test_renders_connection_skill(self):
+        metadata = {
+            "plugin_name": "ansible.netcommon.network_cli",
+            "plugin_type": "connection",
+            "short_description": "CLI connection to network devices",
+            "params": [],
+            "examples": "",
+        }
+        result = render_plugin_skill(metadata)
+        assert "connection plugin" in result
+        assert "connection: ansible.netcommon.network_cli" in result
+
+
+class TestWritePluginSkillPackage:
+    def test_writes_skill_md(self, tmp_path):
+        metadata = {
+            "plugin_name": "netbox.netbox.nb_lookup",
+            "plugin_type": "lookup",
+            "short_description": "Queries NetBox",
+            "params": [],
+            "examples": "",
+        }
+        write_plugin_skill_package(tmp_path / "lookup__nb_lookup", metadata)
+        assert (tmp_path / "lookup__nb_lookup" / "SKILL.md").exists()
+
+    def test_no_scripts_directory(self, tmp_path):
+        metadata = {
+            "plugin_name": "netbox.netbox.nb_lookup",
+            "plugin_type": "lookup",
+            "short_description": "Queries NetBox",
+            "params": [],
+            "examples": "",
+        }
+        write_plugin_skill_package(tmp_path / "lookup__nb_lookup", metadata)
+        assert not (tmp_path / "lookup__nb_lookup" / "scripts").exists()
+
+    def test_no_assets_directory(self, tmp_path):
+        metadata = {
+            "plugin_name": "netbox.netbox.nb_lookup",
+            "plugin_type": "lookup",
+            "short_description": "Queries NetBox",
+            "params": [],
+            "examples": "",
+        }
+        write_plugin_skill_package(tmp_path / "lookup__nb_lookup", metadata)
+        assert not (tmp_path / "lookup__nb_lookup" / "assets").exists()
