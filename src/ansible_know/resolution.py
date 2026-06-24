@@ -26,6 +26,7 @@ logger = logging.getLogger("ansible_know")
 
 __all__ = [
     "resolve_module_doc",
+    "resolve_plugin_doc",
     "resolve_role_doc",
     "search_galaxy_collections",
 ]
@@ -133,6 +134,85 @@ async def resolve_module_doc(
         except GalaxyError as galaxy_exc:
             logger.warning("Galaxy fallback also failed: %s", galaxy_exc)
             raise local_exc from galaxy_exc
+
+
+async def resolve_plugin_doc(
+    plugin_name: str,
+    plugin_type: str,
+    http_client: httpx.AsyncClient | None = None,
+    galaxy_servers: list[GalaxyServerConfig] | None = None,
+    client_factory: GalaxyClientFactory | None = None,
+    missing_collections: set[str] | None = None,
+    collections_path: str | None = None,
+) -> dict[str, Any]:
+    """Try local ansible-doc -t <type>, fall back to Galaxy.
+
+    Returns the complete tool response dict including doc_source and plugin_type.
+    """
+    from ansible_know import parser
+    from ansible_know.errors import CollectionNotFoundError, GalaxyError
+
+    servers = _get_servers(galaxy_servers)
+    namespace = ".".join(plugin_name.split(".")[:2]) if "." in plugin_name else None
+    cpath = collections_path
+
+    local_doc: dict[str, Any] = {}
+
+    if not (namespace and missing_collections is not None and namespace in missing_collections):
+        try:
+            local_doc = await run_in_executor(
+                parser.get_plugin_doc, plugin_name, plugin_type,
+                collections_path=cpath,
+            )
+        except CollectionNotFoundError:
+            if namespace and missing_collections is not None:
+                missing_collections.add(namespace)
+            local_doc = {}
+        except AnsibleDocError as exc:
+            logger.warning("Local plugin doc failed for %s: %s", plugin_name, exc)
+            local_doc = {}
+
+    if local_doc:
+        metadata = parser.extract_plugin_metadata(local_doc, plugin_type)
+        metadata["content_type"] = "plugin"
+        metadata["doc_source"] = "local"
+        return metadata
+
+    if client_factory is None:
+        return {
+            "plugin_name": plugin_name,
+            "plugin_type": plugin_type,
+            "content_type": "plugin",
+            "doc_source": "unavailable",
+            "error": "No Galaxy client configured for fallback",
+            "params": [],
+        }
+
+    try:
+        async def _fetch(client):
+            return await client.fetch_plugin_doc(plugin_name, plugin_type)
+        galaxy_doc, galaxy_meta = await _try_galaxy_servers(
+            servers, _fetch, client_factory, http_client,
+        )
+        metadata = parser.extract_plugin_metadata(galaxy_doc, plugin_type)
+        result = dict(metadata)
+        result["content_type"] = "plugin"
+        result["doc_source"] = "galaxy"
+        result["doc_version"] = galaxy_meta.get("doc_version", "")
+        if "doc_warning" in galaxy_meta:
+            result["doc_warning"] = galaxy_meta["doc_warning"]
+        if "doc_source_server" in galaxy_meta:
+            result["doc_source_server"] = galaxy_meta["doc_source_server"]
+        return result
+    except GalaxyError as galaxy_exc:
+        return {
+            "plugin_name": plugin_name,
+            "plugin_type": plugin_type,
+            "content_type": "plugin",
+            "doc_source": "unavailable",
+            "error": sanitize_error(str(galaxy_exc)),
+            "params": [],
+        }
 
 
 async def resolve_role_doc(

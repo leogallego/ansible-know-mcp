@@ -1,11 +1,13 @@
 """Tests for ansible_know.resolution module."""
 
 import json
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from ansible_know.errors import CollectionNotFoundError
 from ansible_know.galaxy import GalaxyClient
+from ansible_know.resolution import resolve_plugin_doc
 from tests.conftest import SAMPLE_MODULE_DOC, SAMPLE_ROLE_DOC
 
 FACTORY = GalaxyClient.from_config
@@ -357,3 +359,75 @@ class TestSearchGalaxyCollections:
                 await search_galaxy_collections(
                     "net", galaxy_servers=[server], client_factory=FACTORY,
                 )
+
+
+class TestResolvePluginDoc:
+    @pytest.mark.asyncio
+    async def test_returns_local_doc(self):
+        mock_doc = {
+            "netbox.netbox.nb_lookup": {
+                "doc": {
+                    "short_description": "Queries NetBox",
+                    "options": {},
+                },
+                "examples": "",
+            },
+        }
+        with patch("ansible_know.parser.get_plugin_doc", return_value=mock_doc):
+            with patch("ansible_know.parser.extract_plugin_metadata", return_value={
+                "plugin_name": "netbox.netbox.nb_lookup",
+                "plugin_type": "lookup",
+                "short_description": "Queries NetBox",
+                "params": [],
+                "examples": "",
+            }):
+                result = await resolve_plugin_doc("netbox.netbox.nb_lookup", "lookup")
+        assert result["doc_source"] == "local"
+        assert result["plugin_type"] == "lookup"
+        assert result["plugin_name"] == "netbox.netbox.nb_lookup"
+        assert result["content_type"] == "plugin"
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_galaxy(self):
+        galaxy_doc = {
+            "netbox.netbox.nb_lookup": {
+                "doc": {"short_description": "Queries NetBox", "options": {}},
+                "examples": "",
+            },
+        }
+        galaxy_meta = {"doc_source": "galaxy", "doc_version": "1.0.0"}
+
+        mock_client = AsyncMock()
+        mock_client.fetch_plugin_doc = AsyncMock(return_value=(galaxy_doc, galaxy_meta))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        def factory(config, http_client=None):
+            return mock_client
+
+        with patch("ansible_know.parser.get_plugin_doc", side_effect=CollectionNotFoundError("not found")):
+            with patch("ansible_know.parser.extract_plugin_metadata", return_value={
+                "plugin_name": "netbox.netbox.nb_lookup",
+                "plugin_type": "lookup",
+                "short_description": "Queries NetBox",
+                "params": [],
+                "examples": "",
+            }):
+                from ansible_know.galaxy_config import GalaxyServerConfig
+                servers = [GalaxyServerConfig(name="galaxy", url="https://galaxy.ansible.com")]
+                result = await resolve_plugin_doc(
+                    "netbox.netbox.nb_lookup", "lookup",
+                    galaxy_servers=servers,
+                    client_factory=factory,
+                )
+        assert result["doc_source"] == "galaxy"
+        assert result["content_type"] == "plugin"
+
+    @pytest.mark.asyncio
+    async def test_unavailable_when_no_client(self):
+        with patch("ansible_know.parser.get_plugin_doc", side_effect=CollectionNotFoundError("not found")):
+            result = await resolve_plugin_doc("netbox.netbox.nb_lookup", "lookup")
+        assert result["doc_source"] == "unavailable"
+        assert result["content_type"] == "plugin"
+        assert result["plugin_type"] == "lookup"
+        assert "params" in result
