@@ -249,6 +249,7 @@ def _collection_template_context(
     namespace: str,
     metadata_list: list[ModuleMetadata],
     collection_version: str | None = None,
+    plugins_metadata: list[dict[str, Any]] | None = None,
 ) -> CollectionSkillContext:
     """Build template context for a collection-level skill."""
     modules_by_tag: dict[str, list[ModuleTagEntry]] = {}
@@ -279,6 +280,14 @@ def _collection_template_context(
 
     common_params = _find_common_params(metadata_list)
 
+    plugins_by_type: dict[str, list[dict[str, str]]] = {}
+    for pmeta in (plugins_metadata or []):
+        ptype = pmeta.get("plugin_type", "other")
+        plugins_by_type.setdefault(ptype, []).append({
+            "fqcn": pmeta["fqcn"],
+            "short_description": pmeta.get("description", ""),
+        })
+
     return {
         "collection_namespace": namespace,
         "collection_version": collection_version,
@@ -286,6 +295,7 @@ def _collection_template_context(
         "all_api": all_api,
         "common_params": common_params,
         "module_count": len(metadata_list),
+        "plugins_by_type": plugins_by_type,
     }
 
 
@@ -322,7 +332,9 @@ def render_collection_skill(
     logger.debug("Rendering collection skill for %s", namespace)
     env = _get_template_env()
     template = env.get_template("COLLECTION_SKILL.md.j2")
-    ctx = _collection_template_context(namespace, metadata_list, collection_version)
+    ctx = _collection_template_context(
+        namespace, metadata_list, collection_version, plugins_metadata,
+    )
     return template.render(**ctx)
 
 

@@ -136,6 +136,7 @@ class CollectionSkillContext(TypedDict):
     all_api: bool
     common_params: list[ParamDict]
     module_count: int
+    plugins_by_type: dict[str, list[dict[str, str]]]
 
 
 class ManifestModuleEntry(TypedDict):

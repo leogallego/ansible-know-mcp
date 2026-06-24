@@ -482,3 +482,40 @@ class TestWritePluginSkillPackage:
         }
         write_plugin_skill_package(tmp_path / "lookup__nb_lookup", metadata)
         assert not (tmp_path / "lookup__nb_lookup" / "assets").exists()
+
+
+class TestCollectionSkillWithPlugins:
+    def test_includes_plugins_section(self):
+        metadata_list = [{
+            "module_name": "netbox.netbox.netbox_device",
+            "short_description": "Manage devices",
+            "params": [],
+            "examples": "",
+            "is_api_module": True,
+        }]
+        plugins = [
+            {"fqcn": "netbox.netbox.nb_lookup", "plugin_type": "lookup",
+             "description": "Query NetBox"},
+            {"fqcn": "netbox.netbox.nb_inventory", "plugin_type": "inventory",
+             "description": "Dynamic inventory"},
+        ]
+        result = render_collection_skill(
+            "netbox.netbox", metadata_list,
+            plugins_metadata=plugins,
+        )
+        assert "Available Plugins" in result
+        assert "nb_lookup" in result
+        assert "nb_inventory" in result
+        assert "Lookup" in result
+        assert "Inventory" in result
+
+    def test_no_plugins_section_when_empty(self):
+        metadata_list = [{
+            "module_name": "netbox.netbox.netbox_device",
+            "short_description": "Manage devices",
+            "params": [],
+            "examples": "",
+            "is_api_module": True,
+        }]
+        result = render_collection_skill("netbox.netbox", metadata_list)
+        assert "Available Plugins" not in result

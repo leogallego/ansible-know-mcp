@@ -1549,7 +1549,8 @@ def review_playbook(playbook_yaml: str) -> str:
         "Review the following Ansible playbook for correctness, best practices, "
         "and potential issues. Check that modules are used with correct parameters, "
         "FQCNs are used, and the playbook follows idempotency principles.\n\n"
-        "Use the search_modules and get_module_doc tools to verify module usage.\n\n"
+        "Use the search_modules, search_plugins, get_module_doc, and get_plugin_doc "
+        "tools to verify module and plugin usage.\n\n"
         f"```yaml\n{playbook_yaml}\n```"
     )
 
@@ -1563,6 +1564,19 @@ def explain_module(module_name: str) -> str:
         "1. What the module does and when to use it\n"
         "2. Required vs optional parameters with descriptions\n"
         "3. A practical example playbook\n"
+        "4. Common pitfalls or gotchas"
+    )
+
+
+@mcp.prompt
+def explain_plugin(plugin_name: str, plugin_type: str) -> str:
+    """Get a detailed explanation of an Ansible plugin with usage examples."""
+    return (
+        f"Explain the Ansible {plugin_type} plugin `{plugin_name}` in detail. "
+        "Use the get_plugin_doc tool to fetch its full documentation, then provide:\n\n"
+        "1. What the plugin does and when to use it instead of a module\n"
+        "2. Parameters with descriptions\n"
+        "3. A practical usage example (Jinja2 expression, inventory file, or ansible.cfg)\n"
         "4. Common pitfalls or gotchas"
     )
 
@@ -1594,7 +1608,7 @@ def find_collection(platform_or_use_case: str) -> str:
         "2. Pick the best match (prefer high download count, non-deprecated)\n"
         "3. Use ensure_collection to install it for this session\n"
         "4. Use get_collection_manifest to see all available modules and roles\n"
-        "5. Use get_module_doc or get_role_doc on relevant content to understand usage"
+        "5. Use get_module_doc, get_role_doc, or get_plugin_doc on relevant content to understand usage"
     )
 
 
