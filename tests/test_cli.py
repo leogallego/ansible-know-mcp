@@ -26,7 +26,7 @@ class TestParseArgsDefaults:
     def test_defaults(self):
         config = parse_args([])
         assert config.transport == "stdio"
-        assert config.host == "0.0.0.0"
+        assert config.host == "127.0.0.1"
         assert config.port == 8080
 
     def test_transport_http(self):
