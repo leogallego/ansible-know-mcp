@@ -12,9 +12,7 @@ import contextlib
 import json
 import logging
 import os
-import re
 from importlib.metadata import version as pkg_version
-from pathlib import Path
 from typing import Annotated, Any
 
 import httpx
@@ -49,7 +47,6 @@ from ansible_know.validation import (
     validate_install_path,
     validate_keyword,
     validate_namespace,
-    validate_path_containment,
     validate_plugin_type,
     validate_query,
     validate_skill_name,
@@ -60,8 +57,6 @@ from ansible_know.validation import (
 logger = logging.getLogger("ansible_know")
 
 _VERSION = pkg_version("ansible-know-mcp")
-
-_PLUGIN_SKILL_DIR_RE = re.compile(r"^([a-z]+)__(.+)$")
 
 _VERSION_CHECK_INTERVAL = 6 * 3600  # 6 hours
 
@@ -791,66 +786,6 @@ async def ensure_collection(
 # --- Skill management tools ---
 
 
-def _extract_skill_description(skill_md: Path) -> str:
-    """Extract description from a SKILL.md frontmatter."""
-    content = skill_md.read_text()
-    for line in content.splitlines():
-        if line.startswith("description:"):
-            return line.partition(":")[2].strip().strip(">-").strip()
-    return ""
-
-
-def _list_skills_sync(
-    skills_dir: Path, collection: str | None,
-) -> list[dict[str, str]]:
-    """Synchronous helper for list_skills — all file I/O happens here."""
-    results: list[dict[str, str]] = []
-    if not skills_dir.exists():
-        return results
-
-    if collection:
-        collection_dir = (skills_dir / collection).resolve()
-        validate_path_containment(collection_dir, skills_dir)
-        if not collection_dir.is_dir():
-            return results
-        for sub_dir in sorted(collection_dir.iterdir()):
-            try:
-                skill_md = sub_dir / "SKILL.md"
-                if sub_dir.is_dir() and not sub_dir.is_symlink() and skill_md.exists():
-                    dir_name = sub_dir.name
-                    # Strip {type}__ prefix for plugin skills
-                    from ansible_know.config import PLUGIN_TYPES
-                    match = _PLUGIN_SKILL_DIR_RE.match(dir_name)
-                    if match and match.group(1) in PLUGIN_TYPES:
-                        display_name = f"{collection}.{match.group(2)}"
-                    else:
-                        display_name = f"{collection}.{dir_name}"
-                    results.append({
-                        "name": display_name,
-                        "description": _extract_skill_description(skill_md),
-                        "path": str(sub_dir),
-                    })
-            except OSError:
-                logger.warning("Skipping unreadable skill: %s", sub_dir.name)
-                continue
-    else:
-        for skill_dir in sorted(skills_dir.iterdir()):
-            try:
-                if not skill_dir.is_dir() or skill_dir.is_symlink():
-                    continue
-                skill_md = skill_dir / "SKILL.md"
-                if skill_md.exists():
-                    results.append({
-                        "name": skill_dir.name,
-                        "description": _extract_skill_description(skill_md),
-                        "path": str(skill_dir),
-                    })
-            except OSError:
-                logger.warning("Skipping unreadable skill: %s", skill_dir.name)
-                continue
-    return results
-
-
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def list_skills(
     collection: Annotated[
@@ -872,53 +807,12 @@ async def list_skills(
 
     try:
         from ansible_know.config import SKILLS_DIR
+        from ansible_know.skills import list_skills_sync
 
-        return await run_in_executor(_list_skills_sync, SKILLS_DIR, collection)
+        return await run_in_executor(list_skills_sync, SKILLS_DIR, collection)
     except Exception as exc:
         logger.warning("list_skills failed: %s", exc)
         return {"error": sanitize_error(str(exc))}
-
-
-def _get_skill_sync(skills_dir: Path, skill_name: str) -> str:
-    """Read a skill's SKILL.md content from disk.
-
-    Callers MUST validate ``skill_name`` with ``validate_skill_name()`` first.
-
-    Raises:
-        FileNotFoundError: If no matching SKILL.md exists.
-        ValidationError: If a resolved path escapes ``skills_dir``.
-        OSError: On permission or I/O errors reading the file.
-    """
-    parts = skill_name.split(".")
-    if len(parts) >= 3:
-        namespace = ".".join(parts[:2])
-        short_name = ".".join(parts[2:])
-
-        # Module/role skill (direct short_name)
-        nested_path = (skills_dir / namespace / short_name / "SKILL.md").resolve()
-        validate_path_containment(nested_path, skills_dir)
-        if nested_path.exists():
-            return truncate_response(nested_path.read_text())
-
-        # Plugin skill ({type}__{short_name} convention)
-        from ansible_know.config import PLUGIN_TYPES
-        for ptype in PLUGIN_TYPES:
-            plugin_path = (skills_dir / namespace / f"{ptype}__{short_name}" / "SKILL.md").resolve()
-            validate_path_containment(plugin_path, skills_dir)
-            if plugin_path.exists():
-                return truncate_response(plugin_path.read_text())
-
-        flat_path = (skills_dir / skill_name / "SKILL.md").resolve()
-        validate_path_containment(flat_path, skills_dir)
-        if flat_path.exists():
-            return truncate_response(flat_path.read_text())
-    else:
-        skill_path = (skills_dir / skill_name / "SKILL.md").resolve()
-        validate_path_containment(skill_path, skills_dir)
-        if skill_path.exists():
-            return truncate_response(skill_path.read_text())
-
-    raise FileNotFoundError(f"Skill '{skill_name}' not found.")
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
@@ -941,8 +835,9 @@ async def get_skill(
 
     try:
         from ansible_know.config import SKILLS_DIR
+        from ansible_know.skills import get_skill_sync
 
-        return await run_in_executor(_get_skill_sync, SKILLS_DIR, skill_name)
+        return await run_in_executor(get_skill_sync, SKILLS_DIR, skill_name)
     except FileNotFoundError as exc:
         return {"error": str(exc)}
     except ValidationError as exc:
@@ -1389,6 +1284,7 @@ def resource_skills_list() -> str:
     import json
 
     from ansible_know.config import PLUGIN_TYPES, SKILLS_DIR
+    from ansible_know.skills import PLUGIN_SKILL_DIR_RE
 
     skills_list: list[str] = []
     if SKILLS_DIR.exists():
@@ -1401,7 +1297,7 @@ def resource_skills_list() -> str:
             for sub_dir in sorted(skill_dir.iterdir()):
                 if sub_dir.is_dir() and not sub_dir.is_symlink() and (sub_dir / "SKILL.md").exists():
                     dir_name = sub_dir.name
-                    match = _PLUGIN_SKILL_DIR_RE.match(dir_name)
+                    match = PLUGIN_SKILL_DIR_RE.match(dir_name)
                     if match and match.group(1) in PLUGIN_TYPES:
                         skills_list.append(f"{skill_dir.name}.{match.group(2)}")
                     else:
@@ -1416,6 +1312,7 @@ def resource_skills_list() -> str:
 )
 def resource_skill_content(skill_name: str) -> str:
     from ansible_know.config import SKILLS_DIR
+    from ansible_know.skills import get_skill_sync
 
     try:
         validate_skill_name(skill_name)
@@ -1423,7 +1320,7 @@ def resource_skill_content(skill_name: str) -> str:
         return str(exc)
 
     try:
-        return _get_skill_sync(SKILLS_DIR, skill_name)
+        return get_skill_sync(SKILLS_DIR, skill_name)
     except FileNotFoundError as exc:
         return str(exc)
     except ValidationError as exc:
