@@ -48,6 +48,7 @@ src/ansible_know/
 | `fetch_doc` | read-only | Fetch a docs.ansible.com page as clean Markdown |
 | `search_collections` | read-only | Search Galaxy for collections by keyword |
 | `get_collection_manifest` | read-only | Get collection-level module and role summary |
+| `get_collection_docs` | read-only | Get all module docs for a collection from Galaxy |
 | `ensure_collection` | idempotent write | Install a collection for this session |
 | `list_skills` | read-only | List generated skills |
 | `get_skill` | read-only | Read a skill's content |
