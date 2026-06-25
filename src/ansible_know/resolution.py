@@ -16,15 +16,22 @@ if TYPE_CHECKING:
     import httpx
 
     from ansible_know.galaxy_config import GalaxyServerConfig
-    from ansible_know.types import DocProvenance, GalaxyClientFactory
+    from ansible_know.types import (
+        DocProvenance,
+        ErrorResponse,
+        GalaxyClientFactory,
+        GetPluginDocResult,
+        GetRoleDocResult,
+    )
 
 from ansible_know.async_utils import run_in_executor
 from ansible_know.errors import AnsibleDocError
-from ansible_know.validation import sanitize_error
+from ansible_know.validation import sanitize_error, validate_plugin_type
 
 logger = logging.getLogger("ansible_know")
 
 __all__ = [
+    "discover_collection_plugins",
     "resolve_module_doc",
     "resolve_plugin_doc",
     "resolve_role_doc",
@@ -75,6 +82,37 @@ def _get_servers(
         return galaxy_servers
     from ansible_know.galaxy_config import load_galaxy_servers
     return load_galaxy_servers()
+
+
+async def discover_collection_plugins(
+    collection_namespace: str,
+    collections_path: str | None = None,
+) -> list[tuple[str, dict[str, str]]]:
+    """Discover all plugins in a collection across all 14 plugin types.
+
+    Runs ``parser.list_plugins`` for each type in parallel via
+    ``asyncio.gather``. Individual type failures are logged and
+    silently return empty results.
+
+    Returns a list of ``(plugin_type, {fqcn: description})`` tuples.
+    """
+    from ansible_know import parser
+    from ansible_know.config import PLUGIN_TYPES
+    from ansible_know.errors import ValidationError
+
+    async def _list_one_type(ptype: str) -> tuple[str, dict[str, str]]:
+        try:
+            return ptype, await run_in_executor(
+                parser.list_plugins, ptype,
+                collection_filter=collection_namespace,
+                collections_path=collections_path,
+            )
+        except (AnsibleDocError, OSError, ValidationError):
+            return ptype, {}
+
+    return list(await asyncio.gather(
+        *[_list_one_type(pt) for pt in PLUGIN_TYPES]
+    ))
 
 
 async def resolve_module_doc(
@@ -144,13 +182,15 @@ async def resolve_plugin_doc(
     client_factory: GalaxyClientFactory | None = None,
     missing_collections: set[str] | None = None,
     collections_path: str | None = None,
-) -> dict[str, Any]:
+) -> GetPluginDocResult | ErrorResponse:
     """Try local ansible-doc -t <type>, fall back to Galaxy.
 
     Returns the complete tool response dict including doc_source and plugin_type.
     """
     from ansible_know import parser
     from ansible_know.errors import CollectionNotFoundError, GalaxyError
+
+    validate_plugin_type(plugin_type)
 
     servers = _get_servers(galaxy_servers)
     namespace = ".".join(plugin_name.split(".")[:2]) if "." in plugin_name else None
@@ -222,7 +262,7 @@ async def resolve_role_doc(
     client_factory: GalaxyClientFactory | None = None,
     missing_collections: set[str] | None = None,
     collections_path: str | None = None,
-) -> dict[str, Any]:
+) -> GetRoleDocResult | ErrorResponse:
     """Try local ansible-doc -t role, fall back to Galaxy readme_html.
 
     Returns the complete tool response dict including doc_source and content_type.

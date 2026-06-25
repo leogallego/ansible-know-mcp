@@ -16,7 +16,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ansible_know.config import PLUGIN_TYPES
-from ansible_know.errors import AnsibleDocError, CollectionNotFoundError, ValidationError, is_missing_collection_error
+from ansible_know.errors import AnsibleDocError, CollectionNotFoundError, is_missing_collection_error
+from ansible_know.validation import validate_plugin_type
 
 if TYPE_CHECKING:
     from ansible_know.types import EntryPointInfo, ModuleMetadata, ParamDict, PluginMetadata, RoleMetadata
@@ -388,15 +389,6 @@ def extract_role_metadata(role_doc: dict[str, Any]) -> RoleMetadata:
     }
 
 
-def _validate_plugin_type(plugin_type: str) -> None:
-    """Raise ValidationError if plugin_type is not a recognized ansible-doc type."""
-    if plugin_type not in PLUGIN_TYPES:
-        raise ValidationError(
-            f"Invalid plugin type '{plugin_type}'. "
-            f"Valid types: {', '.join(sorted(PLUGIN_TYPES))}"
-        )
-
-
 def list_plugins(
     plugin_type: str,
     collection_filter: str | None = None,
@@ -413,7 +405,7 @@ def list_plugins(
     Returns:
         Dict mapping fully-qualified plugin names to their short descriptions.
     """
-    _validate_plugin_type(plugin_type)
+    validate_plugin_type(plugin_type)
     args = ["--list", "-t", plugin_type, "--json"]
     if collection_filter:
         args.append(collection_filter)
@@ -435,7 +427,7 @@ def get_plugin_doc(
 
     Returns the parsed JSON from `ansible-doc -t <type> <plugin> --json`.
     """
-    _validate_plugin_type(plugin_type)
+    validate_plugin_type(plugin_type)
     raw = _run_ansible_doc(
         "-t", plugin_type, plugin_name, "--json",
         collections_path=collections_path,
@@ -463,7 +455,7 @@ def search_plugins(
     REPL exploration).
     """
     if plugin_type is not None:
-        _validate_plugin_type(plugin_type)
+        validate_plugin_type(plugin_type)
         all_plugins = list_plugins(
             plugin_type, collection_filter, collections_path=collections_path,
         )

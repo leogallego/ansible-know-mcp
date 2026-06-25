@@ -7,7 +7,7 @@ import pytest
 
 from ansible_know.errors import CollectionNotFoundError
 from ansible_know.galaxy import GalaxyClient
-from ansible_know.resolution import resolve_plugin_doc
+from ansible_know.resolution import discover_collection_plugins, resolve_plugin_doc
 from tests.conftest import SAMPLE_MODULE_DOC, SAMPLE_ROLE_DOC
 
 FACTORY = GalaxyClient.from_config
@@ -359,6 +359,49 @@ class TestSearchGalaxyCollections:
                 await search_galaxy_collections(
                     "net", galaxy_servers=[server], client_factory=FACTORY,
                 )
+
+
+class TestDiscoverCollectionPlugins:
+    @pytest.mark.asyncio
+    async def test_returns_results_for_each_type(self):
+        with patch("ansible_know.parser.list_plugins", return_value={}):
+            results = await discover_collection_plugins("netbox.netbox")
+        from ansible_know.config import PLUGIN_TYPES
+        assert len(results) == len(PLUGIN_TYPES)
+        assert all(isinstance(r, tuple) and len(r) == 2 for r in results)
+
+    @pytest.mark.asyncio
+    async def test_collects_discovered_plugins(self):
+        def fake_list(ptype, collection_filter=None, collections_path=None):
+            if ptype == "lookup":
+                return {"netbox.netbox.nb_lookup": "Query NetBox"}
+            return {}
+
+        with patch("ansible_know.parser.list_plugins", side_effect=fake_list):
+            results = await discover_collection_plugins("netbox.netbox")
+
+        lookup_results = [r for r in results if r[0] == "lookup"]
+        assert len(lookup_results) == 1
+        assert "netbox.netbox.nb_lookup" in lookup_results[0][1]
+
+    @pytest.mark.asyncio
+    async def test_handles_failures_gracefully(self):
+        from ansible_know.errors import AnsibleDocError
+
+        def failing_list(ptype, collection_filter=None, collections_path=None):
+            if ptype == "lookup":
+                return {"netbox.netbox.nb_lookup": "Query NetBox"}
+            raise AnsibleDocError("not supported")
+
+        with patch("ansible_know.parser.list_plugins", side_effect=failing_list):
+            results = await discover_collection_plugins("netbox.netbox")
+
+        from ansible_know.config import PLUGIN_TYPES
+        assert len(results) == len(PLUGIN_TYPES)
+        lookup_results = [r for r in results if r[0] == "lookup"]
+        assert lookup_results[0][1] == {"netbox.netbox.nb_lookup": "Query NetBox"}
+        failed_results = [r for r in results if r[0] != "lookup"]
+        assert all(plugins == {} for _, plugins in failed_results)
 
 
 class TestResolvePluginDoc:

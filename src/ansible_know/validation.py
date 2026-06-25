@@ -17,6 +17,7 @@ __all__ = [
     "validate_keyword",
     "validate_namespace",
     "validate_path_containment",
+    "validate_plugin_type",
     "validate_query",
     "validate_skill_name",
     "validate_tags",
@@ -126,6 +127,17 @@ def truncate_response(text: str) -> str:
     if len(text) > MAX_RESPONSE_SIZE:
         return text[:MAX_RESPONSE_SIZE] + "\n\n[Truncated — response exceeded size limit]"
     return text
+
+
+def validate_plugin_type(plugin_type: str) -> None:
+    """Raise ValidationError if plugin_type is not a recognized ansible-doc type."""
+    from ansible_know.config import PLUGIN_TYPES
+
+    if plugin_type not in PLUGIN_TYPES:
+        raise ValidationError(
+            f"Invalid plugin type '{plugin_type}'. "
+            f"Valid types: {', '.join(sorted(PLUGIN_TYPES))}"
+        )
 
 
 def validate_doc_url(url: str) -> None:

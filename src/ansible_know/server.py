@@ -49,6 +49,7 @@ from ansible_know.validation import (
     validate_keyword,
     validate_namespace,
     validate_path_containment,
+    validate_plugin_type,
     validate_query,
     validate_skill_name,
     validate_tags,
@@ -339,9 +340,7 @@ async def search_plugins(
         if namespace:
             validate_namespace(namespace)
         if plugin_type:
-            from ansible_know.config import PLUGIN_TYPES
-            if plugin_type not in PLUGIN_TYPES:
-                return {"error": f"Invalid plugin type '{plugin_type}'. Valid: {', '.join(sorted(PLUGIN_TYPES))}"}
+            validate_plugin_type(plugin_type)
     except ValidationError as exc:
         return {"error": str(exc)}
 
@@ -497,9 +496,7 @@ async def get_plugin_doc(
     await _maybe_warn_upgrade(ctx)
     try:
         validate_fqcn(plugin_name)
-        from ansible_know.config import PLUGIN_TYPES
-        if plugin_type not in PLUGIN_TYPES:
-            return {"error": f"Invalid plugin type '{plugin_type}'. Valid: {', '.join(sorted(PLUGIN_TYPES))}"}
+        validate_plugin_type(plugin_type)
     except ValidationError as exc:
         return {"error": str(exc)}
 
@@ -651,7 +648,7 @@ async def get_collection_manifest(
 
     await _maybe_warn_upgrade(ctx)
     try:
-        from ansible_know import collection_manifest, parser
+        from ansible_know import collection_manifest, parser, resolution
 
         state = await _get_state(ctx)
         installed_version = state.collection_manager.list_installed().get(collection_namespace)
@@ -678,21 +675,8 @@ async def get_collection_manifest(
         except (AnsibleDocError, OSError) as exc:
             logger.warning("list_roles failed for %s: %s", collection_namespace, exc)
 
-        # Discover plugins across all types (parallel — 14 types via asyncio.gather)
-        from ansible_know.config import PLUGIN_TYPES
-
-        async def _list_one_plugin_type(ptype):
-            try:
-                return ptype, await run_in_executor(
-                    parser.list_plugins, ptype,
-                    collection_filter=collection_namespace,
-                    collections_path=cpath,
-                )
-            except (AnsibleDocError, OSError, ValidationError):
-                return ptype, {}
-
-        plugin_results = await asyncio.gather(
-            *[_list_one_plugin_type(pt) for pt in PLUGIN_TYPES]
+        plugin_results = await resolution.discover_collection_plugins(
+            collection_namespace, collections_path=cpath,
         )
         plugins_raw: dict[str, dict[str, str]] = {}
         for ptype, type_plugins in plugin_results:
@@ -1116,9 +1100,7 @@ async def generate_plugin_skill(
     await _maybe_warn_upgrade(ctx)
     try:
         validate_fqcn(plugin_name)
-        from ansible_know.config import PLUGIN_TYPES
-        if plugin_type not in PLUGIN_TYPES:
-            return {"error": f"Invalid plugin type '{plugin_type}'. Valid: {', '.join(sorted(PLUGIN_TYPES))}"}
+        validate_plugin_type(plugin_type)
         if install_to:
             validate_install_path(install_to)
     except ValidationError as exc:
@@ -1189,7 +1171,7 @@ async def generate_collection_skills(
         return {"error": str(exc)}
 
     try:
-        from ansible_know import collection_manifest, parser, skills
+        from ansible_know import collection_manifest, parser, resolution, skills
         from ansible_know.config import SKILLS_DIR
 
         state = await _get_state(ctx)
@@ -1211,21 +1193,8 @@ async def generate_collection_skills(
         except (AnsibleDocError, OSError) as exc:
             logger.warning("list_roles failed for %s: %s", collection_namespace, exc)
 
-        # Discover plugins across all types (parallel)
-        from ansible_know.config import PLUGIN_TYPES
-
-        async def _list_plugin_type(ptype):
-            try:
-                return ptype, await run_in_executor(
-                    parser.list_plugins, ptype,
-                    collection_filter=collection_namespace,
-                    collections_path=cpath,
-                )
-            except (AnsibleDocError, OSError, ValidationError):
-                return ptype, {}
-
-        plugin_list_results = await asyncio.gather(
-            *[_list_plugin_type(pt) for pt in PLUGIN_TYPES]
+        plugin_list_results = await resolution.discover_collection_plugins(
+            collection_namespace, collections_path=cpath,
         )
 
         # Combined guard — reject only if ALL content types are empty

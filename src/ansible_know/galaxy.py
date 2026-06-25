@@ -252,9 +252,9 @@ class GalaxyClient:
             role_count = sum(
                 1 for c in contents if c.get("content_type") == "role"
             )
-            from ansible_know.config import PLUGIN_TYPES as _PLUGIN_TYPES
+            from ansible_know.config import PLUGIN_TYPES
             plugin_count = sum(
-                1 for c in contents if c.get("content_type") in _PLUGIN_TYPES
+                1 for c in contents if c.get("content_type") in PLUGIN_TYPES
             )
             tags_list = [t["name"] for t in cv.get("tags", []) if isinstance(t, dict)]
             candidates.append({
