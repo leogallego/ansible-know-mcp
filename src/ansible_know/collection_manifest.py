@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ansible_know.config import SKILLS_DIR
+from ansible_know.errors import ValidationError
 from ansible_know.tagging import derive_tags
 from ansible_know.validation import validate_path_containment
 
@@ -88,7 +89,12 @@ def generate_manifest(
         fqcn = plugin_meta["fqcn"]
         ptype = plugin_meta.get("plugin_type", "")
         short_name = fqcn.rsplit(".", 1)[-1]
-        has_skill = (collection_dir / f"{ptype}__{short_name}" / "SKILL.md").exists()
+        skill_path = (collection_dir / f"{ptype}__{short_name}" / "SKILL.md").resolve()
+        try:
+            validate_path_containment(skill_path, skills_dir)
+            has_skill = skill_path.exists()
+        except (ValidationError, ValueError):
+            has_skill = False
 
         plugins_list.append({
             "fqcn": fqcn,
