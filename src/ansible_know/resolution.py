@@ -193,7 +193,7 @@ async def resolve_module_doc(
             "module_name": module_name,
             "content_type": "module",
             "doc_source": "unavailable",
-            "error": sanitize_error(local_error or str(galaxy_exc)),
+            "error": sanitize_error(str(galaxy_exc)),
             "params": [],
         }
 

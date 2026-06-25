@@ -524,28 +524,28 @@ class TestMissingCollectionHints:
             "ansible-doc failed (exit 1): netbox.netbox.netbox_device has no attribute"
         )
         with patch(
-            "ansible_know.resolution._try_galaxy_servers",
+            "ansible_know.galaxy.GalaxyClient.fetch_module_doc",
             side_effect=GalaxyError("not found on Galaxy"),
         ):
             from ansible_know.server import get_module_doc
             result = await get_module_doc("netbox.netbox.netbox_device")
         assert "error" in result
-        assert "ensure_collection" in result["error"]
+        assert "ensure_collection" not in result["error"]
 
     @pytest.mark.asyncio
-    async def test_get_module_doc_hint_on_local_only_failure(self, mock_ansible_doc):
+    async def test_get_module_doc_hint_suppressed_when_galaxy_tried(self, mock_ansible_doc):
         from ansible_know.errors import CollectionNotFoundError, GalaxyError
         mock_ansible_doc.side_effect = CollectionNotFoundError(
             "ansible-doc failed (exit 1): netbox.netbox was not found"
         )
         with patch(
-            "ansible_know.resolution._try_galaxy_servers",
+            "ansible_know.galaxy.GalaxyClient.fetch_module_doc",
             side_effect=GalaxyError("Galaxy also failed"),
         ):
             from ansible_know.server import get_module_doc
             result = await get_module_doc("netbox.netbox.netbox_device")
         assert "error" in result
-        assert "ensure_collection" in result["error"]
+        assert "ensure_collection" not in result["error"]
 
     @pytest.mark.asyncio
     async def test_search_modules_hint(self, mock_ansible_doc):
@@ -663,6 +663,7 @@ class TestGalaxyDocsFallback:
             from ansible_know.server import get_module_doc
             result = await get_module_doc("ansible.builtin.copy")
         assert "error" in result
+        assert "not found on Galaxy" in result["error"]
 
     @pytest.mark.asyncio
     async def test_get_module_doc_returns_error_when_both_fail(self, mock_ansible_doc):
