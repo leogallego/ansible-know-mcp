@@ -18,7 +18,7 @@ Runtime requirement: `ansible-core` must be installed in the same environment (f
 
 ```
 src/ansible_know/
-├── server.py              # FastMCP server: 17 tools, 5 resources, 5 prompts (entrypoint)
+├── server.py              # FastMCP server: 17 tools, 6 resources, 5 prompts (entrypoint)
 ├── parser.py              # ansible-doc wrapper — module discovery and metadata extraction
 ├── resolution.py          # local-then-Galaxy doc resolution + multi-server search
 ├── readme_parser.py       # Parse Galaxy role README HTML into structured data
@@ -64,6 +64,7 @@ src/ansible_know/
 | `skills://list` | List all generated skill packages |
 | `skills://{skill_name}` | Read a skill's SKILL.md by FQCN |
 | `galaxy://installed` | List collections installed in this session |
+| `galaxy://servers` | List configured Galaxy servers with auth type |
 | `server://version` | Installed/latest version info with upgrade status |
 | `docs://sources` | List configured doc manifest sources |
 
