@@ -216,12 +216,18 @@ async def _search_rtd_api(
             *[_search_one(name, slug) for name, slug in slugs_to_search],
             return_exceptions=True,
         )
-        results: list[SearchDocsEntry] = []
+        per_source: list[list[SearchDocsEntry]] = []
         for hits in all_hits:
             if isinstance(hits, list):
-                results.extend(hits)
+                per_source.append(hits)
             elif isinstance(hits, BaseException):
                 logger.debug("RTD search failed for one project: %s", hits)
+        results: list[SearchDocsEntry] = []
+        max_len = max((len(s) for s in per_source), default=0)
+        for i in range(max_len):
+            for source_hits in per_source:
+                if i < len(source_hits):
+                    results.append(source_hits[i])
     finally:
         if should_close:
             await client.aclose()
@@ -252,6 +258,7 @@ async def search_docs(
     """
     sources = get_doc_sources()
     query_lower = query.lower()
+    query_words = query_lower.split()
     results: list[SearchDocsEntry] = []
     has_filters = bool(topic or audience or core_only)
     manifest_had_entries = False
@@ -289,7 +296,7 @@ async def search_docs(
             topics_str = " ".join(t.lower() for t in entry_topics)
             searchable = f"{title} {summary} {topics_str}"
 
-            if query_lower in searchable:
+            if all(w in searchable for w in query_words):
                 results.append({
                     "title": entry.get("title", ""),
                     "summary": entry.get("summary", ""),

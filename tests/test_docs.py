@@ -419,6 +419,92 @@ class TestSearchRtdApi:
         assert len(results) <= 5
 
 
+class TestTokenizedSearch:
+    @pytest.mark.asyncio
+    async def test_multi_word_matches_across_fields(self, file_sources):
+        """Words from different fields (title + summary) should match."""
+        results = await search_docs("precedence rules")
+        assert len(results) == 1
+        assert results[0]["title"] == "Variable Precedence"
+
+    @pytest.mark.asyncio
+    async def test_multi_word_matches_title_and_topic(self, tmp_path):
+        manifest = {
+            "version": "2.0",
+            "base_url": "https://docs.example.com",
+            "files": [
+                {
+                    "path": "rules/no-handler.html",
+                    "topic": "rules",
+                    "title": "no-handler",
+                    "summary": "Use handlers instead of when: result.changed",
+                    "audience": "author",
+                    "lines": 50,
+                },
+            ],
+        }
+        p_file = tmp_path / "tok_manifest.json"
+        p_file.write_text(json.dumps(manifest))
+        sources = {"lint": {"file": str(p_file), "description": "Lint"}}
+        with patch("ansible_know.docs.get_doc_sources", return_value=sources):
+            results = await search_docs("handler rules")
+        assert len(results) == 1
+        assert results[0]["title"] == "no-handler"
+
+    @pytest.mark.asyncio
+    async def test_single_word_still_works(self, file_sources):
+        results = await search_docs("playbook")
+        assert len(results) == 1
+        assert results[0]["title"] == "Introduction Guide"
+
+    @pytest.mark.asyncio
+    async def test_word_order_does_not_matter(self, file_sources):
+        r1 = await search_docs("precedence variable")
+        r2 = await search_docs("variable precedence")
+        assert len(r1) == len(r2) == 1
+        assert r1[0]["title"] == r2[0]["title"]
+
+
+class TestRtdInterleave:
+    @pytest.mark.asyncio
+    async def test_interleaves_across_sources(self):
+        """Results from multiple sources should be interleaved, not concatenated."""
+        source_a_hits = [
+            {"title": f"A{i}", "path": f"/a{i}.html", "domain": "https://docs.ansible.com", "blocks": []}
+            for i in range(5)
+        ]
+        source_b_hits = [
+            {"title": f"B{i}", "path": f"/b{i}.html", "domain": "https://docs.ansible.com", "blocks": []}
+            for i in range(5)
+        ]
+
+        call_count = 0
+
+        async def mock_get(*args, **kwargs):
+            nonlocal call_count
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.raise_for_status = MagicMock()
+            if call_count == 0:
+                mock_resp.json.return_value = {"results": source_a_hits}
+            else:
+                mock_resp.json.return_value = {"results": source_b_hits}
+            call_count += 1
+            return mock_resp
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=mock_get)
+
+        slugs = {"source-a": "slug-a", "source-b": "slug-b"}
+        with patch("ansible_know.docs.RTD_PROJECT_SLUGS", slugs):
+            results = await _search_rtd_api("test", limit=10, http_client=mock_client)
+
+        sources = [r["source"] for r in results]
+        assert "rtd-search:source-a" in sources
+        assert "rtd-search:source-b" in sources
+        assert results[0]["source"] != results[1]["source"]
+
+
 class TestSearchDocsFallback:
     @pytest.mark.asyncio
     async def test_falls_back_to_rtd_when_manifest_empty(self):

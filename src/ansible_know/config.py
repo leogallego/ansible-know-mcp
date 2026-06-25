@@ -29,6 +29,7 @@ AUDIENCE_MAP: dict[str, str] = {
     "getting_started": "author",
     "getting_started_ee": "author",
     "vault_guide": "author",
+    "plugins": "both",
     "tips_tricks": "author",
     "command_guide": "author",
 }
@@ -47,6 +48,7 @@ GUIDE_TOPIC_PREFIXES: set[str] = {
     "tips_tricks",
     "network",
     "os_guide",
+    "plugins",
     "scenario_guides",
     "user_guide",
     "community",
