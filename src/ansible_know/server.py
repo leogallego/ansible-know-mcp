@@ -761,7 +761,6 @@ async def get_collection_docs(
             http_client=http_client,
             galaxy_servers=state.galaxy_servers,
             client_factory=_galaxy_factory(ctx),
-            missing_collections=state.missing_collections,
         )
     except Exception as exc:
         logger.warning("get_collection_docs failed: %s", exc)
@@ -1118,7 +1117,6 @@ async def generate_collection_skills(
                 http_client=_get_http_client(ctx),
                 galaxy_servers=state.galaxy_servers,
                 client_factory=_galaxy_factory(ctx),
-                missing_collections=state.missing_collections,
             )
             if "modules" in batch_result:
                 galaxy_batch_modules = batch_result["modules"]

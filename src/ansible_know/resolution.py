@@ -362,7 +362,6 @@ async def resolve_collection_module_docs(
     http_client: httpx.AsyncClient | None = None,
     galaxy_servers: list[GalaxyServerConfig] | None = None,
     client_factory: GalaxyClientFactory | None = None,
-    missing_collections: set[str] | None = None,
 ) -> CollectionDocsResult | ErrorResponse:
     """Batch-fetch all module docs for a collection from Galaxy.
 

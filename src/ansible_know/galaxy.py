@@ -495,7 +495,8 @@ class GalaxyClient:
     ) -> tuple[dict[str, ModuleMetadata], DocProvenance]:
         """Fetch all module docs from a collection in one docs-blob call.
 
-        Extracts every module entry from the blob and transforms each into
+        Extracts every module entry from the blob, returning a dict keyed
+        by module FQCN. Transforms each into
         the same ``ModuleMetadata`` shape that ``extract_module_metadata``
         produces from ansible-doc output.
 

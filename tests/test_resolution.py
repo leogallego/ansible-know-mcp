@@ -507,7 +507,6 @@ class TestResolveCollectionModuleDocs:
                 "netbox.netbox",
                 galaxy_servers=[],
                 client_factory=FACTORY,
-                missing_collections=missing,
             )
 
         assert result["doc_source"] == "galaxy"
@@ -528,7 +527,6 @@ class TestResolveCollectionModuleDocs:
                 "netbox.netbox",
                 galaxy_servers=[],
                 client_factory=FACTORY,
-                missing_collections=missing,
             )
 
         assert "error" in result
@@ -540,7 +538,6 @@ class TestResolveCollectionModuleDocs:
 
         result = await resolve_collection_module_docs(
             "netbox.netbox",
-            missing_collections=missing,
         )
 
         assert "error" in result
@@ -560,7 +557,6 @@ class TestResolveCollectionModuleDocs:
                 version="3.20.0",
                 galaxy_servers=[],
                 client_factory=FACTORY,
-                missing_collections=missing,
             )
 
         mock_fetch.assert_called_once_with("netbox.netbox", version="3.20.0")
