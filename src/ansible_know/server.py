@@ -1110,6 +1110,19 @@ async def generate_collection_skills(
             collections_path=cpath,
         )
 
+        # Galaxy batch fallback for modules when collection not installed locally
+        galaxy_batch_modules: dict[str, Any] = {}
+        if not modules:
+            batch_result = await resolution.resolve_collection_module_docs(
+                collection_namespace,
+                http_client=_get_http_client(ctx),
+                galaxy_servers=state.galaxy_servers,
+                client_factory=_galaxy_factory(ctx),
+                missing_collections=state.missing_collections,
+            )
+            if "modules" in batch_result:
+                galaxy_batch_modules = batch_result["modules"]
+
         # Discover roles
         roles_raw = {}
         try:
@@ -1126,14 +1139,14 @@ async def generate_collection_skills(
 
         # Combined guard — reject only if ALL content types are empty
         has_plugins = any(plugins for _, plugins in plugin_list_results)
-        if not modules and not roles_raw and not has_plugins:
+        if not modules and not galaxy_batch_modules and not roles_raw and not has_plugins:
             return {"error": (
                 f"No modules, roles, or plugins found in collection '{collection_namespace}'."
                 + collection_hint(collection_namespace)
             )}
 
         plugin_count = sum(len(plugins) for _, plugins in plugin_list_results)
-        total = len(modules) + len(roles_raw) + plugin_count
+        total = len(modules) + len(galaxy_batch_modules) + len(roles_raw) + plugin_count
         succeeded = 0
         failed = 0
         current = 0
@@ -1161,6 +1174,21 @@ async def generate_collection_skills(
                 succeeded += 1
             except Exception as exc:
                 logger.warning("Module skill generation failed for %s: %s", module_name, exc)
+                failed += 1
+
+        # Generate module skills from Galaxy batch (when not installed locally)
+        for module_fqcn, module_meta in sorted(galaxy_batch_modules.items()):
+            if ctx:
+                await ctx.report_progress(progress=current, total=total)
+            current += 1
+            try:
+                metadata_list.append(module_meta)
+                short_name = module_fqcn.rsplit(".", 1)[-1]
+                output_dir = base_dir / collection_namespace / short_name
+                await run_in_executor(skills.write_module_skill_package, output_dir, module_meta)
+                succeeded += 1
+            except Exception as exc:
+                logger.warning("Module skill generation failed for %s: %s", module_fqcn, exc)
                 failed += 1
 
         # Generate role skills

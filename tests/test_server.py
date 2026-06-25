@@ -235,6 +235,51 @@ class TestGenerateCollectionSkillsTool:
         assert result["collection_skill"] == "ansible.builtin"
         assert (tmp_path / "ansible.builtin" / "SKILL.md").exists()
 
+    @pytest.mark.asyncio
+    async def test_galaxy_batch_fallback(self, tmp_path, mock_ansible_doc, monkeypatch):
+        """When search_modules returns empty, falls back to Galaxy batch fetch."""
+        # search_modules returns empty (collection not installed)
+        # list_roles returns empty
+        # 14 plugin types return empty
+        responses = [
+            json.dumps({}),  # search_modules — empty
+            json.dumps({}),  # list_roles — empty
+        ]
+        responses.extend([json.dumps({})] * 14)  # 14 plugin types
+
+        mock_ansible_doc.side_effect = responses
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+
+        sample_batch = {
+            "netbox.netbox.netbox_device": {
+                "module_name": "netbox.netbox.netbox_device",
+                "short_description": "Create, update or delete devices",
+                "params": [{"name": "data", "type": "dict", "required": True,
+                            "default": None, "choices": None,
+                            "description": "Device data", "aliases": []}],
+                "examples": "- name: Create\n  netbox.netbox.netbox_device:\n    data: {}\n",
+                "is_api_module": True,
+            },
+        }
+
+        with patch(
+            "ansible_know.resolution.resolve_collection_module_docs",
+            new_callable=AsyncMock,
+            return_value={
+                "modules": sample_batch,
+                "doc_source": "galaxy",
+                "doc_version": "3.23.0",
+            },
+        ):
+            from ansible_know.server import generate_collection_skills
+            result = await generate_collection_skills(
+                "netbox.netbox", install_to=str(tmp_path),
+            )
+
+        assert result["total"] == 1
+        assert result["succeeded"] == 1
+        assert (tmp_path / "netbox.netbox" / "netbox_device" / "SKILL.md").exists()
+
 
 class TestFQCNValidation:
     @pytest.mark.asyncio
