@@ -4,19 +4,23 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ansible_know.errors import AnsibleDocError, CollectionNotFoundError
+from ansible_know.errors import AnsibleDocError, CollectionNotFoundError, ValidationError
 from ansible_know.parser import (
     extract_examples,
     extract_module_metadata,
     extract_params,
+    extract_plugin_metadata,
     extract_role_metadata,
     extract_short_description,
     get_module_doc,
+    get_plugin_doc,
     get_role_doc,
     is_api_module,
     list_modules,
+    list_plugins,
     list_roles,
     search_modules,
+    search_plugins,
     transform_galaxy_to_ansible_doc_format,
 )
 
@@ -377,3 +381,81 @@ class TestTransformGalaxyToAnsibleDocFormat:
         }
         result = transform_galaxy_to_ansible_doc_format("ns.col.mod", entry)
         assert result["ns.col.mod"]["doc"]["options"] == {}
+
+
+class TestListPlugins:
+    def test_returns_plugin_dict(self, sample_plugin_list_json):
+        with patch("ansible_know.parser._run_ansible_doc", return_value=sample_plugin_list_json) as mock:
+            result = list_plugins("lookup")
+        assert "netbox.netbox.nb_lookup" in result
+        mock.assert_called_once_with("--list", "-t", "lookup", "--json", collections_path=None)
+
+    def test_passes_collection_filter(self, sample_plugin_list_json):
+        with patch("ansible_know.parser._run_ansible_doc", return_value=sample_plugin_list_json) as mock:
+            list_plugins("lookup", collection_filter="netbox.netbox")
+        mock.assert_called_once_with(
+            "--list", "-t", "lookup", "--json", "netbox.netbox",
+            collections_path=None,
+        )
+
+    def test_rejects_invalid_plugin_type(self):
+        with pytest.raises(ValidationError, match="Invalid plugin type"):
+            list_plugins("bogus")
+
+
+class TestGetPluginDoc:
+    def test_returns_parsed_json(self, sample_plugin_doc, sample_plugin_doc_json):
+        with patch("ansible_know.parser._run_ansible_doc", return_value=sample_plugin_doc_json):
+            result = get_plugin_doc("netbox.netbox.nb_lookup", "lookup")
+        assert result == sample_plugin_doc
+
+    def test_passes_type_flag(self, sample_plugin_doc_json):
+        with patch("ansible_know.parser._run_ansible_doc", return_value=sample_plugin_doc_json) as mock:
+            get_plugin_doc("netbox.netbox.nb_lookup", "lookup")
+        mock.assert_called_once_with(
+            "-t", "lookup", "netbox.netbox.nb_lookup", "--json",
+            collections_path=None,
+        )
+
+    def test_rejects_invalid_plugin_type(self):
+        with pytest.raises(ValidationError, match="Invalid plugin type"):
+            get_plugin_doc("foo.bar.baz", "bogus")
+
+
+class TestSearchPlugins:
+    def test_filters_by_keyword(self, sample_plugin_list_json):
+        with patch("ansible_know.parser._run_ansible_doc", return_value=sample_plugin_list_json):
+            result = search_plugins("netbox", plugin_type="lookup")
+        assert "netbox.netbox.nb_lookup" in result
+        assert len(result) == 1
+
+    def test_search_all_types(self, sample_plugin_list_json):
+        with patch("ansible_know.parser._run_ansible_doc", return_value=sample_plugin_list_json):
+            result = search_plugins("env")
+        assert "ansible.builtin.env" in result
+
+    def test_case_insensitive(self, sample_plugin_list_json):
+        with patch("ansible_know.parser._run_ansible_doc", return_value=sample_plugin_list_json):
+            result = search_plugins("NETBOX", plugin_type="lookup")
+        assert "netbox.netbox.nb_lookup" in result
+
+
+class TestExtractPluginMetadata:
+    def test_extracts_name_and_type(self, sample_plugin_doc):
+        meta = extract_plugin_metadata(sample_plugin_doc, "lookup")
+        assert meta["plugin_name"] == "netbox.netbox.nb_lookup"
+        assert meta["plugin_type"] == "lookup"
+
+    def test_extracts_short_description(self, sample_plugin_doc):
+        meta = extract_plugin_metadata(sample_plugin_doc, "lookup")
+        assert meta["short_description"] == "Queries and returns elements from NetBox"
+
+    def test_extracts_params(self, sample_plugin_doc):
+        meta = extract_plugin_metadata(sample_plugin_doc, "lookup")
+        names = [p["name"] for p in meta["params"]]
+        assert "api_endpoint" in names
+        assert "token" in names
+
+    def test_extracts_examples(self, sample_plugin_doc):
+        meta = extract_plugin_metadata(sample_plugin_doc, "lookup")
+        assert "nb_lookup" in meta["examples"]

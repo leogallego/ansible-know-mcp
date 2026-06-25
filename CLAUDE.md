@@ -18,7 +18,7 @@ Runtime requirement: `ansible-core` must be installed in the same environment (f
 
 ```
 src/ansible_know/
-├── server.py              # FastMCP server: 14 tools, 5 resources, 4 prompts (entrypoint)
+├── server.py              # FastMCP server: 17 tools, 6 resources, 5 prompts (entrypoint)
 ├── parser.py              # ansible-doc wrapper — module discovery and metadata extraction
 ├── resolution.py          # local-then-Galaxy doc resolution + multi-server search
 ├── readme_parser.py       # Parse Galaxy role README HTML into structured data
@@ -40,7 +40,9 @@ src/ansible_know/
 | Tool | Type | Description |
 |------|------|-------------|
 | `search_modules` | read-only | Find modules by keyword |
+| `search_plugins` | read-only | Find plugins by keyword (lookup, filter, inventory, etc.) |
 | `get_module_doc` | read-only | Get full module documentation |
+| `get_plugin_doc` | read-only | Get full plugin documentation |
 | `get_role_doc` | read-only | Get full role documentation (local or Galaxy README) |
 | `search_docs` | read-only | Search conceptual doc manifests |
 | `fetch_doc` | read-only | Fetch a docs.ansible.com page as clean Markdown |
@@ -50,6 +52,7 @@ src/ansible_know/
 | `list_skills` | read-only | List generated skills |
 | `get_skill` | read-only | Read a skill's content |
 | `generate_skill` | idempotent write | Generate a skill package for one module |
+| `generate_plugin_skill` | idempotent write | Generate a skill package for one plugin |
 | `generate_role_skill` | idempotent write | Generate a skill package for one role |
 | `generate_collection_skills` | idempotent write | Batch generate skills for a collection |
 | `clear_cache` | idempotent write | Clear Galaxy and/or doc manifest caches |
@@ -61,6 +64,7 @@ src/ansible_know/
 | `skills://list` | List all generated skill packages |
 | `skills://{skill_name}` | Read a skill's SKILL.md by FQCN |
 | `galaxy://installed` | List collections installed in this session |
+| `galaxy://servers` | List configured Galaxy servers with auth type |
 | `server://version` | Installed/latest version info with upgrade status |
 | `docs://sources` | List configured doc manifest sources |
 
@@ -70,6 +74,7 @@ src/ansible_know/
 |--------|-------------|
 | `review_playbook` | Review a playbook against module docs |
 | `explain_module` | Detailed module explanation with examples |
+| `explain_plugin` | Detailed plugin explanation with usage examples |
 | `generate_role` | Generate a role skeleton using specified modules |
 | `find_collection` | Guide through search, install, and explore workflow |
 

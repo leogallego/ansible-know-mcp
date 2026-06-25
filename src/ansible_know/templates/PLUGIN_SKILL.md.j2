@@ -1,0 +1,194 @@
+{# src/ansible_know/templates/PLUGIN_SKILL.md.j2 #}
+---
+name: {{ plugin_name }}
+description: >-
+  {{ short_description }}
+  Use when you need the {{ skill_name | replace('_', ' ') }} {{ plugin_type }} plugin in Ansible.
+---
+
+# {{ plugin_name }} ({{ plugin_type }} plugin)
+
+{{ short_description }}
+
+## When to Use This Skill
+
+{% if plugin_type == "lookup" %}
+Use the `{{ plugin_name }}` lookup plugin to **retrieve data** from external sources during playbook execution. Lookup plugins run on the **control node** and return data that can be used in variables, templates, and task arguments.
+
+Prefer this over `ansible.builtin.uri` + `register` + JSON parsing when a dedicated lookup exists — it's more concise, handles pagination and auth, and integrates with Jinja2 naturally.
+{% elif plugin_type == "filter" %}
+Use the `{{ plugin_name }}` filter plugin to **transform data** inline within Jinja2 expressions. Filters are chainable and run on the control node during template rendering.
+{% elif plugin_type == "test" %}
+Use the `{{ plugin_name }}` test plugin in Jinja2 `{% raw %}{% if %}{% endraw %}` and `when:` conditionals. Tests return boolean values and are used with `is` syntax.
+{% elif plugin_type == "connection" %}
+Use the `{{ plugin_name }}` connection plugin to define **how Ansible connects** to managed hosts. Set it at play level or in inventory.
+{% elif plugin_type == "become" %}
+Use the `{{ plugin_name }}` become plugin to define **how Ansible escalates privileges** on managed hosts.
+{% elif plugin_type == "strategy" %}
+Use the `{{ plugin_name }}` strategy plugin to control **how Ansible executes tasks** across hosts (linear, free, etc.).
+{% elif plugin_type == "callback" %}
+Use the `{{ plugin_name }}` callback plugin to **customize output** or trigger actions on playbook events. Configure in `ansible.cfg`.
+{% elif plugin_type == "inventory" %}
+Use the `{{ plugin_name }}` inventory plugin to **dynamically discover hosts** from an external source. Configure as a YAML inventory source file.
+{% elif plugin_type == "cache" %}
+Use the `{{ plugin_name }}` cache plugin to **persist gathered facts** between playbook runs. Configure in `ansible.cfg`.
+{% else %}
+Use the `{{ plugin_name }}` {{ plugin_type }} plugin when the standard Ansible behavior needs to be extended or customized for your environment.
+{% endif %}
+
+{% if params %}
+## Parameters
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+{% for p in params -%}
+| `{{ p.name }}` | {{ p.type }} | {{ "yes" if p.required else "no" }} | {{ p.default if p.default is not none else "-" }} | {{ p.description }} |
+{% endfor %}
+{% if params | selectattr("choices") | list %}
+### Parameter Choices
+
+{% for p in params %}{% if p.choices %}
+- **{{ p.name }}**: {{ p.choices | join(", ") }}
+{% endif %}{% endfor %}
+{% endif %}
+{% endif %}
+
+## Usage
+
+{% if plugin_type == "lookup" %}
+### In a playbook task (query form — recommended)
+
+```yaml
+- name: Get data via {{ skill_name }}
+  ansible.builtin.debug:
+    msg: "{{ '{{' }} query('{{ plugin_name }}'{% if params %}, {% for p in params %}{% if p.required %}{{ p.name }}='<{{ p.name }}>'{% if not loop.last %}, {% endif %}{% endif %}{% endfor %}{% endif %}) {{ '}}' }}"
+```
+
+### In a variable definition
+
+```yaml
+vars:
+  my_data: "{{ '{{' }} lookup('{{ plugin_name }}'{% if params %}, {% for p in params %}{% if p.required %}{{ p.name }}='<{{ p.name }}>'{% if not loop.last %}, {% endif %}{% endif %}{% endfor %}{% endif %}) {{ '}}' }}"
+```
+
+### In a loop
+
+```yaml
+- name: Process each item from {{ skill_name }}
+  ansible.builtin.debug:
+    msg: "{{ '{{' }} item {{ '}}' }}"
+  loop: "{{ '{{' }} query('{{ plugin_name }}'{% if params %}, {% for p in params %}{% if p.required %}{{ p.name }}='<{{ p.name }}>'{% if not loop.last %}, {% endif %}{% endif %}{% endfor %}{% endif %}) {{ '}}' }}"
+```
+{% elif plugin_type == "filter" %}
+### Inline in Jinja2
+
+```yaml
+- name: Transform data with {{ skill_name }}
+  ansible.builtin.debug:
+    msg: "{{ '{{' }} my_data | {{ plugin_name }}({% for p in params %}{% if p.required %}<{{ p.name }}>{% if not loop.last %}, {% endif %}{% endif %}{% endfor %}) {{ '}}' }}"
+```
+{% elif plugin_type == "test" %}
+### In a when conditional
+
+```yaml
+- name: Check condition with {{ skill_name }}
+  ansible.builtin.debug:
+    msg: "Condition met"
+  when: my_value is {{ plugin_name }}({% for p in params %}{% if p.required %}<{{ p.name }}>{% if not loop.last %}, {% endif %}{% endif %}{% endfor %})
+```
+{% elif plugin_type == "connection" %}
+### In a play
+
+```yaml
+- hosts: target_hosts
+  connection: {{ plugin_name }}
+  tasks:
+    - name: Run task via {{ skill_name }}
+      ansible.builtin.command: hostname
+```
+{% elif plugin_type == "become" %}
+### In a play
+
+```yaml
+- hosts: target_hosts
+  become: true
+  become_method: {{ plugin_name }}
+  tasks:
+    - name: Run privileged task
+      ansible.builtin.command: whoami
+```
+{% elif plugin_type == "callback" %}
+### In ansible.cfg
+
+```ini
+[defaults]
+{% if "stdout" in skill_name %}
+stdout_callback = {{ plugin_name }}
+{% else %}
+callbacks_enabled = {{ plugin_name }}
+{% endif %}
+```
+
+### Via environment variable
+
+```bash
+{% if "stdout" in skill_name %}
+ANSIBLE_STDOUT_CALLBACK={{ plugin_name }} ansible-playbook playbook.yml
+{% else %}
+ANSIBLE_CALLBACKS_ENABLED={{ plugin_name }} ansible-playbook playbook.yml
+{% endif %}
+```
+{% elif plugin_type == "inventory" %}
+### Inventory source file (e.g. `my_inventory.{{ skill_name }}.yml`)
+
+```yaml
+plugin: {{ plugin_name }}
+{% for p in params %}{% if p.required %}
+{{ p.name }}: <{{ p.name }}>
+{% endif %}{% endfor %}
+```
+
+### Usage
+
+```bash
+ansible-playbook -i my_inventory.{{ skill_name }}.yml playbook.yml
+```
+{% elif plugin_type == "strategy" %}
+### In a play
+
+```yaml
+- hosts: all
+  strategy: {{ plugin_name }}
+  tasks:
+    - name: Run with {{ skill_name }} strategy
+      ansible.builtin.debug:
+        msg: "Hello"
+```
+{% elif plugin_type == "cache" %}
+### In ansible.cfg
+
+```ini
+[defaults]
+gathering = smart
+fact_caching = {{ plugin_name }}
+fact_caching_timeout = 3600
+```
+{% else %}
+Refer to Ansible documentation for configuration details for this {{ plugin_type }} plugin.
+{% endif %}
+
+{% if examples %}
+### Examples from Ansible Documentation
+
+```yaml
+{{ examples }}
+```
+{% endif %}
+
+## Safety
+
+{% if plugin_type in ("lookup", "inventory") %}
+- **Credentials**: This plugin communicates with an external service. Keep tokens and URLs out of version control — use environment variables or Ansible vault.
+{% endif %}
+- **Check mode**: Plugin behavior during `--check` depends on the specific plugin implementation
+- **FQCN**: Always use the fully qualified name `{{ plugin_name }}` to avoid ambiguity

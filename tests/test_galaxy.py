@@ -1345,3 +1345,76 @@ class TestGalaxyClientAuth:
         assert gc._token == "tok123"
         assert gc._verify is False
         assert gc.server_name == "test_hub"
+
+
+class TestFindPlugin:
+    def test_finds_lookup_plugin(self, sample_docs_blob_with_plugins):
+        blob = sample_docs_blob_with_plugins["docs_blob"]
+        result = GalaxyClient._find_plugin(blob, "nb_lookup", "lookup")
+        assert result is not None
+        assert result["content_name"] == "nb_lookup"
+
+    def test_finds_filter_plugin(self, sample_docs_blob_with_plugins):
+        blob = sample_docs_blob_with_plugins["docs_blob"]
+        result = GalaxyClient._find_plugin(blob, "nb_filter", "filter")
+        assert result is not None
+
+    def test_returns_none_for_missing(self, sample_docs_blob_with_plugins):
+        blob = sample_docs_blob_with_plugins["docs_blob"]
+        result = GalaxyClient._find_plugin(blob, "nonexistent", "lookup")
+        assert result is None
+
+    def test_does_not_match_module_as_plugin(self, sample_docs_blob_with_plugins):
+        blob = sample_docs_blob_with_plugins["docs_blob"]
+        result = GalaxyClient._find_plugin(blob, "netbox_device", "lookup")
+        assert result is None
+
+
+class TestFetchPluginDoc:
+    @pytest.mark.asyncio
+    async def test_fetches_lookup_doc(self, sample_docs_blob_with_plugins):
+        client = GalaxyClient(base_url="https://galaxy.example.com")
+        with patch.object(client, "latest_version", return_value="1.0.0"):
+            with patch.object(client, "_fetch_docs_blob",
+                              return_value=sample_docs_blob_with_plugins["docs_blob"]):
+                doc, meta = await client.fetch_plugin_doc(
+                    "netbox.netbox.nb_lookup", "lookup",
+                )
+        assert "netbox.netbox.nb_lookup" in doc
+        assert meta["doc_source"] == "galaxy"
+
+    @pytest.mark.asyncio
+    async def test_raises_on_missing_plugin(self, sample_docs_blob_with_plugins):
+        client = GalaxyClient(base_url="https://galaxy.example.com")
+        with patch.object(client, "latest_version", return_value="1.0.0"):
+            with patch.object(client, "_fetch_docs_blob",
+                              return_value=sample_docs_blob_with_plugins["docs_blob"]):
+                with pytest.raises(GalaxyError, match="not found"):
+                    await client.fetch_plugin_doc(
+                        "netbox.netbox.nonexistent", "lookup",
+                    )
+
+
+class TestListCollectionPlugins:
+    @pytest.mark.asyncio
+    async def test_lists_plugins(self, sample_docs_blob_with_plugins):
+        client = GalaxyClient(base_url="https://galaxy.example.com")
+        with patch.object(client, "latest_version", return_value="1.0.0"):
+            with patch.object(client, "_fetch_docs_blob",
+                              return_value=sample_docs_blob_with_plugins["docs_blob"]):
+                plugins, meta = await client.list_collection_plugins("netbox.netbox")
+        assert "netbox.netbox.nb_lookup" in plugins
+        assert plugins["netbox.netbox.nb_lookup"]["plugin_type"] == "lookup"
+        assert "netbox.netbox.nb_filter" in plugins
+        assert "netbox.netbox.nb_inventory" in plugins
+        assert len(plugins) == 3
+
+    @pytest.mark.asyncio
+    async def test_excludes_modules_and_roles(self, sample_docs_blob_with_plugins):
+        client = GalaxyClient(base_url="https://galaxy.example.com")
+        with patch.object(client, "latest_version", return_value="1.0.0"):
+            with patch.object(client, "_fetch_docs_blob",
+                              return_value=sample_docs_blob_with_plugins["docs_blob"]):
+                plugins, _ = await client.list_collection_plugins("netbox.netbox")
+        fqcns = list(plugins.keys())
+        assert not any("netbox_device" in f for f in fqcns)

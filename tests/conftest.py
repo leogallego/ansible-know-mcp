@@ -216,6 +216,49 @@ SAMPLE_ROLE_README_HTML_CODEBLOCK_VARS = """
 <p>State for Docker packages.</p>
 """
 
+SAMPLE_PLUGIN_DOC = {
+    "netbox.netbox.nb_lookup": {
+        "doc": {
+            "name": "nb_lookup",
+            "short_description": "Queries and returns elements from NetBox",
+            "description": [
+                "Queries NetBox via its API to return virtually any information",
+                "capable of being stored in NetBox.",
+            ],
+            "options": {
+                "api_endpoint": {
+                    "description": ["The URL to the NetBox instance"],
+                    "type": "str",
+                    "required": True,
+                },
+                "token": {
+                    "description": ["The API token for NetBox"],
+                    "type": "str",
+                    "required": True,
+                },
+                "api_filter": {
+                    "description": ["The api_filter to use"],
+                    "type": "str",
+                    "required": False,
+                },
+            },
+        },
+        "examples": (
+            "- name: Obtain list of sites from NetBox\n"
+            "  debug:\n"
+            "    msg: \"{{ query('netbox.netbox.nb_lookup', 'sites', "
+            "api_endpoint='http://localhost', token='mytoken') }}\"\n"
+        ),
+    },
+}
+
+SAMPLE_PLUGIN_LIST = {
+    "netbox.netbox.nb_lookup": "Queries and returns elements from NetBox",
+    "ansible.builtin.env": "Read the value of environment variables",
+    "ansible.builtin.file": "Return file contents",
+    "community.general.bitwarden": "Retrieve secrets from Bitwarden",
+}
+
 SAMPLE_DOCS_BLOB_WITH_ROLES = {
     "docs_blob": {
         "contents": [
@@ -246,6 +289,76 @@ SAMPLE_DOCS_BLOB_WITH_ROLES = {
                 "doc_strings": {},
                 "readme_file": "README.md",
                 "readme_html": "<h1>Network</h1><p>Configure networking.</p>",
+            },
+        ],
+    },
+}
+
+SAMPLE_DOCS_BLOB_WITH_PLUGINS = {
+    "docs_blob": {
+        "contents": [
+            {
+                "content_type": "module",
+                "content_name": "netbox_device",
+                "doc_strings": {
+                    "doc": {
+                        "short_description": "Create, update or delete devices",
+                        "options": [],
+                    },
+                    "examples": "",
+                    "return": [],
+                    "metadata": {},
+                },
+            },
+            {
+                "content_type": "lookup",
+                "content_name": "nb_lookup",
+                "doc_strings": {
+                    "doc": {
+                        "short_description": "Queries and returns elements from NetBox",
+                        "description": ["Queries NetBox via its API."],
+                        "options": [
+                            {"name": "api_endpoint", "type": "str", "required": True,
+                             "description": ["The URL to the NetBox instance"]},
+                            {"name": "token", "type": "str", "required": True,
+                             "description": ["The API token"]},
+                        ],
+                    },
+                    "examples": "- debug: msg=\"{{ query('netbox.netbox.nb_lookup', 'sites') }}\"",
+                    "return": [],
+                    "metadata": {},
+                },
+            },
+            {
+                "content_type": "filter",
+                "content_name": "nb_filter",
+                "doc_strings": {
+                    "doc": {
+                        "short_description": "Filter NetBox data",
+                        "description": ["Filters NetBox query results."],
+                        "options": [],
+                    },
+                    "examples": "",
+                    "return": [],
+                    "metadata": {},
+                },
+            },
+            {
+                "content_type": "inventory",
+                "content_name": "nb_inventory",
+                "doc_strings": {
+                    "doc": {
+                        "short_description": "NetBox inventory source",
+                        "description": ["Dynamic inventory from NetBox."],
+                        "options": [
+                            {"name": "api_endpoint", "type": "str", "required": True,
+                             "description": ["The URL to the NetBox instance"]},
+                        ],
+                    },
+                    "examples": "",
+                    "return": [],
+                    "metadata": {},
+                },
             },
         ],
     },
@@ -310,3 +423,28 @@ def sample_role_readme_html():
 @pytest.fixture
 def sample_docs_blob_with_roles():
     return SAMPLE_DOCS_BLOB_WITH_ROLES
+
+
+@pytest.fixture
+def sample_plugin_doc():
+    return SAMPLE_PLUGIN_DOC
+
+
+@pytest.fixture
+def sample_plugin_doc_json():
+    return json.dumps(SAMPLE_PLUGIN_DOC)
+
+
+@pytest.fixture
+def sample_plugin_list():
+    return SAMPLE_PLUGIN_LIST
+
+
+@pytest.fixture
+def sample_plugin_list_json():
+    return json.dumps(SAMPLE_PLUGIN_LIST)
+
+
+@pytest.fixture
+def sample_docs_blob_with_plugins():
+    return SAMPLE_DOCS_BLOB_WITH_PLUGINS

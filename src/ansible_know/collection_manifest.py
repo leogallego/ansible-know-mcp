@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ansible_know.config import SKILLS_DIR
+from ansible_know.errors import ValidationError
 from ansible_know.tagging import derive_tags
 from ansible_know.validation import validate_path_containment
 
@@ -29,15 +30,17 @@ def generate_manifest(
     collection_namespace: str,
     modules_metadata: list[ModuleMetadata],
     roles_metadata: list[dict[str, Any]] | None = None,
+    plugins_metadata: list[dict[str, Any]] | None = None,
     skills_dir: Path | None = None,
     collection_version: str | None = None,
 ) -> ManifestResult:
-    """Generate a collection manifest from module and role metadata.
+    """Generate a collection manifest from module, role, and plugin metadata.
 
     Args:
         collection_namespace: e.g. "netbox.netbox"
         modules_metadata: list of extract_module_metadata() results
         roles_metadata: list of role metadata dicts (optional)
+        plugins_metadata: list of plugin metadata dicts (optional)
         skills_dir: where to check for existing skill packages
         collection_version: installed version to store for cache invalidation
 
@@ -81,6 +84,26 @@ def generate_manifest(
             "has_skill": has_skill,
         })
 
+    plugins_list = []
+    for plugin_meta in (plugins_metadata or []):
+        fqcn = plugin_meta["fqcn"]
+        ptype = plugin_meta.get("plugin_type", "")
+        short_name = fqcn.rsplit(".", 1)[-1]
+        skill_path = (collection_dir / f"{ptype}__{short_name}" / "SKILL.md").resolve()
+        try:
+            validate_path_containment(skill_path, skills_dir)
+            has_skill = skill_path.exists()
+        except (ValidationError, ValueError):
+            has_skill = False
+
+        plugins_list.append({
+            "fqcn": fqcn,
+            "plugin_type": ptype,
+            "description": plugin_meta.get("description", ""),
+            "param_count": plugin_meta.get("param_count", 0),
+            "has_skill": has_skill,
+        })
+
     has_collection_skill = (collection_dir / "SKILL.md").exists()
 
     manifest = {
@@ -89,9 +112,11 @@ def generate_manifest(
         "generated": datetime.now(timezone.utc).isoformat(),
         "module_count": len(modules_list),
         "role_count": len(roles_list),
+        "plugin_count": len(plugins_list),
         "has_collection_skill": has_collection_skill,
         "modules": modules_list,
         "roles": roles_list,
+        "plugins": plugins_list,
     }
 
     return manifest
@@ -130,6 +155,9 @@ def load_cached_manifest(
 
     When installed_version is provided, the cache is invalidated if the
     stored collection_version doesn't match.
+
+    Backfills plugin_count and plugins fields for cached manifests
+    created before plugin support was added.
     """
     if skills_dir is None:
         skills_dir = SKILLS_DIR
@@ -141,4 +169,10 @@ def load_cached_manifest(
     manifest = json.loads(manifest_path.read_text())
     if installed_version and manifest.get("collection_version") != installed_version:
         return None
+
+    if "plugin_count" not in manifest:
+        manifest["plugin_count"] = 0
+    if "plugins" not in manifest:
+        manifest["plugins"] = []
+
     return manifest

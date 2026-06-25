@@ -216,13 +216,17 @@ class TestGenerateSkillTool:
 class TestGenerateCollectionSkillsTool:
     @pytest.mark.asyncio
     async def test_generates_collection_skills(self, tmp_path, mock_ansible_doc, monkeypatch):
-        mock_ansible_doc.side_effect = [
-            json.dumps(SAMPLE_MODULE_LIST),
-            json.dumps(SAMPLE_MODULE_DOC),
-            json.dumps(SAMPLE_MODULE_DOC),
-            json.dumps(SAMPLE_MODULE_DOC),
-            json.dumps(SAMPLE_MODULE_DOC),
+        # Module list, role list (empty), 14x plugin list (empty), then 4x module docs
+        responses = [
+            json.dumps(SAMPLE_MODULE_LIST),  # search_modules
+            json.dumps({}),  # list_roles
         ]
+        # 14 plugin types all return empty
+        responses.extend([json.dumps({})] * 14)
+        # 4 module doc fetches
+        responses.extend([json.dumps(SAMPLE_MODULE_DOC)] * 4)
+
+        mock_ansible_doc.side_effect = responses
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
         from ansible_know.server import generate_collection_skills
         result = await generate_collection_skills("ansible.builtin", install_to=str(tmp_path))
@@ -1743,3 +1747,132 @@ class TestClearCache:
 
         assert "error" in result
         assert "Invalid scope" in result["error"]
+
+
+class TestSearchPlugins:
+    @pytest.mark.asyncio
+    async def test_returns_matching_plugins(self):
+        mock_results = {
+            "netbox.netbox.nb_lookup": "Queries and returns elements from NetBox",
+        }
+        with patch("ansible_know.parser.search_plugins", return_value=mock_results):
+            from ansible_know.server import search_plugins
+            result = await search_plugins("netbox", plugin_type="lookup")
+        assert "netbox.netbox.nb_lookup" in result
+
+    @pytest.mark.asyncio
+    async def test_validates_plugin_type(self):
+        from ansible_know.server import search_plugins
+        result = await search_plugins("test", plugin_type="bogus_type")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_empty_keyword_rejected(self):
+        from ansible_know.server import search_plugins
+        result = await search_plugins("", plugin_type="lookup")
+        assert "error" in result
+
+
+class TestGetPluginDoc:
+    @pytest.mark.asyncio
+    async def test_returns_plugin_metadata(self):
+        mock_result = {
+            "plugin_name": "netbox.netbox.nb_lookup",
+            "plugin_type": "lookup",
+            "short_description": "Queries NetBox",
+            "params": [],
+            "examples": "",
+            "doc_source": "local",
+            "content_type": "plugin",
+        }
+        with patch("ansible_know.resolution.resolve_plugin_doc", return_value=mock_result):
+            from ansible_know.server import get_plugin_doc
+            result = await get_plugin_doc("netbox.netbox.nb_lookup", "lookup")
+        assert result["plugin_name"] == "netbox.netbox.nb_lookup"
+        assert result["plugin_type"] == "lookup"
+
+    @pytest.mark.asyncio
+    async def test_validates_fqcn(self):
+        from ansible_know.server import get_plugin_doc
+        result = await get_plugin_doc("invalid", "lookup")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_validates_plugin_type(self):
+        from ansible_know.server import get_plugin_doc
+        result = await get_plugin_doc("ns.col.name", "bogus")
+        assert "error" in result
+
+
+class TestGeneratePluginSkill:
+    @pytest.mark.asyncio
+    async def test_returns_skill_content(self, tmp_path):
+        mock_result = {
+            "plugin_name": "netbox.netbox.nb_lookup",
+            "plugin_type": "lookup",
+            "short_description": "Queries NetBox",
+            "params": [],
+            "examples": "",
+            "doc_source": "local",
+            "content_type": "plugin",
+        }
+        with patch("ansible_know.resolution.resolve_plugin_doc", return_value=mock_result):
+            with patch("ansible_know.skills.write_plugin_skill_package"):
+                from ansible_know.server import generate_plugin_skill
+                result = await generate_plugin_skill(
+                    "netbox.netbox.nb_lookup", "lookup",
+                )
+        assert isinstance(result, str)
+        assert "nb_lookup" in result
+
+
+class TestGetPluginSkill:
+    @pytest.mark.asyncio
+    async def test_finds_plugin_skill_by_fqcn(self, tmp_path):
+        skill_dir = tmp_path / "netbox.netbox" / "lookup__nb_lookup"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("---\nname: netbox.netbox.nb_lookup\n---\nlookup skill")
+        with patch("ansible_know.config.SKILLS_DIR", tmp_path):
+            from ansible_know.server import get_skill
+            result = await get_skill("netbox.netbox.nb_lookup")
+        assert "lookup skill" in result
+
+    @pytest.mark.asyncio
+    async def test_module_skill_takes_precedence(self, tmp_path):
+        # If both a module and plugin skill exist, module (direct name) wins
+        mod_dir = tmp_path / "netbox.netbox" / "nb_lookup"
+        mod_dir.mkdir(parents=True)
+        (mod_dir / "SKILL.md").write_text("module skill")
+        plugin_dir = tmp_path / "netbox.netbox" / "lookup__nb_lookup"
+        plugin_dir.mkdir(parents=True)
+        (plugin_dir / "SKILL.md").write_text("plugin skill")
+        with patch("ansible_know.config.SKILLS_DIR", tmp_path):
+            from ansible_know.server import get_skill
+            result = await get_skill("netbox.netbox.nb_lookup")
+        assert "module skill" in result
+
+
+class TestListPluginSkills:
+    @pytest.mark.asyncio
+    async def test_strips_type_prefix_from_name(self, tmp_path):
+        skill_dir = tmp_path / "netbox.netbox" / "lookup__nb_lookup"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("---\nname: test\n---\n")
+        with patch("ansible_know.config.SKILLS_DIR", tmp_path):
+            from ansible_know.server import list_skills
+            result = await list_skills(collection="netbox.netbox")
+        names = [s["name"] for s in result]
+        assert "netbox.netbox.nb_lookup" in names
+        assert "netbox.netbox.lookup__nb_lookup" not in names
+
+
+class TestResourceSkillsListPlugins:
+    def test_strips_type_prefix_in_resource(self, tmp_path):
+        skill_dir = tmp_path / "netbox.netbox" / "lookup__nb_lookup"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("---\nname: test\n---\n")
+        with patch("ansible_know.config.SKILLS_DIR", tmp_path):
+            from ansible_know.server import resource_skills_list
+            result = json.loads(resource_skills_list())
+        assert "netbox.netbox.nb_lookup" in result
+        assert "netbox.netbox.lookup__nb_lookup" not in result

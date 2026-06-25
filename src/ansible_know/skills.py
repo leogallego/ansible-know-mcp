@@ -25,10 +25,12 @@ __all__ = [
     "module_to_skill_name",
     "render_collection_skill",
     "render_module_skill",
+    "render_plugin_skill",
     "render_role_skill",
     "render_skill",
     "write_collection_skill_package",
     "write_module_skill_package",
+    "write_plugin_skill_package",
     "write_role_skill_package",
     "write_skill_package",
 ]
@@ -204,6 +206,42 @@ def write_role_skill_package(output_dir: Path, metadata: dict[str, Any]) -> None
     (assets_dir / "playbook.yml").write_text(playbook_template.render(**ctx))
 
 
+# --- Plugin-level skill ---
+
+
+def _plugin_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
+    """Build template context from plugin metadata."""
+    plugin_name = metadata["plugin_name"]
+    return {
+        "plugin_name": plugin_name,
+        "plugin_type": metadata["plugin_type"],
+        "skill_name": plugin_name.rsplit(".", 1)[-1],
+        "short_description": metadata.get("short_description", ""),
+        "params": metadata.get("params", []),
+        "examples": metadata.get("examples", "").strip(),
+    }
+
+
+def render_plugin_skill(metadata: dict[str, Any]) -> str:
+    """Render the PLUGIN_SKILL.md.j2 template with plugin metadata."""
+    logger.debug("Rendering plugin skill for %s", metadata.get("plugin_name", "?"))
+    env = _get_template_env()
+    template = env.get_template("PLUGIN_SKILL.md.j2")
+    return template.render(**_plugin_template_context(metadata))
+
+
+def write_plugin_skill_package(output_dir: Path, metadata: dict[str, Any]) -> None:
+    """Write the plugin skill package: SKILL.md only (no scripts/ or assets/)."""
+    logger.debug(
+        "Writing plugin skill package to %s for %s",
+        output_dir, metadata.get("plugin_name", "?"),
+    )
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    content = render_plugin_skill(metadata)
+    (output_dir / "SKILL.md").write_text(content)
+
+
 # --- Collection-level skill ---
 
 
@@ -211,6 +249,7 @@ def _collection_template_context(
     namespace: str,
     metadata_list: list[ModuleMetadata],
     collection_version: str | None = None,
+    plugins_metadata: list[dict[str, Any]] | None = None,
 ) -> CollectionSkillContext:
     """Build template context for a collection-level skill."""
     modules_by_tag: dict[str, list[ModuleTagEntry]] = {}
@@ -241,6 +280,14 @@ def _collection_template_context(
 
     common_params = _find_common_params(metadata_list)
 
+    plugins_by_type: dict[str, list[dict[str, str]]] = {}
+    for pmeta in (plugins_metadata or []):
+        ptype = pmeta.get("plugin_type", "other")
+        plugins_by_type.setdefault(ptype, []).append({
+            "fqcn": pmeta["fqcn"],
+            "short_description": pmeta.get("description", ""),
+        })
+
     return {
         "collection_namespace": namespace,
         "collection_version": collection_version,
@@ -248,6 +295,7 @@ def _collection_template_context(
         "all_api": all_api,
         "common_params": common_params,
         "module_count": len(metadata_list),
+        "plugins_by_type": plugins_by_type,
     }
 
 
@@ -278,12 +326,15 @@ def render_collection_skill(
     namespace: str,
     metadata_list: list[ModuleMetadata],
     collection_version: str | None = None,
+    plugins_metadata: list[dict[str, Any]] | None = None,
 ) -> str:
     """Render the COLLECTION_SKILL.md.j2 template for a collection-level skill."""
     logger.debug("Rendering collection skill for %s", namespace)
     env = _get_template_env()
     template = env.get_template("COLLECTION_SKILL.md.j2")
-    ctx = _collection_template_context(namespace, metadata_list, collection_version)
+    ctx = _collection_template_context(
+        namespace, metadata_list, collection_version, plugins_metadata,
+    )
     return template.render(**ctx)
 
 
@@ -292,10 +343,13 @@ def write_collection_skill_package(
     namespace: str,
     metadata_list: list[ModuleMetadata],
     collection_version: str | None = None,
+    plugins_metadata: list[dict[str, Any]] | None = None,
 ) -> None:
     """Write the collection-level skill package: SKILL.md only (no scripts/assets)."""
     logger.debug("Writing collection skill package to %s for %s", output_dir, namespace)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    content = render_collection_skill(namespace, metadata_list, collection_version)
+    content = render_collection_skill(
+        namespace, metadata_list, collection_version, plugins_metadata,
+    )
     (output_dir / "SKILL.md").write_text(content)
