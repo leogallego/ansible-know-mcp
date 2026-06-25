@@ -25,6 +25,7 @@ from ansible_know.errors import AnsibleDocError, AnsibleKnowError, ValidationErr
 from ansible_know.state import LifespanContext, ServerState, SessionManager, SharedState
 from ansible_know.types import (
     ClearCacheResult,
+    CollectionDocsResult,
     CollectionSearchResult,
     EnsureCollectionResult,
     ErrorResponse,
@@ -726,6 +727,44 @@ async def get_collection_manifest(
         raise
     except Exception as exc:
         logger.warning("get_collection_manifest failed: %s", exc)
+        return {"error": maybe_add_hint(sanitize_error(str(exc)), collection_namespace)}
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+async def get_collection_docs(
+    collection_namespace: Annotated[str, "Collection namespace (e.g. 'netbox.netbox')"],
+    version: Annotated[str | None, "Optional version (e.g. '3.23.0'). If omitted, uses latest."] = None,
+    ctx: Context | None = None,
+) -> CollectionDocsResult | ErrorResponse:
+    """Get full module documentation for all modules in a collection from Galaxy.
+
+    Returns all module docs in a single API call without installing the collection.
+    Result shape: {"modules": {fqcn: {module_name, short_description, params, examples, is_api_module}, ...},
+    "doc_source": "galaxy", "doc_version": str}.
+    On failure returns {"error": str}.
+    """
+    logger.info("get_collection_docs namespace=%r version=%r", collection_namespace, version)
+    await _maybe_warn_upgrade(ctx)
+    try:
+        validate_namespace(collection_namespace)
+    except ValidationError as exc:
+        return {"error": str(exc)}
+
+    try:
+        from ansible_know import resolution
+
+        state = await _get_state(ctx)
+        http_client = _get_http_client(ctx)
+        return await resolution.resolve_collection_module_docs(
+            collection_namespace,
+            version=version,
+            http_client=http_client,
+            galaxy_servers=state.galaxy_servers,
+            client_factory=_galaxy_factory(ctx),
+            missing_collections=state.missing_collections,
+        )
+    except Exception as exc:
+        logger.warning("get_collection_docs failed: %s", exc)
         return {"error": maybe_add_hint(sanitize_error(str(exc)), collection_namespace)}
 
 

@@ -1888,3 +1888,48 @@ class TestResourceSkillsListPlugins:
             result = json.loads(resource_skills_list())
         assert "netbox.netbox.nb_lookup" in result
         assert "netbox.netbox.lookup__nb_lookup" not in result
+
+
+class TestGetCollectionDocsTool:
+    @pytest.mark.asyncio
+    async def test_returns_batch_docs(self, mock_ansible_doc):
+        from ansible_know.server import get_collection_docs
+
+        sample_result = {
+            "modules": {
+                "netbox.netbox.netbox_device": {
+                    "module_name": "netbox.netbox.netbox_device",
+                    "short_description": "Create, update or delete devices",
+                    "params": [],
+                    "examples": "",
+                    "is_api_module": True,
+                },
+            },
+            "doc_source": "galaxy",
+            "doc_version": "3.23.0",
+        }
+
+        with patch(
+            "ansible_know.resolution.resolve_collection_module_docs",
+            new_callable=AsyncMock,
+            return_value=sample_result,
+        ):
+            result = await get_collection_docs("netbox.netbox")
+
+        assert "modules" in result
+        assert "netbox.netbox.netbox_device" in result["modules"]
+        assert result["doc_source"] == "galaxy"
+
+    @pytest.mark.asyncio
+    async def test_rejects_invalid_namespace(self):
+        from ansible_know.server import get_collection_docs
+
+        result = await get_collection_docs("invalid")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_rejects_fqcn_with_three_parts(self):
+        from ansible_know.server import get_collection_docs
+
+        result = await get_collection_docs("a.b.c")
+        assert "error" in result
