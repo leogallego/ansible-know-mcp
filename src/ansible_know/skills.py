@@ -404,10 +404,10 @@ def _collection_template_context(
 
     plugins_by_type: dict[str, list[dict[str, str]]] = {}
     for pmeta in (plugins_metadata or []):
-        ptype = pmeta.get("plugin_type", "other")
+        ptype = pmeta["plugin_type"]
         plugins_by_type.setdefault(ptype, []).append({
             "fqcn": pmeta["fqcn"],
-            "short_description": pmeta.get("description", ""),
+            "short_description": pmeta["description"],
         })
 
     return {

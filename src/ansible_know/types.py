@@ -87,13 +87,12 @@ class PluginManifestInput(TypedDict):
     param_count: int
 
 
-class ManifestPluginEntry(TypedDict):
-    """Single plugin entry in a collection manifest."""
+class ManifestPluginEntry(PluginManifestInput):
+    """Single plugin entry in a collection manifest.
 
-    fqcn: str
-    plugin_type: str
-    description: str
-    param_count: int
+    Extends PluginManifestInput with has_skill (computed internally).
+    """
+
     has_skill: bool
 
 
@@ -175,13 +174,12 @@ class ManifestModuleEntry(TypedDict):
     tags: list[str]
 
 
-class ManifestRoleEntry(TypedDict):
-    """Single role entry in a collection manifest."""
+class ManifestRoleEntry(RoleManifestInput):
+    """Single role entry in a collection manifest.
 
-    fqcn: str
-    description: str
-    has_argument_specs: bool
-    entry_points: list[str]
+    Extends RoleManifestInput with has_skill (computed internally).
+    """
+
     has_skill: bool
 
 

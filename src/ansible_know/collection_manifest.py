@@ -78,16 +78,16 @@ def generate_manifest(
 
         roles_list.append({
             "fqcn": fqcn,
-            "description": role_meta.get("description", ""),
-            "has_argument_specs": role_meta.get("has_argument_specs", False),
-            "entry_points": role_meta.get("entry_points", ["main"]),
+            "description": role_meta["description"],
+            "has_argument_specs": role_meta["has_argument_specs"],
+            "entry_points": role_meta["entry_points"],
             "has_skill": has_skill,
         })
 
     plugins_list = []
     for plugin_meta in (plugins_metadata or []):
         fqcn = plugin_meta["fqcn"]
-        ptype = plugin_meta.get("plugin_type", "")
+        ptype = plugin_meta["plugin_type"]
         short_name = fqcn.rsplit(".", 1)[-1]
         skill_path = (collection_dir / f"{ptype}__{short_name}" / "SKILL.md").resolve()
         try:
@@ -99,8 +99,8 @@ def generate_manifest(
         plugins_list.append({
             "fqcn": fqcn,
             "plugin_type": ptype,
-            "description": plugin_meta.get("description", ""),
-            "param_count": plugin_meta.get("param_count", 0),
+            "description": plugin_meta["description"],
+            "param_count": plugin_meta["param_count"],
             "has_skill": has_skill,
         })
 
