@@ -406,28 +406,23 @@ async def get_module_doc(
         return {"error": str(exc)}
 
     try:
-        from ansible_know import parser, resolution
+        from ansible_know import resolution
 
         state = await _get_state(ctx)
         http_client = _get_http_client(ctx)
-        raw_doc, galaxy_meta = await resolution.resolve_module_doc(
+        result = await resolution.resolve_module_doc(
             module_name, http_client=http_client, galaxy_servers=state.galaxy_servers,
             client_factory=_galaxy_factory(ctx),
             missing_collections=state.missing_collections,
             collections_path=state.collection_manager.get_collections_path(),
         )
-        metadata = parser.extract_module_metadata(raw_doc)
-        if galaxy_meta:
-            metadata.update(galaxy_meta)
-        else:
-            metadata["doc_source"] = "local"
-        return metadata
+        if "error" in result:
+            ns = extract_namespace(module_name)
+            result["error"] = maybe_add_hint(result["error"], ns)
+        return result
     except Exception as exc:
         logger.warning("get_module_doc failed: %s", exc)
         ns = extract_namespace(module_name)
-        from ansible_know.errors import GalaxyError
-        if isinstance(exc.__cause__, GalaxyError):
-            return {"error": sanitize_error(str(exc))}
         return {"error": maybe_add_hint(sanitize_error(str(exc)), ns)}
 
 
@@ -868,7 +863,7 @@ async def generate_skill(
         return {"error": str(exc)}
 
     try:
-        from ansible_know import parser, resolution, skills
+        from ansible_know import resolution, skills
         from ansible_know.config import SKILLS_DIR
 
         if ctx:
@@ -876,15 +871,15 @@ async def generate_skill(
 
         state = await _get_state(ctx)
         http_client = _get_http_client(ctx)
-        raw_doc, galaxy_meta = await resolution.resolve_module_doc(
+        metadata = await resolution.resolve_module_doc(
             module_name, http_client=http_client, galaxy_servers=state.galaxy_servers,
             client_factory=_galaxy_factory(ctx),
             missing_collections=state.missing_collections,
             collections_path=state.collection_manager.get_collections_path(),
         )
-        metadata = parser.extract_module_metadata(raw_doc)
-        if galaxy_meta:
-            metadata.update(galaxy_meta)
+
+        if metadata.get("doc_source") == "unavailable":
+            return {"error": metadata.get("error", f"No documentation found for module '{module_name}'.")}
 
         if ctx:
             await ctx.report_progress(progress=50, total=100)
@@ -907,9 +902,6 @@ async def generate_skill(
     except Exception as exc:
         logger.warning("generate_skill failed: %s", exc)
         ns = extract_namespace(module_name)
-        from ansible_know.errors import GalaxyError
-        if isinstance(exc.__cause__, GalaxyError):
-            return {"error": sanitize_error(str(exc))}
         return {"error": maybe_add_hint(sanitize_error(str(exc)), ns)}
 
 

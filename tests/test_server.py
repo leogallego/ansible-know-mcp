@@ -533,14 +533,19 @@ class TestMissingCollectionHints:
         assert "ensure_collection" not in result["error"]
 
     @pytest.mark.asyncio
-    async def test_get_module_doc_hint_on_local_only_failure(self, mock_ansible_doc):
-        from ansible_know.errors import AnsibleDocError
-        mock_ansible_doc.side_effect = AnsibleDocError(
+    async def test_get_module_doc_hint_suppressed_when_galaxy_tried(self, mock_ansible_doc):
+        from ansible_know.errors import CollectionNotFoundError, GalaxyError
+        mock_ansible_doc.side_effect = CollectionNotFoundError(
             "ansible-doc failed (exit 1): netbox.netbox was not found"
         )
-        from ansible_know.server import get_module_doc
-        result = await get_module_doc("netbox.netbox.netbox_device")
-        assert "ensure_collection" in result["error"]
+        with patch(
+            "ansible_know.galaxy.GalaxyClient.fetch_module_doc",
+            side_effect=GalaxyError("Galaxy also failed"),
+        ):
+            from ansible_know.server import get_module_doc
+            result = await get_module_doc("netbox.netbox.netbox_device")
+        assert "error" in result
+        assert "ensure_collection" not in result["error"]
 
     @pytest.mark.asyncio
     async def test_search_modules_hint(self, mock_ansible_doc):
@@ -647,18 +652,18 @@ class TestGalaxyDocsFallback:
         assert result["short_description"] == "Create, update or delete devices"
 
     @pytest.mark.asyncio
-    async def test_get_module_doc_no_fallback_for_non_missing_errors(self, mock_ansible_doc):
-        from ansible_know.errors import AnsibleDocError
+    async def test_get_module_doc_falls_back_to_galaxy_on_ansible_doc_error(self, mock_ansible_doc):
+        from ansible_know.errors import AnsibleDocError, GalaxyError
         mock_ansible_doc.side_effect = AnsibleDocError("ansible-doc timed out")
 
         with patch(
             "ansible_know.galaxy.GalaxyClient.fetch_module_doc",
-            side_effect=AssertionError("Galaxy fallback should not fire"),
+            side_effect=GalaxyError("not found on Galaxy"),
         ):
             from ansible_know.server import get_module_doc
             result = await get_module_doc("ansible.builtin.copy")
         assert "error" in result
-        assert "timed out" in result["error"]
+        assert "not found on Galaxy" in result["error"]
 
     @pytest.mark.asyncio
     async def test_get_module_doc_returns_error_when_both_fail(self, mock_ansible_doc):
@@ -1174,7 +1179,14 @@ class TestLifespanHttpClient:
         mock_ctx = _make_mock_ctx(state, shared, http_client=mock_client)
 
         with patch("ansible_know.resolution.resolve_module_doc") as mock_resolve:
-            mock_resolve.return_value = (SAMPLE_MODULE_DOC, None)
+            mock_resolve.return_value = {
+                "module_name": "ansible.builtin.package",
+                "short_description": "Generic OS package manager",
+                "params": [], "examples": "",
+                "is_api_module": False,
+                "content_type": "module",
+                "doc_source": "local",
+            }
             from ansible_know.server import get_module_doc
             await get_module_doc("ansible.builtin.package", ctx=mock_ctx)
 
