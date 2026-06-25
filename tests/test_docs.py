@@ -452,6 +452,31 @@ class TestTokenizedSearch:
         assert results[0]["title"] == "no-handler"
 
     @pytest.mark.asyncio
+    async def test_source_key_not_searchable(self, tmp_path):
+        """Source dict key name (e.g. 'lint') must not be part of searchable text."""
+        manifest = {
+            "version": "2.0",
+            "base_url": "https://docs.example.com",
+            "files": [
+                {
+                    "path": "rules/no-handler.html",
+                    "topic": "rules",
+                    "title": "no-handler",
+                    "summary": "Use handlers instead of when: result.changed",
+                    "audience": "author",
+                    "lines": 50,
+                },
+            ],
+        }
+        p_file = tmp_path / "tok_manifest.json"
+        p_file.write_text(json.dumps(manifest))
+        sources = {"lint": {"file": str(p_file), "description": "Lint"}}
+        with patch("ansible_know.docs.get_doc_sources", return_value=sources), \
+             patch("ansible_know.docs._search_rtd_api", new_callable=AsyncMock, return_value=[]):
+            results = await search_docs("lint rules")
+        assert results == []
+
+    @pytest.mark.asyncio
     async def test_single_word_still_works(self, file_sources):
         results = await search_docs("playbook")
         assert len(results) == 1
