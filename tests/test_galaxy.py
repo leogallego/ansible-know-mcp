@@ -541,6 +541,77 @@ class TestFetchModuleDoc:
         assert "param1" in options
 
 
+class TestFetchCollectionDocs:
+    @pytest.mark.asyncio
+    async def test_returns_all_module_docs(self):
+        """Batch extracts docs for every module in the blob."""
+        async def mock_api_get(self_client, path, params=None, timeout=None):
+            if "versions/" in path and "docs-blob" not in path:
+                return SAMPLE_VERSIONS_RESPONSE
+            if "docs-blob" in path:
+                return SAMPLE_DOCS_BLOB
+            return {}
+
+        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+            client = GalaxyClient()
+            docs, meta = await client.fetch_collection_docs("netbox.netbox")
+
+        assert "netbox.netbox.netbox_device" in docs
+        assert "netbox.netbox.netbox_site" in docs
+        assert len(docs) == 2  # only modules, not inventory plugin
+        assert docs["netbox.netbox.netbox_device"]["module_name"] == "netbox.netbox.netbox_device"
+        assert docs["netbox.netbox.netbox_device"]["short_description"] == "Create, update or delete devices"
+        assert meta["doc_source"] == "galaxy"
+        assert meta["doc_version"] == "3.23.0"
+
+    @pytest.mark.asyncio
+    async def test_with_explicit_version(self):
+        """Explicit version skips latest_version lookup and omits warning."""
+        async def mock_api_get(self_client, path, params=None, timeout=None):
+            if "docs-blob" in path:
+                assert "3.20.0" in path
+                return SAMPLE_DOCS_BLOB
+            return {}
+
+        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+            client = GalaxyClient()
+            docs, meta = await client.fetch_collection_docs(
+                "netbox.netbox", version="3.20.0",
+            )
+
+        assert meta["doc_version"] == "3.20.0"
+        assert "doc_warning" not in meta
+
+    @pytest.mark.asyncio
+    async def test_empty_collection_returns_empty_dict(self):
+        """Collection with no modules returns empty dict, not error."""
+        empty_blob = {"docs_blob": {"contents": [
+            {"content_type": "inventory", "content_name": "nb_inventory",
+             "doc_strings": {"doc": {"short_description": "Inv plugin"}, "examples": "", "return": [], "metadata": {}}},
+        ]}}
+
+        async def mock_api_get(self_client, path, params=None, timeout=None):
+            if "versions/" in path and "docs-blob" not in path:
+                return SAMPLE_VERSIONS_RESPONSE
+            if "docs-blob" in path:
+                return empty_blob
+            return {}
+
+        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+            client = GalaxyClient()
+            docs, meta = await client.fetch_collection_docs("netbox.netbox")
+
+        assert docs == {}
+        assert meta["doc_source"] == "galaxy"
+
+    @pytest.mark.asyncio
+    async def test_rejects_invalid_namespace(self):
+        """Namespace must be namespace.name format."""
+        client = GalaxyClient()
+        with pytest.raises(GalaxyError, match="not a valid collection FQCN"):
+            await client.fetch_collection_docs("just_one_part")
+
+
 class TestListCollectionModules:
     @pytest.mark.asyncio
     async def test_lists_modules_only(self):
