@@ -37,33 +37,35 @@ def mock_ansible_doc():
 
 
 @pytest.fixture
-def mock_doc_fetch():
-    """Mock httpx for docs search tests."""
-    mock_manifest = [
-        {
-            "title": "Playbook Guide",
-            "summary": "How to write playbooks",
-            "topics": ["playbooks"],
-            "audience": ["beginner"],
-            "core": True,
-            "lines": 100,
-            "url": "https://example.com/playbook.md",
-        }
-    ]
-    mock_resp = MagicMock()
-    mock_resp.json.return_value = mock_manifest
-    mock_resp.raise_for_status.return_value = None
+def mock_doc_fetch(tmp_path):
+    """Provide a file-based doc source for search tests."""
+    import json as _json
 
-    mock_client = AsyncMock()
-    mock_client.get.return_value = mock_resp
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=False)
+    manifest = {
+        "version": "2.0",
+        "generated": "2026-01-01T00:00:00Z",
+        "base_url": "https://example.com",
+        "files": [
+            {
+                "path": "playbook.html",
+                "topic": "playbooks",
+                "title": "Playbook Guide",
+                "summary": "How to write playbooks",
+                "audience": "beginner",
+                "core": True,
+                "lines": 100,
+            }
+        ],
+    }
+    p = tmp_path / "test_manifest.json"
+    p.write_text(_json.dumps(manifest))
+    sources = {"ansible-core": {"file": str(p), "description": "Test"}}
 
-    with patch("ansible_know.docs.httpx.AsyncClient", return_value=mock_client):
-        from ansible_know.docs import clear_cache
-        clear_cache()
+    from ansible_know.docs import clear_cache
+    clear_cache()
+    with patch("ansible_know.docs.get_doc_sources", return_value=sources):
         yield
-        clear_cache()
+    clear_cache()
 
 
 class TestSearchModulesTool:

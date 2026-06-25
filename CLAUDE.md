@@ -18,7 +18,7 @@ Runtime requirement: `ansible-core` must be installed in the same environment (f
 
 ```
 src/ansible_know/
-├── server.py              # FastMCP server: 13 tools, 4 resources, 4 prompts (entrypoint)
+├── server.py              # FastMCP server: 14 tools, 5 resources, 4 prompts (entrypoint)
 ├── parser.py              # ansible-doc wrapper — module discovery and metadata extraction
 ├── resolution.py          # local-then-Galaxy doc resolution + multi-server search
 ├── readme_parser.py       # Parse Galaxy role README HTML into structured data
@@ -27,8 +27,11 @@ src/ansible_know/
 ├── config.py              # paths, constants, doc source registry
 ├── collection_manifest.py # collection-level MANIFEST.json generation/caching
 ├── docs.py                # multi-manifest documentation client (httpx)
+├── text_utils.py          # RTD markdown cleaning (Foundation)
 ├── galaxy.py              # Galaxy v3 API client — search, docs-blob, format conversion
 ├── tagging.py             # Tag derivation from module metadata (Foundation)
+├── manifest_builder.py    # Build-time: generate doc manifests from objects.inv/sitemap
+├── data/                  # Shipped JSON doc manifests (ansible-core, lint, navigator, etc.)
 └── templates/             # Jinja2 templates for skill packages
 ```
 
@@ -40,6 +43,7 @@ src/ansible_know/
 | `get_module_doc` | read-only | Get full module documentation |
 | `get_role_doc` | read-only | Get full role documentation (local or Galaxy README) |
 | `search_docs` | read-only | Search conceptual doc manifests |
+| `fetch_doc` | read-only | Fetch a docs.ansible.com page as clean Markdown |
 | `search_collections` | read-only | Search Galaxy for collections by keyword |
 | `get_collection_manifest` | read-only | Get collection-level module and role summary |
 | `ensure_collection` | idempotent write | Install a collection for this session |
@@ -83,6 +87,11 @@ src/ansible_know/
 - Tests mock `_run_ansible_doc` — no real `ansible-doc` needed.
 - `readme_parser.py` parses Galaxy role README HTML using stdlib `html.parser`. Handles four variable documentation patterns: tables, heading-per-variable, code-block-per-variable, and graceful degradation.
 - `get_role_doc` uses three-tier resolution: local ansible-doc → Galaxy readme_html → graceful degradation.
+- `text_utils.clean_rtd_markdown` (Foundation) strips breadcrumbs/artifacts from RTD markdown responses.
+- `fetch_doc_content` in `docs.py` uses Cloudflare's `Accept: text/markdown` content negotiation, raises `AnsibleKnowError` on content-type mismatch, size/token limits, or redirect to unexpected domain.
+- RTD Search API (`_search_rtd_api`) serves as fallback when manifest search returns empty (only when no filters caused the empty result).
+- Doc manifests shipped as JSON in `src/ansible_know/data/`, loaded from disk (no HTTP at startup).
+- `manifest_builder.py` generates manifests at build time from objects.inv and sitemap sources (requires `[build]` optional deps: `sphobjinv`, `defusedxml`).
 
 ## Testing
 

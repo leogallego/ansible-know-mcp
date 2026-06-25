@@ -41,3 +41,46 @@ class TestGetDocSources:
         monkeypatch.setenv("ANSIBLE_KNOW_DOC_SOURCES", "{}")
         result = get_doc_sources()
         assert result == {}
+
+
+class TestDocCurationConfig:
+    def test_audience_map_has_entries(self):
+        from ansible_know.config import AUDIENCE_MAP
+        assert isinstance(AUDIENCE_MAP, dict)
+        assert len(AUDIENCE_MAP) == 8
+        assert AUDIENCE_MAP["dev_guide"] == "developer"
+        assert AUDIENCE_MAP["playbook_guide"] == "author"
+
+    def test_core_pages_has_ansible_key(self):
+        from ansible_know.config import CORE_PAGES
+        assert "ansible" in CORE_PAGES
+        assert len(CORE_PAGES["ansible"]) >= 30
+        assert "playbook_guide/playbooks_intro.html" in CORE_PAGES["ansible"]
+
+    def test_core_pages_has_ecosystem_keys(self):
+        from ansible_know.config import CORE_PAGES
+        for key in ("lint", "navigator", "builder", "creator", "molecule"):
+            assert key in CORE_PAGES, f"Missing CORE_PAGES key: {key}"
+            assert len(CORE_PAGES[key]) >= 2
+
+    def test_guide_topic_prefixes(self):
+        from ansible_know.config import GUIDE_TOPIC_PREFIXES
+        assert isinstance(GUIDE_TOPIC_PREFIXES, set)
+        assert "playbook_guide" in GUIDE_TOPIC_PREFIXES
+        assert "collections" not in GUIDE_TOPIC_PREFIXES
+
+    def test_project_base_urls(self):
+        from ansible_know.config import PROJECT_BASE_URLS
+        assert PROJECT_BASE_URLS["ansible"] == "https://docs.ansible.com/projects/ansible/latest"
+        assert "lint" in PROJECT_BASE_URLS
+
+    def test_rtd_project_slugs_use_source_names(self):
+        from ansible_know.config import RTD_PROJECT_SLUGS
+        assert RTD_PROJECT_SLUGS["ansible-core"] == "package-doc-builds"
+        assert "ansible-lint" in RTD_PROJECT_SLUGS
+
+    def test_default_doc_sources_use_file_keys(self):
+        from ansible_know.config import DEFAULT_DOC_SOURCES
+        for name, cfg in DEFAULT_DOC_SOURCES.items():
+            assert "file" in cfg, f"Source '{name}' missing 'file' key"
+            assert "description" in cfg

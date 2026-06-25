@@ -1,0 +1,57 @@
+{
+  "version": "2.0",
+  "generated": "2026-06-23T21:18:39.332726+00:00",
+  "base_url": "https://docs.ansible.com/projects/creator",
+  "files": [
+    {
+      "path": "",
+      "topic": "overview",
+      "title": "Welcome to Ansible-Creator Documentation",
+      "audience": "author",
+      "core": true,
+      "summary": "The `ansible-creator` is a Command-Line Interface (CLI) tool designed for effortlessly scaffolding all your Ansible content.",
+      "lines": 11,
+      "tokens": 360
+    },
+    {
+      "path": "installing/",
+      "topic": "installing",
+      "title": "Installation and Usage",
+      "audience": "author",
+      "core": false,
+      "summary": "ansible-creator provides two main functionalities: `init` and `add`.",
+      "lines": 393,
+      "tokens": 5946
+    },
+    {
+      "path": "contributing/",
+      "topic": "contributing",
+      "title": "Contributing to ansible-creator",
+      "audience": "author",
+      "core": false,
+      "summary": "To actively contribute to the development and enhancement of ansible-creator, your participation is valued.",
+      "lines": 42,
+      "tokens": 800
+    },
+    {
+      "path": "content_creation/",
+      "topic": "content_creation",
+      "title": "Creating ansible content using ansible-creator and VS Code Ansible extension",
+      "audience": "author",
+      "core": true,
+      "summary": "* For users who prefer a graphical interface, ansible-creator seamlessly integrates with the [Visual Studio Code (VS Code)](https://code.visualstudio.com/docs) and the [Ansible extension](https://marketplace.visualstudio.com/items?itemName=redhat.ansible)for it, offering an intuitive GUI experience.\n* By navigating to the Ansible section in the VS Code activity bar and selecting \"Ansible Development Tools,\" users can access a menu-driven interface.\n* This GUI provides interactive forms for straightforward input.",
+      "lines": 8,
+      "tokens": 406
+    },
+    {
+      "path": "ee_scaffolding/",
+      "topic": "ee_scaffolding",
+      "title": "Execution Environment Scaffolding",
+      "audience": "author",
+      "core": true,
+      "summary": "The `ansible-creator init execution_env` command scaffolds a complete Execution Environment (EE) project, including the EE definition file, a CI/CD workflow for **GitHub Actions** (default) or **GitLab CI**, and optional configuration for Ansible Galaxy servers.\n\n## Quick start\n\n`[](#%5F%5Fcodelineno-0-1)ansible-creator init execution_env my-ee-project\n`\n\nThis produces a GitHub Actions\u2013based project:\n\n`[](#%5F%5Fcodelineno-1-1)my-ee-project/\n[](#%5F%5Fcodelineno-1-2)\u251c\u2500\u2500 .github/\n[](#%5F%5Fcodelineno-1-3)\u2502   \u2514\u2500\u2500 workflows/\n[](#%5F%5Fcodelineno-1-4)\u2502       \u2514\u2500\u2500 ee-build.yml\n[](#%5F%5Fcodelineno-1-5)\u251c\u2500\u2500 .gitignore\n[](#%5F%5Fcodelineno-1-6)\u251c\u2500\u2500 README.md\n[](#%5F%5Fcodelineno-1-7)\u2514\u2500\u2500 execution-environment.yml\n`\n\n### GitLab instead of GitHub\n\nUse `--scm-provider gitlab` to scaffold `.gitlab-ci.yml` instead of `.github/workflows/ee-build.yml`:\n\n`[](#%5F%5Fcodelineno-2-1)ansible-creator init execution_env --scm-provider gitlab my-ee-gitlab\n`\n\n`[](#%5F%5Fcodelineno-3-1)my-ee-gitlab/\n[](#%5F%5Fcodelineno-3-2)\u251c\u2500\u2500 .gitlab-ci.yml\n[](#%5F%5Fcodelineno-3-3)\u251c\u2500\u2500 .gitignore\n[](#%5F%5Fcodelineno-3-4)\u251c\u2500\u2500 README.md\n[](#%5F%5Fcodelineno-3-5)\u2514\u2500\u2500 execution-environment.yml\n`\n\nGalaxy and SCM tokens use the **same variable names** as in the GitHub workflow (`ANSIBLE_GALAXY_SERVER_<ID>_TOKEN`, plus each `scm_servers[*].token_env_var`).",
+      "lines": 406,
+      "tokens": 5746
+    }
+  ]
+}

@@ -4,8 +4,24 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from urllib.parse import urlparse
 
 from ansible_know.errors import ValidationError
+
+__all__ = [
+    "sanitize_error",
+    "truncate_response",
+    "validate_doc_url",
+    "validate_fqcn",
+    "validate_install_path",
+    "validate_keyword",
+    "validate_namespace",
+    "validate_path_containment",
+    "validate_query",
+    "validate_skill_name",
+    "validate_tags",
+    "validate_version",
+]
 
 MAX_RESPONSE_SIZE = 500_000  # 500KB
 MAX_KEYWORD_LENGTH = 200
@@ -13,6 +29,7 @@ MAX_QUERY_LENGTH = 500
 MAX_NAMESPACE_LENGTH = 128
 MAX_VERSION_LENGTH = 64
 MAX_TAGS_LENGTH = 500
+MAX_URL_LENGTH = 2048
 
 _FQCN_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$")
 _NAMESPACE_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$")
@@ -109,3 +126,22 @@ def truncate_response(text: str) -> str:
     if len(text) > MAX_RESPONSE_SIZE:
         return text[:MAX_RESPONSE_SIZE] + "\n\n[Truncated — response exceeded size limit]"
     return text
+
+
+def validate_doc_url(url: str) -> None:
+    if not url or len(url) > MAX_URL_LENGTH:
+        raise ValidationError(
+            f"URL must be non-empty and under {MAX_URL_LENGTH} characters."
+        )
+    try:
+        parsed = urlparse(url)
+    except ValueError as exc:
+        raise ValidationError(f"Invalid URL format: {exc}") from exc
+    if parsed.scheme != "https" or parsed.netloc != "docs.ansible.com":
+        raise ValidationError(
+            "URL must start with https://docs.ansible.com/"
+        )
+    if not parsed.path or parsed.path == "/":
+        raise ValidationError(
+            "URL must include a document path after https://docs.ansible.com/"
+        )

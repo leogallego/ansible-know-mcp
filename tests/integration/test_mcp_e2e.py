@@ -113,6 +113,151 @@ class TestDiscoveryTools:
         assert "error" in data
 
 
+class TestFetchDoc:
+    """Test the fetch_doc tool against live docs.ansible.com."""
+
+    async def test_fetch_doc_returns_markdown(self, client):
+        result = await client.call_tool(
+            "fetch_doc",
+            {"url": "https://docs.ansible.com/projects/ansible/latest/getting_started/basic_concepts.html"},
+        )
+        data = _extract_data(result)
+        assert "content" in data
+        assert "title" in data
+        assert "tokens" in data
+        assert "source_url" in data
+        assert data["title"]
+        assert len(data["content"]) > 100
+
+    async def test_fetch_doc_title_is_clean(self, client):
+        """Title must not contain permalink artifacts like [¶](#...)."""
+        result = await client.call_tool(
+            "fetch_doc",
+            {"url": "https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_intro.html"},
+        )
+        data = _extract_data(result)
+        assert "[¶]" not in data.get("title", "")
+        assert "\\uf0c1" not in data.get("title", "")
+        assert "Permanent link" not in data.get("title", "")
+
+    async def test_fetch_doc_content_no_permalink_artifacts(self, client):
+        """Body content must not contain permalink markers."""
+        result = await client.call_tool(
+            "fetch_doc",
+            {"url": "https://docs.ansible.com/projects/lint/rules/"},
+        )
+        data = _extract_data(result)
+        content = data.get("content", "")
+        assert "[¶]" not in content
+        assert "Permanent link" not in content
+
+    async def test_fetch_doc_max_tokens_exceeded(self, client):
+        result = await client.call_tool(
+            "fetch_doc",
+            {"url": "https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_intro.html",
+             "max_tokens": 1},
+        )
+        data = _extract_data(result)
+        assert "error" in data
+
+    async def test_fetch_doc_rejects_non_ansible_url(self, client):
+        result = await client.call_tool(
+            "fetch_doc", {"url": "https://evil.com/page"},
+        )
+        data = _extract_data(result)
+        assert "error" in data
+
+    async def test_fetch_doc_rejects_bare_domain(self, client):
+        result = await client.call_tool(
+            "fetch_doc", {"url": "https://docs.ansible.com/"},
+        )
+        data = _extract_data(result)
+        assert "error" in data
+
+
+class TestSearchDocsBehavior:
+    """Test search_docs filter and fallback behavior end-to-end."""
+
+    async def test_search_docs_returns_all_required_fields(self, client):
+        result = await client.call_tool("search_docs", {"query": "playbook"})
+        data = _extract_data(result)
+        assert isinstance(data, list)
+        assert len(data) > 0
+        for entry in data:
+            assert "title" in entry
+            assert "summary" in entry
+            assert "topic" in entry
+            assert "audience" in entry
+            assert "lines" in entry
+            assert "source" in entry
+            assert "url" in entry
+
+    async def test_search_docs_core_only_excludes_non_core(self, client):
+        result = await client.call_tool(
+            "search_docs", {"query": "ansible", "core_only": True},
+        )
+        data = _extract_data(result)
+        assert isinstance(data, list)
+        assert len(data) > 0
+
+    async def test_search_docs_source_filter(self, client):
+        result = await client.call_tool(
+            "search_docs", {"query": "install", "source": "ansible-lint"},
+        )
+        data = _extract_data(result)
+        assert isinstance(data, list)
+        if data:
+            assert all(e["source"] == "ansible-lint" for e in data)
+
+    async def test_search_docs_topic_filter_no_rtd_bypass(self, client):
+        """When topic filter narrows to zero, RTD fallback must NOT fire."""
+        result = await client.call_tool(
+            "search_docs",
+            {"query": "playbook", "topic": "zzz_nonexistent_topic_zzz"},
+        )
+        data = _extract_data(result)
+        assert isinstance(data, list)
+        assert len(data) == 0
+
+    async def test_search_docs_no_permalink_in_titles(self, client):
+        """All manifest results must have clean titles."""
+        result = await client.call_tool("search_docs", {"query": "ansible"})
+        data = _extract_data(result)
+        for entry in data:
+            assert "[¶]" not in entry.get("title", ""), f"Permalink in title: {entry['title']}"
+
+    async def test_search_docs_ecosystem_sources(self, client):
+        """All 6 doc sources should be loadable."""
+        sources = ["ansible-core", "ansible-lint", "ansible-navigator",
+                    "ansible-builder", "ansible-creator", "molecule"]
+        for src in sources:
+            result = await client.call_tool(
+                "search_docs", {"query": "install", "source": src},
+            )
+            data = _extract_data(result)
+            assert isinstance(data, list), f"Source {src} failed"
+            assert len(data) > 0, f"Source {src} returned empty"
+
+
+class TestDocResources:
+    """Test the docs://sources resource."""
+
+    async def test_doc_sources_lists_all_shipped(self, client):
+        result = await client.read_resource("docs://sources")
+        text = result[0].text if hasattr(result[0], "text") else str(result[0])
+        data = json.loads(text)
+        expected = {"ansible-core", "ansible-lint", "ansible-navigator",
+                    "ansible-builder", "ansible-creator", "molecule"}
+        assert expected.issubset(set(data.keys()))
+
+    async def test_doc_sources_has_descriptions(self, client):
+        result = await client.read_resource("docs://sources")
+        text = result[0].text if hasattr(result[0], "text") else str(result[0])
+        data = json.loads(text)
+        for name, info in data.items():
+            assert "description" in info, f"Source {name} missing description"
+
+
 class TestGalaxyTools:
     """Test Galaxy-facing tools."""
 
@@ -307,7 +452,7 @@ class TestSkillTools:
         assert "ansible.builtin.copy" in text
         assert "Copy files" in text
 
-        skill_dir = tmp_path / "ansible.builtin.copy"
+        skill_dir = tmp_path / "ansible.builtin" / "copy"
         assert (skill_dir / "SKILL.md").exists()
         assert (skill_dir / "scripts").exists() or (skill_dir / "assets").exists()
 
@@ -445,14 +590,15 @@ def _extract_data(result):
     """Extract deserialized data from a CallToolResult.
 
     FastMCP Client.call_tool() returns a CallToolResult with:
-    - .data: deserialized Python object (dict, list, str, etc.)
+    - .data: deserialized Python object (dict, list, str, or Root for TypedDicts)
     - .content: list of TextContent/ImageContent blocks
     - .is_error: bool
 
-    When .data is None (e.g. empty dict {}), fall back to parsing content text.
+    Prefer JSON-parsing from .content because FastMCP returns Root objects
+    (not plain dicts) for TypedDict tool returns — Root is not subscriptable
+    or iterable, so .data is unusable for those. JSON parsing always returns
+    plain Python types.
     """
-    if hasattr(result, "data") and result.data is not None:
-        return result.data
     if hasattr(result, "content"):
         for item in result.content:
             if hasattr(item, "text"):
@@ -460,6 +606,8 @@ def _extract_data(result):
                     return json.loads(item.text)
                 except (json.JSONDecodeError, TypeError):
                     continue
+    if hasattr(result, "data") and result.data is not None:
+        return result.data
     if isinstance(result, (dict, list)):
         return result
     return result

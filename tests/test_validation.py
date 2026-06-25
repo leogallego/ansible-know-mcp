@@ -15,6 +15,7 @@ from ansible_know.validation import (
     MAX_VERSION_LENGTH,
     sanitize_error,
     truncate_response,
+    validate_doc_url,
     validate_fqcn,
     validate_install_path,
     validate_keyword,
@@ -358,3 +359,34 @@ class TestTruncateResponse:
         text = "x" * (MAX_RESPONSE_SIZE + 1)
         result = truncate_response(text)
         assert "Truncated" in result
+
+
+class TestValidateDocUrl:
+    def test_valid_ansible_core_url(self):
+        validate_doc_url("https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_intro.html")
+
+    def test_valid_ecosystem_url(self):
+        validate_doc_url("https://docs.ansible.com/projects/lint/rules/")
+
+    def test_valid_old_format_url(self):
+        validate_doc_url("https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_intro.html")
+
+    def test_rejects_non_ansible_domain(self):
+        with pytest.raises(ValidationError):
+            validate_doc_url("https://example.com/docs/page.html")
+
+    def test_rejects_http(self):
+        with pytest.raises(ValidationError):
+            validate_doc_url("http://docs.ansible.com/page.html")
+
+    def test_rejects_empty(self):
+        with pytest.raises(ValidationError):
+            validate_doc_url("")
+
+    def test_rejects_no_scheme(self):
+        with pytest.raises(ValidationError):
+            validate_doc_url("docs.ansible.com/page.html")
+
+    def test_rejects_too_long(self):
+        with pytest.raises(ValidationError):
+            validate_doc_url("https://docs.ansible.com/" + "a" * 2024)

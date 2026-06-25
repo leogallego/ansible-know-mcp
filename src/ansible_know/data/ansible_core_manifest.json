@@ -1,0 +1,3707 @@
+{
+  "version": "2.0",
+  "generated": "2026-06-23T21:18:33.129685+00:00",
+  "base_url": "https://docs.ansible.com/projects/ansible/latest",
+  "files": [
+    {
+      "path": "collections_guide/collections_downloading.html",
+      "topic": "collections_guide",
+      "title": "Downloading collections",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "collections_guide/collections_index.html",
+      "topic": "collections_guide",
+      "title": "Collections index",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "collections_guide/collections_installing.html",
+      "topic": "collections_guide",
+      "title": "Installing collections",
+      "audience": "both",
+      "core": true,
+      "summary": "Note\n\nIf you install a collection manually as described in this paragraph, the collection will not be upgraded automatically when you upgrade the `ansible` package or `ansible-core`.\n\n## Installing collections in containers\n\nYou can install collections with their dependencies in containers known as Execution Environments.",
+      "lines": 416,
+      "tokens": 6766
+    },
+    {
+      "path": "collections_guide/collections_listing.html",
+      "topic": "collections_guide",
+      "title": "Listing collections",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "collections_guide/collections_using_playbooks.html",
+      "topic": "collections_guide",
+      "title": "Using collections in a playbook",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "collections_guide/collections_verifying.html",
+      "topic": "collections_guide",
+      "title": "Verifying collections",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "collections_guide/index.html",
+      "topic": "collections_guide",
+      "title": "Using Ansible collections",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "command_guide/cheatsheet.html",
+      "topic": "command_guide",
+      "title": "Ansible CLI cheatsheet",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "command_guide/command_line_tools.html",
+      "topic": "command_guide",
+      "title": "Working with command line tools",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "command_guide/index.html",
+      "topic": "command_guide",
+      "title": "Using Ansible command line tools",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "command_guide/intro_adhoc.html",
+      "topic": "command_guide",
+      "title": "Introduction to ad hoc commands",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/advanced_index.html",
+      "topic": "community",
+      "title": "Advanced Contributor Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/ai_policy.html",
+      "topic": "community",
+      "title": "Ansible Community Policy for AI-Assisted Contributions",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/code_of_conduct.html",
+      "topic": "community",
+      "title": "Community Code of Conduct",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/collection_contributors/collection_integration_about.html",
+      "topic": "community",
+      "title": "Understanding integration tests",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/collection_contributors/collection_integration_add.html",
+      "topic": "community",
+      "title": "Creating new integration tests",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/collection_contributors/collection_integration_running.html",
+      "topic": "community",
+      "title": "Running integration tests",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/collection_contributors/collection_integration_tests.html",
+      "topic": "community",
+      "title": "Adding integration tests to a collection",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/collection_contributors/collection_integration_updating.html",
+      "topic": "community",
+      "title": "Adding to an existing integration test",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/collection_contributors/collection_package_removal.html",
+      "topic": "community",
+      "title": "Ansible Community Package Collections Removal Process",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/collection_contributors/collection_release_with_branches.html",
+      "topic": "community",
+      "title": "Releasing collections with release branches",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/collection_contributors/collection_release_without_branches.html",
+      "topic": "community",
+      "title": "Releasing collections without release branches",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/collection_contributors/collection_releasing.html",
+      "topic": "community",
+      "title": "Releasing collections",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/collection_contributors/collection_requirements.html",
+      "topic": "community",
+      "title": "Ansible community package collections requirements",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/collection_contributors/collection_reviewing.html",
+      "topic": "community",
+      "title": "Review checklist for collection PRs",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/collection_contributors/collection_test_pr_locally.html",
+      "topic": "community",
+      "title": "How to test a collection PR",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/collection_contributors/collection_unit_tests.html",
+      "topic": "community",
+      "title": "Add unit tests to a collection",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/collection_contributors/test_index.html",
+      "topic": "community",
+      "title": "Testing Collection Contributions",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/collection_development_process.html",
+      "topic": "community",
+      "title": "The Ansible Collections Development Cycle",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/committer_guidelines.html",
+      "topic": "community",
+      "title": "Committers Guidelines",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/communication.html",
+      "topic": "community",
+      "title": "Communicating with the Ansible community",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/contributing_maintained_collections.html",
+      "topic": "community",
+      "title": "Contributing to Ansible-maintained Collections",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/contributions.html",
+      "topic": "community",
+      "title": "ansible-core Contributors Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/contributions_collections.html",
+      "topic": "community",
+      "title": "Ansible Collections Contributor Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/contributor_path.html",
+      "topic": "community",
+      "title": "Contributor path",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/create_pr_quick_start.html",
+      "topic": "community",
+      "title": "Creating your first collection pull request",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/developer_certificate_of_origin.html",
+      "topic": "community",
+      "title": "Developer Certificate Of Origin",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/development_process.html",
+      "topic": "community",
+      "title": "The Ansible Development Cycle",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/documentation_contributions.html",
+      "topic": "community",
+      "title": "Contributing to the Ansible Documentation",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/ecosystem_project_resources.html",
+      "topic": "community",
+      "title": "Ansible Ecosystem Project Development Resources",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/getting_started.html",
+      "topic": "community",
+      "title": "Getting started",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/github_admins.html",
+      "topic": "community",
+      "title": "GitHub Admins",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/how_can_I_help.html",
+      "topic": "community",
+      "title": "How can I help?",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/index.html",
+      "topic": "community",
+      "title": "Ansible Community Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/maintainers.html",
+      "topic": "community",
+      "title": "Guidelines for collection maintainers",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/maintainers_guidelines.html",
+      "topic": "community",
+      "title": "Maintainer responsibilities",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/maintainers_workflow.html",
+      "topic": "community",
+      "title": "Ansible Collection Maintenance and Workflow",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/other_tools_and_programs.html",
+      "topic": "community",
+      "title": "Other Tools and Programs",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/reporting_bugs_and_features.html",
+      "topic": "community",
+      "title": "Reporting bugs and requesting features",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/reporting_collections.html",
+      "topic": "community",
+      "title": "Requesting changes to a collection",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/steering/community_steering_committee.html",
+      "topic": "community",
+      "title": "Steering Committee mission and responsibilities",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/steering/community_topics_workflow.html",
+      "topic": "community",
+      "title": "Community topics workflow",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/steering/steering_committee_membership.html",
+      "topic": "community",
+      "title": "Steering Committee membership guidelines",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/steering/steering_committee_past_members.html",
+      "topic": "community",
+      "title": "Steering Committee past members",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "community/steering/steering_index.html",
+      "topic": "community",
+      "title": "Ansible Community Steering Committee",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/ansible_index.html",
+      "topic": "dev_guide",
+      "title": "Developer Guide",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/ansible_markup.html",
+      "topic": "dev_guide",
+      "title": "Ansible markup",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/collections_galaxy_meta.html",
+      "topic": "dev_guide",
+      "title": "Collection Galaxy metadata structure",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/core_branches_and_tags.html",
+      "topic": "dev_guide",
+      "title": "ansible-core project branches and tags",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/core_index.html",
+      "topic": "dev_guide",
+      "title": "Developer Guide",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/debugging.html",
+      "topic": "dev_guide",
+      "title": "Debugging modules",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/developing_api.html",
+      "topic": "dev_guide",
+      "title": "Python API",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/developing_collections.html",
+      "topic": "dev_guide",
+      "title": "Developing collections",
+      "audience": "developer",
+      "core": true,
+      "summary": "Collections are a distribution format for Ansible content.",
+      "lines": 72,
+      "tokens": 2330
+    },
+    {
+      "path": "dev_guide/developing_collections_changelogs.html",
+      "topic": "dev_guide",
+      "title": "Generating changelogs and porting guide entries in a collection",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/developing_collections_contributing.html",
+      "topic": "dev_guide",
+      "title": "Contributing to collections",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/developing_collections_creating.html",
+      "topic": "dev_guide",
+      "title": "Creating collections",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/developing_collections_distributing.html",
+      "topic": "dev_guide",
+      "title": "Distributing collections",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/developing_collections_documenting.html",
+      "topic": "dev_guide",
+      "title": "Documenting collections",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/developing_collections_migrating.html",
+      "topic": "dev_guide",
+      "title": "Migrating Ansible content to a different collection",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/developing_collections_path.html",
+      "topic": "dev_guide",
+      "title": "Ansible collection creator path",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/developing_collections_resource_reporting.html",
+      "topic": "dev_guide",
+      "title": "Resource reporting",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/developing_collections_shared.html",
+      "topic": "dev_guide",
+      "title": "Using shared resources in collections",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/developing_collections_structure.html",
+      "topic": "dev_guide",
+      "title": "Collection structure",
+      "audience": "developer",
+      "core": true,
+      "summary": "A collection is a simple data structure.",
+      "lines": 240,
+      "tokens": 4301
+    },
+    {
+      "path": "dev_guide/developing_collections_testing.html",
+      "topic": "dev_guide",
+      "title": "Testing collections",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/developing_core.html",
+      "topic": "dev_guide",
+      "title": "Developing ansible-core",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/developing_inventory.html",
+      "topic": "dev_guide",
+      "title": "Developing dynamic inventory",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/developing_locally.html",
+      "topic": "dev_guide",
+      "title": "Adding modules and plugins locally",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/developing_module_utilities.html",
+      "topic": "dev_guide",
+      "title": "Using and developing module utilities",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/developing_modules.html",
+      "topic": "dev_guide",
+      "title": "Should you develop a module?",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/developing_modules_best_practices.html",
+      "topic": "dev_guide",
+      "title": "Conventions, tips, and pitfalls",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/developing_modules_checklist.html",
+      "topic": "dev_guide",
+      "title": "Contributing your module to an existing Ansible collection",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/developing_modules_documenting.html",
+      "topic": "dev_guide",
+      "title": "Module format and documentation",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/developing_modules_general.html",
+      "topic": "dev_guide",
+      "title": "Developing modules",
+      "audience": "developer",
+      "core": true,
+      "summary": "A module is a reusable, standalone script that Ansible runs on your behalf, either locally or remotely.",
+      "lines": 274,
+      "tokens": 4541
+    },
+    {
+      "path": "dev_guide/developing_modules_general_windows.html",
+      "topic": "dev_guide",
+      "title": "Windows module development walkthrough",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/developing_modules_in_groups.html",
+      "topic": "dev_guide",
+      "title": "Creating a new collection",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/developing_plugins.html",
+      "topic": "dev_guide",
+      "title": "Developing plugins",
+      "audience": "developer",
+      "core": true,
+      "summary": "Plugins augment Ansible\u2019s core functionality with logic and features that are accessible to all modules.",
+      "lines": 521,
+      "tokens": 8344
+    },
+    {
+      "path": "dev_guide/developing_program_flow_modules.html",
+      "topic": "dev_guide",
+      "title": "Ansible module architecture",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/developing_python_3.html",
+      "topic": "dev_guide",
+      "title": "Ansible and Python 3",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/developing_rebasing.html",
+      "topic": "dev_guide",
+      "title": "Rebasing a pull request",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/index.html",
+      "topic": "dev_guide",
+      "title": "Developer Guide",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/migrating_roles.html",
+      "topic": "dev_guide",
+      "title": "Migrating Roles to Roles in Collections on Galaxy",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/module_lifecycle.html",
+      "topic": "dev_guide",
+      "title": "The lifecycle of an Ansible module or plugin",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/overview_architecture.html",
+      "topic": "dev_guide",
+      "title": "Ansible architecture",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/sidecar.html",
+      "topic": "dev_guide",
+      "title": "Adjacent YAML documentation files",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/style_guide/basic_rules.html",
+      "topic": "dev_guide",
+      "title": "Basic rules",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/style_guide/grammar_punctuation.html",
+      "topic": "dev_guide",
+      "title": "Grammar and Punctuation",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/style_guide/index.html",
+      "topic": "dev_guide",
+      "title": "Ansible documentation style guide",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/style_guide/preferred_terms.html",
+      "topic": "dev_guide",
+      "title": "Preferred terminology",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/style_guide/resources.html",
+      "topic": "dev_guide",
+      "title": "Resources",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/style_guide/search_hints.html",
+      "topic": "dev_guide",
+      "title": "Writing documentation so search can find it",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/style_guide/spelling_word_choice.html",
+      "topic": "dev_guide",
+      "title": "Spelling - Word Usage - Common Words and Phrases to Use and Avoid",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/style_guide/trademarks.html",
+      "topic": "dev_guide",
+      "title": "Trademark Usage",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/style_guide/voice_style.html",
+      "topic": "dev_guide",
+      "title": "Voice Style",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing.html",
+      "topic": "dev_guide",
+      "title": "Testing Ansible",
+      "audience": "developer",
+      "core": true,
+      "summary": "* [Sanity Tests](https://docs.ansible.com/projects/ansible/latest/dev%5Fguide/testing%5Fsanity.html)\n* [Unit Tests](https://docs.ansible.com/projects/ansible/latest/dev%5Fguide/testing%5Funits.html)\n* [Unit Testing Ansible Modules](https://docs.ansible.com/projects/ansible/latest/dev%5Fguide/testing%5Funits%5Fmodules.html)\n* [Integration tests](https://docs.ansible.com/projects/ansible/latest/dev%5Fguide/testing%5Fintegration.html)\n* [httptester](https://docs.ansible.com/projects/ansible/latest/dev%5Fguide/testing%5Fhttptester.html)\n* [Testing Ansible and Collections](https://docs.ansible.com/projects/ansible/latest/dev%5Fguide/testing%5Frunning%5Flocally.html)\n* [Testing plugin documentation](https://docs.ansible.com/projects/ansible/latest/dev%5Fguide/testing%5Fdocumentation.html)\n\n## [Why test your Ansible contributions?](#id1)\n\nIf you\u2019re a developer, one of the most valuable things you can do is to look at GitHub issues and help fix bugs, since bug-fixing is almost always prioritized over feature development.",
+      "lines": 209,
+      "tokens": 3284
+    },
+    {
+      "path": "dev_guide/testing/sanity/action-plugin-docs.html",
+      "topic": "dev_guide",
+      "title": "action-plugin-docs",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/ansible-doc.html",
+      "topic": "dev_guide",
+      "title": "ansible-doc",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/ansible-requirements.html",
+      "topic": "dev_guide",
+      "title": "ansible-requirements",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/bin-symlinks.html",
+      "topic": "dev_guide",
+      "title": "bin-symlinks",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/boilerplate.html",
+      "topic": "dev_guide",
+      "title": "boilerplate",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/changelog.html",
+      "topic": "dev_guide",
+      "title": "changelog",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/compile.html",
+      "topic": "dev_guide",
+      "title": "compile",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/deprecated-config.html",
+      "topic": "dev_guide",
+      "title": "deprecated-config",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/empty-init.html",
+      "topic": "dev_guide",
+      "title": "empty-init",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/future-import-boilerplate.html",
+      "topic": "dev_guide",
+      "title": "future-import-boilerplate",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/ignores.html",
+      "topic": "dev_guide",
+      "title": "ignores",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/import.html",
+      "topic": "dev_guide",
+      "title": "import",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/index.html",
+      "topic": "dev_guide",
+      "title": "Sanity Tests",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/integration-aliases.html",
+      "topic": "dev_guide",
+      "title": "integration-aliases",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/line-endings.html",
+      "topic": "dev_guide",
+      "title": "line-endings",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/mypy.html",
+      "topic": "dev_guide",
+      "title": "mypy",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/no-assert.html",
+      "topic": "dev_guide",
+      "title": "no-assert",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/no-basestring.html",
+      "topic": "dev_guide",
+      "title": "no-basestring",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/no-dict-iteritems.html",
+      "topic": "dev_guide",
+      "title": "no-dict-iteritems",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/no-dict-iterkeys.html",
+      "topic": "dev_guide",
+      "title": "no-dict-iterkeys",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/no-dict-itervalues.html",
+      "topic": "dev_guide",
+      "title": "no-dict-itervalues",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/no-get-exception.html",
+      "topic": "dev_guide",
+      "title": "no-get-exception",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/no-illegal-filenames.html",
+      "topic": "dev_guide",
+      "title": "no-illegal-filenames",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/no-main-display.html",
+      "topic": "dev_guide",
+      "title": "no-main-display",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/no-smart-quotes.html",
+      "topic": "dev_guide",
+      "title": "no-smart-quotes",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/no-tests-as-filters.html",
+      "topic": "dev_guide",
+      "title": "no-tests-as-filters",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/no-unicode-literals.html",
+      "topic": "dev_guide",
+      "title": "no-unicode-literals",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/no-unwanted-files.html",
+      "topic": "dev_guide",
+      "title": "no-unwanted-files",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/obsolete-files.html",
+      "topic": "dev_guide",
+      "title": "obsolete-files",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/package-data.html",
+      "topic": "dev_guide",
+      "title": "package-data",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/pep8.html",
+      "topic": "dev_guide",
+      "title": "pep8",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/pslint.html",
+      "topic": "dev_guide",
+      "title": "pslint",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/pylint.html",
+      "topic": "dev_guide",
+      "title": "pylint",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/pymarkdown.html",
+      "topic": "dev_guide",
+      "title": "pymarkdown",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/release-names.html",
+      "topic": "dev_guide",
+      "title": "release-names",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/replace-urlopen.html",
+      "topic": "dev_guide",
+      "title": "replace-urlopen",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/required-and-default-attributes.html",
+      "topic": "dev_guide",
+      "title": "required-and-default-attributes",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/runtime-metadata.html",
+      "topic": "dev_guide",
+      "title": "runtime-metadata",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/shebang.html",
+      "topic": "dev_guide",
+      "title": "shebang",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/shellcheck.html",
+      "topic": "dev_guide",
+      "title": "shellcheck",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/symlinks.html",
+      "topic": "dev_guide",
+      "title": "symlinks",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/test-constraints.html",
+      "topic": "dev_guide",
+      "title": "test-constraints",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/update-bundled.html",
+      "topic": "dev_guide",
+      "title": "update-bundled",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/use-argspec-type-path.html",
+      "topic": "dev_guide",
+      "title": "use-argspec-type-path",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/use-compat-six.html",
+      "topic": "dev_guide",
+      "title": "use-compat-six",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/validate-modules.html",
+      "topic": "dev_guide",
+      "title": "validate-modules",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing/sanity/yamllint.html",
+      "topic": "dev_guide",
+      "title": "yamllint",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing_documentation.html",
+      "topic": "dev_guide",
+      "title": "Testing plugin documentation",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing_httptester.html",
+      "topic": "dev_guide",
+      "title": "httptester",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing_integration.html",
+      "topic": "dev_guide",
+      "title": "Integration tests",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing_running_locally.html",
+      "topic": "dev_guide",
+      "title": "Testing Ansible and Collections",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing_sanity.html",
+      "topic": "dev_guide",
+      "title": "Sanity Tests",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing_units.html",
+      "topic": "dev_guide",
+      "title": "Unit Tests",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "dev_guide/testing_units_modules.html",
+      "topic": "dev_guide",
+      "title": "Unit Testing Ansible Modules",
+      "audience": "developer",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "getting_started/basic_concepts.html",
+      "topic": "getting_started",
+      "title": "Ansible concepts",
+      "audience": "author",
+      "core": true,
+      "summary": "These concepts are common to all uses of Ansible.",
+      "lines": 67,
+      "tokens": 1427
+    },
+    {
+      "path": "getting_started/get_started_ansible.html",
+      "topic": "getting_started",
+      "title": "Start automating with Ansible",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "getting_started/get_started_inventory.html",
+      "topic": "getting_started",
+      "title": "Building an inventory",
+      "audience": "author",
+      "core": true,
+      "summary": "Inventories organize managed nodes in centralized files that provide Ansible with system information and network locations.",
+      "lines": 184,
+      "tokens": 1826
+    },
+    {
+      "path": "getting_started/get_started_playbook.html",
+      "topic": "getting_started",
+      "title": "Creating a playbook",
+      "audience": "author",
+      "core": true,
+      "summary": "Playbooks are automation blueprints, in `YAML` format, that Ansible uses to deploy and configure managed nodes.\n\nPlaybook\n\nA list of plays that define the order in which Ansible performs operations, from top to bottom, to achieve an overall goal.\n\nPlay\n\nAn ordered list of tasks that maps to managed nodes in an inventory.\n\nTask\n\nA reference to a single module that defines the operations that Ansible performs.\n\nModule\n\nA unit of code or binary that Ansible runs on managed nodes.",
+      "lines": 92,
+      "tokens": 1155
+    },
+    {
+      "path": "getting_started/index.html",
+      "topic": "getting_started",
+      "title": "Getting started with Ansible",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "getting_started/introduction.html",
+      "topic": "getting_started",
+      "title": "Introduction to Ansible",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "getting_started_ee/build_execution_environment.html",
+      "topic": "getting_started_ee",
+      "title": "Building your first Execution Environment",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "getting_started_ee/index.html",
+      "topic": "getting_started_ee",
+      "title": "Getting started with Execution Environments",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "getting_started_ee/introduction.html",
+      "topic": "getting_started_ee",
+      "title": "Introduction to Execution Environments",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "getting_started_ee/run_community_ee_image.html",
+      "topic": "getting_started_ee",
+      "title": "Running Ansible with the community EE image",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "getting_started_ee/run_execution_environment.html",
+      "topic": "getting_started_ee",
+      "title": "Running your EE",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "getting_started_ee/setup_environment.html",
+      "topic": "getting_started_ee",
+      "title": "Setting up your environment",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "inventory_guide/connection_details.html",
+      "topic": "inventory_guide",
+      "title": "Connection methods and details",
+      "audience": "author",
+      "core": true,
+      "summary": "This section shows you how to expand and refine the connection methods Ansible uses for your inventory.\n\n## ControlPersist and paramiko\n\nBy default, Ansible uses native OpenSSH, because it supports ControlPersist (a performance feature), Kerberos, and options in `~/.ssh/config` such as Jump Host setup.",
+      "lines": 96,
+      "tokens": 1585
+    },
+    {
+      "path": "inventory_guide/implicit_localhost.html",
+      "topic": "inventory_guide",
+      "title": "Implicit \u2018localhost\u2019",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "inventory_guide/index.html",
+      "topic": "inventory_guide",
+      "title": "Building Ansible inventories",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "inventory_guide/intro_dynamic_inventory.html",
+      "topic": "inventory_guide",
+      "title": "Working with dynamic inventory",
+      "audience": "author",
+      "core": true,
+      "summary": "If your Ansible inventory fluctuates over time, with hosts spinning up and shutting down in response to business demands, the static inventory solutions described in [How to build your inventory](https://docs.ansible.com/projects/ansible/latest/inventory%5Fguide/intro%5Finventory.html#inventory) will not serve your needs.",
+      "lines": 116,
+      "tokens": 2353
+    },
+    {
+      "path": "inventory_guide/intro_inventory.html",
+      "topic": "inventory_guide",
+      "title": "How to build your inventory",
+      "audience": "author",
+      "core": true,
+      "summary": "Ansible automates tasks on managed nodes or \u201chosts\u201d in your infrastructure by using a list or group of lists known as inventory.",
+      "lines": 668,
+      "tokens": 9580
+    },
+    {
+      "path": "inventory_guide/intro_patterns.html",
+      "topic": "inventory_guide",
+      "title": "Patterns: targeting hosts and groups",
+      "audience": "author",
+      "core": true,
+      "summary": "When you execute Ansible through an ad hoc command or by running a playbook, you must choose which managed nodes or groups you want to execute against.",
+      "lines": 198,
+      "tokens": 2765
+    },
+    {
+      "path": "network/dev_guide/developing_plugins_network.html",
+      "topic": "network",
+      "title": "Developing network plugins",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/dev_guide/developing_resource_modules_network.html",
+      "topic": "network",
+      "title": "Developing network resource modules",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/dev_guide/documenting_modules_network.html",
+      "topic": "network",
+      "title": "Documenting new network platforms",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/dev_guide/index.html",
+      "topic": "network",
+      "title": "Network Developer Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/getting_started/basic_concepts.html",
+      "topic": "network",
+      "title": "Basic Concepts",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/getting_started/first_inventory.html",
+      "topic": "network",
+      "title": "Build Your Inventory",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/getting_started/first_playbook.html",
+      "topic": "network",
+      "title": "Run Your First Command and Playbook",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/getting_started/index.html",
+      "topic": "network",
+      "title": "Network Getting Started",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/getting_started/intermediate_concepts.html",
+      "topic": "network",
+      "title": "Beyond the basics",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/getting_started/network_connection_options.html",
+      "topic": "network",
+      "title": "Working with network connection options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/getting_started/network_differences.html",
+      "topic": "network",
+      "title": "How Network Automation is Different",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/getting_started/network_resources.html",
+      "topic": "network",
+      "title": "Resources and next steps",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/getting_started/network_roles.html",
+      "topic": "network",
+      "title": "Use Ansible network roles",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/cli_parsing.html",
+      "topic": "network",
+      "title": "Parsing semi-structured text with Ansible",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/faq.html",
+      "topic": "network",
+      "title": "Ansible Network FAQ",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/index.html",
+      "topic": "network",
+      "title": "Network Advanced Topics",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/network_best_practices_2.5.html",
+      "topic": "network",
+      "title": "Ansible Network Examples",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/network_debug_troubleshooting.html",
+      "topic": "network",
+      "title": "Network Debug and Troubleshooting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/network_resource_modules.html",
+      "topic": "network",
+      "title": "Network Resource Modules",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/network_working_with_command_output.html",
+      "topic": "network",
+      "title": "Working with command output and prompts in network modules",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_ce.html",
+      "topic": "network",
+      "title": "CloudEngine OS Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_cnos.html",
+      "topic": "network",
+      "title": "CNOS Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_dellos10.html",
+      "topic": "network",
+      "title": "Dell OS10 Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_dellos6.html",
+      "topic": "network",
+      "title": "Dell OS6 Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_dellos9.html",
+      "topic": "network",
+      "title": "Dell OS9 Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_enos.html",
+      "topic": "network",
+      "title": "ENOS Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_eos.html",
+      "topic": "network",
+      "title": "EOS Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_eric_eccli.html",
+      "topic": "network",
+      "title": "ERIC_ECCLI Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_exos.html",
+      "topic": "network",
+      "title": "EXOS Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_frr.html",
+      "topic": "network",
+      "title": "FRR Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_icx.html",
+      "topic": "network",
+      "title": "ICX Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_index.html",
+      "topic": "network",
+      "title": "Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_ios.html",
+      "topic": "network",
+      "title": "IOS Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_iosxr.html",
+      "topic": "network",
+      "title": "IOS-XR Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_ironware.html",
+      "topic": "network",
+      "title": "IronWare Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_junos.html",
+      "topic": "network",
+      "title": "Junos OS Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_meraki.html",
+      "topic": "network",
+      "title": "Meraki Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_netconf_enabled.html",
+      "topic": "network",
+      "title": "Netconf enabled Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_netvisor.html",
+      "topic": "network",
+      "title": "Pluribus NETVISOR Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_nos.html",
+      "topic": "network",
+      "title": "NOS Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_nxos.html",
+      "topic": "network",
+      "title": "NXOS Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_routeros.html",
+      "topic": "network",
+      "title": "RouterOS Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_slxos.html",
+      "topic": "network",
+      "title": "SLX-OS Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_voss.html",
+      "topic": "network",
+      "title": "VOSS Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_vyos.html",
+      "topic": "network",
+      "title": "VyOS Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/platform_weos4.html",
+      "topic": "network",
+      "title": "WeOS 4 Platform Options",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "network/user_guide/validate.html",
+      "topic": "network",
+      "title": "Validate data against set criteria with Ansible",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "os_guide/index.html",
+      "topic": "os_guide",
+      "title": "Using Ansible on Windows, BSD, and z/OS UNIX",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "os_guide/intro_bsd.html",
+      "topic": "os_guide",
+      "title": "Managing BSD hosts with Ansible",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "os_guide/intro_windows.html",
+      "topic": "os_guide",
+      "title": "Managing Windows hosts with Ansible",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "os_guide/intro_zos.html",
+      "topic": "os_guide",
+      "title": "Managing z/OS UNIX hosts with Ansible",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "os_guide/windows_app_control.html",
+      "topic": "os_guide",
+      "title": "Windows App Control",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "os_guide/windows_dsc.html",
+      "topic": "os_guide",
+      "title": "Desired State Configuration",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "os_guide/windows_performance.html",
+      "topic": "os_guide",
+      "title": "Windows performance",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "os_guide/windows_pwsh.html",
+      "topic": "os_guide",
+      "title": "PowerShell 7 Support",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "os_guide/windows_ssh.html",
+      "topic": "os_guide",
+      "title": "Windows SSH",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "os_guide/windows_usage.html",
+      "topic": "os_guide",
+      "title": "Using Ansible and Windows",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "os_guide/windows_winrm.html",
+      "topic": "os_guide",
+      "title": "Windows Remote Management",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "os_guide/windows_winrm_certificate.html",
+      "topic": "os_guide",
+      "title": "WinRM Certificate Authentication",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "os_guide/windows_winrm_kerberos.html",
+      "topic": "os_guide",
+      "title": "Kerberos Authentication",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbook_guide/complex_data_manipulation.html",
+      "topic": "playbook_guide",
+      "title": "Manipulating data",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbook_guide/guide_rolling_upgrade.html",
+      "topic": "playbook_guide",
+      "title": "Playbook Example: Continuous Delivery and Rolling Upgrades",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbook_guide/index.html",
+      "topic": "playbook_guide",
+      "title": "Using Ansible playbooks",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbook_guide/playbook_pathing.html",
+      "topic": "playbook_guide",
+      "title": "Search paths in Ansible",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbook_guide/playbooks.html",
+      "topic": "playbook_guide",
+      "title": "Working with playbooks",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbook_guide/playbooks_advanced_syntax.html",
+      "topic": "playbook_guide",
+      "title": "Advanced playbook syntax",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbook_guide/playbooks_async.html",
+      "topic": "playbook_guide",
+      "title": "Asynchronous actions and polling",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbook_guide/playbooks_blocks.html",
+      "topic": "playbook_guide",
+      "title": "Blocks",
+      "audience": "author",
+      "core": true,
+      "summary": "Blocks create logical groups of tasks.",
+      "lines": 207,
+      "tokens": 2251
+    },
+    {
+      "path": "playbook_guide/playbooks_checkmode.html",
+      "topic": "playbook_guide",
+      "title": "Validating tasks: check mode and diff mode",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbook_guide/playbooks_conditionals.html",
+      "topic": "playbook_guide",
+      "title": "Conditionals",
+      "audience": "author",
+      "core": true,
+      "summary": "In a playbook, you may want to execute different tasks or have different goals, depending on the value of a fact (data about the remote system), a variable, or the result of a previous task.",
+      "lines": 495,
+      "tokens": 6473
+    },
+    {
+      "path": "playbook_guide/playbooks_debugger.html",
+      "topic": "playbook_guide",
+      "title": "Debugging tasks",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbook_guide/playbooks_delegation.html",
+      "topic": "playbook_guide",
+      "title": "Controlling where tasks run: delegation and local actions",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbook_guide/playbooks_environment.html",
+      "topic": "playbook_guide",
+      "title": "Setting the remote environment",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbook_guide/playbooks_error_handling.html",
+      "topic": "playbook_guide",
+      "title": "Error handling in playbooks",
+      "audience": "author",
+      "core": true,
+      "summary": "When Ansible receives a non-zero return code from a command or a failure from a module, by default it stops executing on that host and continues on other hosts.",
+      "lines": 246,
+      "tokens": 3521
+    },
+    {
+      "path": "playbook_guide/playbooks_execution.html",
+      "topic": "playbook_guide",
+      "title": "Executing playbooks",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbook_guide/playbooks_filters.html",
+      "topic": "playbook_guide",
+      "title": "Using filters to manipulate data",
+      "audience": "author",
+      "core": true,
+      "summary": "Filters let you transform JSON data into YAML data, split a URL to extract the hostname, get the SHA1 hash of a string, add or multiply integers, and much more.",
+      "lines": 1730,
+      "tokens": 19717
+    },
+    {
+      "path": "playbook_guide/playbooks_handlers.html",
+      "topic": "playbook_guide",
+      "title": "Handlers: running operations on change",
+      "audience": "author",
+      "core": true,
+      "summary": "Sometimes you want a task to run only when a change is made on a machine.",
+      "lines": 218,
+      "tokens": 3028
+    },
+    {
+      "path": "playbook_guide/playbooks_intro.html",
+      "topic": "playbook_guide",
+      "title": "Ansible playbooks",
+      "audience": "author",
+      "core": true,
+      "summary": "Ansible Playbooks provide a repeatable, reusable, simple configuration management and multimachine deployment system that is well suited to deploying complex applications.",
+      "lines": 144,
+      "tokens": 2855
+    },
+    {
+      "path": "playbook_guide/playbooks_lookups.html",
+      "topic": "playbook_guide",
+      "title": "Lookups",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbook_guide/playbooks_loops.html",
+      "topic": "playbook_guide",
+      "title": "Loops",
+      "audience": "author",
+      "core": true,
+      "summary": "Ansible offers the `loop`, `with_<lookup>`, and `until` keywords to execute a task multiple times.",
+      "lines": 707,
+      "tokens": 7043
+    },
+    {
+      "path": "playbook_guide/playbooks_module_defaults.html",
+      "topic": "playbook_guide",
+      "title": "Module defaults",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbook_guide/playbooks_privilege_escalation.html",
+      "topic": "playbook_guide",
+      "title": "Understanding privilege escalation: become",
+      "audience": "author",
+      "core": true,
+      "summary": "Ansible uses existing privilege escalation systems to execute tasks with root privileges or with another user\u2019s permissions.",
+      "lines": 521,
+      "tokens": 9143
+    },
+    {
+      "path": "playbook_guide/playbooks_prompts.html",
+      "topic": "playbook_guide",
+      "title": "Interactive input: prompts",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbook_guide/playbooks_python_version.html",
+      "topic": "playbook_guide",
+      "title": "Python3 in templates",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbook_guide/playbooks_reuse.html",
+      "topic": "playbook_guide",
+      "title": "Reusing Ansible artifacts",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbook_guide/playbooks_reuse_roles.html",
+      "topic": "playbook_guide",
+      "title": "Roles",
+      "audience": "author",
+      "core": true,
+      "summary": "Roles let you automatically load related vars, files, tasks, handlers, and other Ansible artifacts based on a known file structure.",
+      "lines": 711,
+      "tokens": 8513
+    },
+    {
+      "path": "playbook_guide/playbooks_startnstep.html",
+      "topic": "playbook_guide",
+      "title": "Executing playbooks for troubleshooting",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbook_guide/playbooks_strategies.html",
+      "topic": "playbook_guide",
+      "title": "Controlling playbook execution: strategies and more",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbook_guide/playbooks_tags.html",
+      "topic": "playbook_guide",
+      "title": "Tags",
+      "audience": "author",
+      "core": true,
+      "summary": "If you have a large playbook, it may be useful to run only specific parts of it instead of running the entire playbook.",
+      "lines": 417,
+      "tokens": 5182
+    },
+    {
+      "path": "playbook_guide/playbooks_templating.html",
+      "topic": "playbook_guide",
+      "title": "Templating (Jinja2)",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbook_guide/playbooks_templating_now.html",
+      "topic": "playbook_guide",
+      "title": "The now function: get the current time",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbook_guide/playbooks_templating_undef.html",
+      "topic": "playbook_guide",
+      "title": "The undef function: add hint for undefined variables",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbook_guide/playbooks_tests.html",
+      "topic": "playbook_guide",
+      "title": "Tests",
+      "audience": "author",
+      "core": true,
+      "summary": "[Tests](https://jinja.palletsprojects.com/en/latest/templates/#tests) in Jinja are a way of evaluating template expressions and returning True or False.",
+      "lines": 469,
+      "tokens": 4386
+    },
+    {
+      "path": "playbook_guide/playbooks_variables.html",
+      "topic": "playbook_guide",
+      "title": "Using variables",
+      "audience": "author",
+      "core": true,
+      "summary": "Ansible uses variables to manage differences between systems.",
+      "lines": 460,
+      "tokens": 8440
+    },
+    {
+      "path": "playbook_guide/playbooks_variables_validation.html",
+      "topic": "playbook_guide",
+      "title": "Play Argument Validation",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbook_guide/playbooks_vars_facts.html",
+      "topic": "playbook_guide",
+      "title": "Discovering variables: facts and magic variables",
+      "audience": "author",
+      "core": true,
+      "summary": "With Ansible you can retrieve or discover certain variables containing information about your remote systems or about Ansible itself.",
+      "lines": 658,
+      "tokens": 6960
+    },
+    {
+      "path": "porting_guides/core_porting_guides.html",
+      "topic": "porting_guides",
+      "title": "Ansible Core Porting Guides",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_10.html",
+      "topic": "porting_guides",
+      "title": "Ansible 10 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_11.html",
+      "topic": "porting_guides",
+      "title": "Ansible 11 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_12.html",
+      "topic": "porting_guides",
+      "title": "Ansible 12 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_13.html",
+      "topic": "porting_guides",
+      "title": "Ansible 13 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_14.html",
+      "topic": "porting_guides",
+      "title": "Ansible 14 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_2.0.html",
+      "topic": "porting_guides",
+      "title": "Ansible 2.0 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_2.10.html",
+      "topic": "porting_guides",
+      "title": "Ansible 2.10 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_2.3.html",
+      "topic": "porting_guides",
+      "title": "Ansible 2.3 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_2.4.html",
+      "topic": "porting_guides",
+      "title": "Ansible 2.4 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_2.5.html",
+      "topic": "porting_guides",
+      "title": "Ansible 2.5 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_2.6.html",
+      "topic": "porting_guides",
+      "title": "Ansible 2.6 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_2.7.html",
+      "topic": "porting_guides",
+      "title": "Ansible 2.7 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_2.8.html",
+      "topic": "porting_guides",
+      "title": "Ansible 2.8 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_2.9.html",
+      "topic": "porting_guides",
+      "title": "Ansible 2.9 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_3.html",
+      "topic": "porting_guides",
+      "title": "Ansible 3 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_4.html",
+      "topic": "porting_guides",
+      "title": "Ansible 4 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_5.html",
+      "topic": "porting_guides",
+      "title": "Ansible 5 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_6.html",
+      "topic": "porting_guides",
+      "title": "Ansible 6 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_7.html",
+      "topic": "porting_guides",
+      "title": "Ansible 7 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_8.html",
+      "topic": "porting_guides",
+      "title": "Ansible 8 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_9.html",
+      "topic": "porting_guides",
+      "title": "Ansible 9 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_base_2.10.html",
+      "topic": "porting_guides",
+      "title": "Ansible-base 2.10 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_core_2.11.html",
+      "topic": "porting_guides",
+      "title": "Ansible-core 2.11 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_core_2.12.html",
+      "topic": "porting_guides",
+      "title": "Ansible-core 2.12 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_core_2.13.html",
+      "topic": "porting_guides",
+      "title": "Ansible-core 2.13 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_core_2.14.html",
+      "topic": "porting_guides",
+      "title": "Ansible-core 2.14 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_core_2.15.html",
+      "topic": "porting_guides",
+      "title": "Ansible-core 2.15 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_core_2.16.html",
+      "topic": "porting_guides",
+      "title": "Ansible-core 2.16 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_core_2.17.html",
+      "topic": "porting_guides",
+      "title": "Ansible-core 2.17 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_core_2.18.html",
+      "topic": "porting_guides",
+      "title": "Ansible-core 2.18 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_core_2.19.html",
+      "topic": "porting_guides",
+      "title": "Ansible-core 2.19 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_core_2.20.html",
+      "topic": "porting_guides",
+      "title": "Ansible-core 2.20 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guide_core_2.21.html",
+      "topic": "porting_guides",
+      "title": "Ansible-core 2.21 Porting Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "porting_guides/porting_guides.html",
+      "topic": "porting_guides",
+      "title": "Ansible Porting Guides",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "reference_appendices/YAMLSyntax.html",
+      "topic": "reference_appendices",
+      "title": "YAML Syntax",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "reference_appendices/automationhub.html",
+      "topic": "reference_appendices",
+      "title": "Ansible Automation Hub",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "reference_appendices/common_return_values.html",
+      "topic": "reference_appendices",
+      "title": "Return Values",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "reference_appendices/config.html",
+      "topic": "reference_appendices",
+      "title": "Ansible Configuration Settings",
+      "audience": "both",
+      "core": true,
+      "summary": "Ansible supports several sources for configuring its behavior, including an ini file named `ansible.cfg`, environment variables, command-line options, playbook keywords, and variables.",
+      "lines": 7765,
+      "tokens": 42536
+    },
+    {
+      "path": "reference_appendices/faq.html",
+      "topic": "reference_appendices",
+      "title": "Frequently Asked Questions",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "reference_appendices/general_precedence.html",
+      "topic": "reference_appendices",
+      "title": "Controlling how Ansible behaves: precedence rules",
+      "audience": "both",
+      "core": true,
+      "summary": "To give you maximum flexibility in managing your environments, Ansible offers many ways to control how Ansible behaves: how it connects to managed nodes, how it works once it has connected.",
+      "lines": 143,
+      "tokens": 2916
+    },
+    {
+      "path": "reference_appendices/glossary.html",
+      "topic": "reference_appendices",
+      "title": "Glossary",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "reference_appendices/interpreter_discovery.html",
+      "topic": "reference_appendices",
+      "title": "Interpreter Discovery",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "reference_appendices/logging.html",
+      "topic": "reference_appendices",
+      "title": "Logging Ansible output",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "reference_appendices/module_utils.html",
+      "topic": "reference_appendices",
+      "title": "Ansible Reference: Module Utilities",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "reference_appendices/playbooks_keywords.html",
+      "topic": "reference_appendices",
+      "title": "Playbook Keywords",
+      "audience": "both",
+      "core": true,
+      "summary": "These are the keywords available on common playbook objects.",
+      "lines": 603,
+      "tokens": 6819
+    },
+    {
+      "path": "reference_appendices/python_3_support.html",
+      "topic": "reference_appendices",
+      "title": "Python 3 Support",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "reference_appendices/release_and_maintenance.html",
+      "topic": "reference_appendices",
+      "title": "Releases and maintenance",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "reference_appendices/special_variables.html",
+      "topic": "reference_appendices",
+      "title": "Special Variables",
+      "audience": "both",
+      "core": true,
+      "summary": "## Magic variables\n\nThese variables cannot be set directly by the user; Ansible will always override them to reflect internal state.\n\nansible\\_check\\_mode\n\nBoolean that indicates if we are in check mode or not\n\nansible\\_collection\\_name\n\nThe name of the collection the task that is executing is a part of.",
+      "lines": 199,
+      "tokens": 3071
+    },
+    {
+      "path": "reference_appendices/test_strategies.html",
+      "topic": "reference_appendices",
+      "title": "Testing Strategies",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "reference_appendices/tower.html",
+      "topic": "reference_appendices",
+      "title": "Red Hat Ansible Automation Platform",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/COLLECTIONS_10.html",
+      "topic": "roadmap",
+      "title": "Ansible project 10.0",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/COLLECTIONS_11.html",
+      "topic": "roadmap",
+      "title": "Ansible project 11.0",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/COLLECTIONS_12.html",
+      "topic": "roadmap",
+      "title": "Ansible project 12.0",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/COLLECTIONS_13.html",
+      "topic": "roadmap",
+      "title": "Ansible project 13.0",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/COLLECTIONS_14.html",
+      "topic": "roadmap",
+      "title": "Ansible project 14.0",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/COLLECTIONS_2_10.html",
+      "topic": "roadmap",
+      "title": "Ansible project 2.10",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/COLLECTIONS_3_0.html",
+      "topic": "roadmap",
+      "title": "Ansible project 3.0",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/COLLECTIONS_4.html",
+      "topic": "roadmap",
+      "title": "Ansible project 4.0",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/COLLECTIONS_5.html",
+      "topic": "roadmap",
+      "title": "Ansible project 5.0",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/COLLECTIONS_6.html",
+      "topic": "roadmap",
+      "title": "Ansible project 6.0",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/COLLECTIONS_7.html",
+      "topic": "roadmap",
+      "title": "Ansible project 7.0",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/COLLECTIONS_8.html",
+      "topic": "roadmap",
+      "title": "Ansible project 8.0",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/COLLECTIONS_9.html",
+      "topic": "roadmap",
+      "title": "Ansible project 9.0",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/ROADMAP_2_10.html",
+      "topic": "roadmap",
+      "title": "Ansible-base 2.10",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/ROADMAP_2_11.html",
+      "topic": "roadmap",
+      "title": "Ansible-core 2.11",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/ROADMAP_2_12.html",
+      "topic": "roadmap",
+      "title": "Ansible-core 2.12",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/ROADMAP_2_13.html",
+      "topic": "roadmap",
+      "title": "Ansible-core 2.13",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/ROADMAP_2_14.html",
+      "topic": "roadmap",
+      "title": "Ansible-core 2.14",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/ROADMAP_2_15.html",
+      "topic": "roadmap",
+      "title": "Ansible-core 2.15",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/ROADMAP_2_16.html",
+      "topic": "roadmap",
+      "title": "Ansible-core 2.16",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/ROADMAP_2_17.html",
+      "topic": "roadmap",
+      "title": "Ansible-core 2.17",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/ROADMAP_2_18.html",
+      "topic": "roadmap",
+      "title": "Ansible-core 2.18",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/ROADMAP_2_19.html",
+      "topic": "roadmap",
+      "title": "Ansible-core 2.19",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/ROADMAP_2_20.html",
+      "topic": "roadmap",
+      "title": "Ansible-core 2.20",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/ROADMAP_2_21.html",
+      "topic": "roadmap",
+      "title": "Ansible-core 2.21",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/ROADMAP_2_5.html",
+      "topic": "roadmap",
+      "title": "Ansible 2.5",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/ROADMAP_2_6.html",
+      "topic": "roadmap",
+      "title": "Ansible 2.6",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/ROADMAP_2_7.html",
+      "topic": "roadmap",
+      "title": "Ansible 2.7",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/ROADMAP_2_8.html",
+      "topic": "roadmap",
+      "title": "Ansible 2.8",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/ROADMAP_2_9.html",
+      "topic": "roadmap",
+      "title": "Ansible 2.9",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/ansible_core_roadmap_index.html",
+      "topic": "roadmap",
+      "title": "ansible-core Roadmaps",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/ansible_roadmap_index.html",
+      "topic": "roadmap",
+      "title": "Ansible Roadmap",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/index.html",
+      "topic": "roadmap",
+      "title": "Roadmaps",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roadmap/old_roadmap_index.html",
+      "topic": "roadmap",
+      "title": "Older Roadmaps",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "scenario_guides/cloud_guides.html",
+      "topic": "scenario_guides",
+      "title": "Legacy Public Cloud Guides",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "scenario_guides/guide_alicloud.html",
+      "topic": "scenario_guides",
+      "title": "Alibaba Cloud Compute Services Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "scenario_guides/guide_online.html",
+      "topic": "scenario_guides",
+      "title": "Online.net Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "scenario_guides/guide_packet.html",
+      "topic": "scenario_guides",
+      "title": "Packet.net Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "scenario_guides/guide_scaleway.html",
+      "topic": "scenario_guides",
+      "title": "Scaleway Guide",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "tips_tricks/ansible_tips_tricks.html",
+      "topic": "tips_tricks",
+      "title": "General tips",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "tips_tricks/index.html",
+      "topic": "tips_tricks",
+      "title": "Ansible tips and tricks",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "tips_tricks/sample_setup.html",
+      "topic": "tips_tricks",
+      "title": "Sample Ansible setup",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "vault_guide/index.html",
+      "topic": "vault_guide",
+      "title": "Protecting sensitive data with Ansible vault",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "vault_guide/vault.html",
+      "topic": "vault_guide",
+      "title": "Ansible Vault",
+      "audience": "author",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "vault_guide/vault_encrypting_content.html",
+      "topic": "vault_guide",
+      "title": "Encrypting content with Ansible Vault",
+      "audience": "author",
+      "core": true,
+      "summary": "Once you have a strategy for managing and storing vault passwords, you can start encrypting content.",
+      "lines": 252,
+      "tokens": 4280
+    },
+    {
+      "path": "vault_guide/vault_managing_passwords.html",
+      "topic": "vault_guide",
+      "title": "Managing vault passwords",
+      "audience": "author",
+      "core": true,
+      "summary": "Managing your encrypted content is easier if you develop a strategy for managing your vault passwords.",
+      "lines": 86,
+      "tokens": 2823
+    },
+    {
+      "path": "vault_guide/vault_using_encrypted_content.html",
+      "topic": "vault_guide",
+      "title": "Using encrypted variables and files",
+      "audience": "author",
+      "core": true,
+      "summary": "When you run a task or playbook that uses encrypted variables or files, you must provide the passwords to decrypt the variables or files.",
+      "lines": 135,
+      "tokens": 2907
+    }
+  ]
+}

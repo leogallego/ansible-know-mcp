@@ -1,6 +1,6 @@
 """Ansible Know MCP Server.
 
-Provides 13 tools, 5 resources, and 4 prompts for module and role discovery,
+Provides 14 tools, 5 resources, and 4 prompts for module and role discovery,
 documentation search, Galaxy collection discovery, and skill generation
 via the Model Context Protocol.
 """
@@ -22,13 +22,14 @@ from fastmcp.server.lifespan import lifespan
 from mcp.types import ToolAnnotations
 
 from ansible_know.async_utils import run_in_executor
-from ansible_know.errors import AnsibleDocError, ValidationError, collection_hint, maybe_add_hint
+from ansible_know.errors import AnsibleDocError, AnsibleKnowError, ValidationError, collection_hint, maybe_add_hint
 from ansible_know.state import LifespanContext, ServerState, SessionManager, SharedState
 from ansible_know.types import (
     ClearCacheResult,
     CollectionSearchResult,
     EnsureCollectionResult,
     ErrorResponse,
+    FetchDocResult,
     GenerateCollectionSkillsResult,
     GetModuleDocResult,
     GetRoleDocResult,
@@ -40,6 +41,7 @@ from ansible_know.types import (
 from ansible_know.validation import (
     sanitize_error,
     truncate_response,
+    validate_doc_url,
     validate_fqcn,
     validate_install_path,
     validate_keyword,
@@ -148,7 +150,7 @@ mcp = FastMCP(
         "(2) ensure_collection to install one for this session, "
         "(3) search_modules/get_collection_manifest to find modules and roles, "
         "(4) get_module_doc or get_role_doc for structured docs, "
-        "(5) search_docs for conceptual guides, "
+        "(5) search_docs for conceptual guides, then fetch_doc to retrieve full content, "
         "(6) generate_skill or generate_role_skill to create skill packages. "
         "Resources: server://version for version and upgrade status, "
         "galaxy://installed for session collections, "
@@ -403,6 +405,7 @@ async def search_docs(
     topic: Annotated[str | None, "Filter by topic tag"] = None,
     audience: Annotated[str | None, "Filter by audience tag"] = None,
     core_only: Annotated[bool, "If true, only return entries marked as core"] = False,
+    ctx: Context | None = None,
 ) -> list[SearchDocsEntry] | ErrorResponse:
     """Search documentation manifests for conceptual guides.
 
@@ -419,10 +422,47 @@ async def search_docs(
         from ansible_know import docs
 
         return await docs.search_docs(
-            query=query, source=source, topic=topic, audience=audience, core_only=core_only,
+            query=query, source=source, topic=topic, audience=audience,
+            core_only=core_only, http_client=_get_http_client(ctx),
         )
     except Exception as exc:
         logger.warning("search_docs failed: %s", exc)
+        return {"error": sanitize_error(str(exc))}
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+async def fetch_doc(
+    url: Annotated[str, "A docs.ansible.com URL to fetch as markdown"],
+    max_tokens: Annotated[
+        int | None,
+        "If set, return error instead of content when the page exceeds this token count. "
+        "Checked after fetching via the x-markdown-tokens response header.",
+    ] = None,
+    ctx: Context | None = None,
+) -> FetchDocResult | ErrorResponse:
+    """Fetch a page from docs.ansible.com as clean Markdown.
+
+    Returns documentation content ready for LLM consumption.
+    Use search_docs to discover relevant page URLs, or pass a known
+    docs.ansible.com URL directly. The url parameter must start with
+    https://docs.ansible.com/.
+    """
+    logger.info("fetch_doc url=%r max_tokens=%r", url, max_tokens)
+    try:
+        validate_doc_url(url)
+    except ValidationError as exc:
+        return {"error": str(exc)}
+
+    try:
+        from ansible_know import docs
+
+        return await docs.fetch_doc_content(
+            url=url, max_tokens=max_tokens, http_client=_get_http_client(ctx),
+        )
+    except (AnsibleKnowError, ValidationError) as exc:
+        return {"error": str(exc)}
+    except Exception as exc:
+        logger.warning("fetch_doc failed: %s", exc)
         return {"error": sanitize_error(str(exc))}
 
 
@@ -1126,10 +1166,17 @@ def resource_doc_sources() -> str:
     from ansible_know.config import get_doc_sources
 
     sources = get_doc_sources()
-    return json.dumps(
-        {name: cfg["description"] for name, cfg in sources.items()},
-        indent=2,
-    )
+    result = {}
+    for name, cfg in sources.items():
+        entry: dict[str, str] = {"description": cfg.get("description", "")}
+        if "file" in cfg:
+            entry["type"] = "file"
+            entry["path"] = cfg["file"]
+        elif "url" in cfg:
+            entry["type"] = "url"
+            entry["url"] = cfg["url"]
+        result[name] = entry
+    return json.dumps(result, indent=2)
 
 
 # --- Prompts (reusable templates) ---

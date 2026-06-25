@@ -403,8 +403,8 @@ class GalaxyClient:
         for var in parsed.get("variables", []):
             options.append({
                 "name": var["name"],
-                "type": var.get("type"),
-                "required": var.get("required"),
+                "type": var.get("type") or "str",
+                "required": bool(var.get("required")),
                 "default": var.get("default"),
                 "choices": var.get("choices"),
                 "description": var.get("description", ""),
