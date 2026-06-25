@@ -17,7 +17,7 @@ from ansible_know.tagging import derive_tags
 from ansible_know.validation import validate_path_containment
 
 if TYPE_CHECKING:
-    from ansible_know.types import ManifestResult, ModuleMetadata
+    from ansible_know.types import ManifestResult, ModuleMetadata, PluginManifestInput, RoleManifestInput
 
 __all__ = [
     "generate_manifest",
@@ -29,8 +29,8 @@ __all__ = [
 def generate_manifest(
     collection_namespace: str,
     modules_metadata: list[ModuleMetadata],
-    roles_metadata: list[dict[str, Any]] | None = None,
-    plugins_metadata: list[dict[str, Any]] | None = None,
+    roles_metadata: list[RoleManifestInput] | None = None,
+    plugins_metadata: list[PluginManifestInput] | None = None,
     skills_dir: Path | None = None,
     collection_version: str | None = None,
 ) -> ManifestResult:

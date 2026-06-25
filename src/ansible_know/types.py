@@ -63,6 +63,30 @@ class PluginMetadata(TypedDict):
     examples: str
 
 
+class RoleManifestInput(TypedDict):
+    """Input shape for role metadata passed to manifest/skill generation.
+
+    Distinct from ManifestRoleEntry which adds has_skill (computed internally).
+    """
+
+    fqcn: str
+    description: str
+    has_argument_specs: bool
+    entry_points: list[str]
+
+
+class PluginManifestInput(TypedDict):
+    """Input shape for plugin metadata passed to manifest/skill generation.
+
+    Distinct from ManifestPluginEntry which adds has_skill (computed internally).
+    """
+
+    fqcn: str
+    plugin_type: str
+    description: str
+    param_count: int
+
+
 class ManifestPluginEntry(TypedDict):
     """Single plugin entry in a collection manifest."""
 
