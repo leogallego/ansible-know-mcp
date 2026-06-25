@@ -611,6 +611,56 @@ class TestFetchCollectionDocs:
         with pytest.raises(GalaxyError, match="not a valid collection FQCN"):
             await client.fetch_collection_docs("just_one_part")
 
+    @pytest.mark.asyncio
+    async def test_silences_individual_module_failures(self, caplog):
+        """Individual module extraction failures are logged and skipped."""
+        blob_with_bad_module = {
+            "docs_blob": {
+                "contents": [
+                    {
+                        "content_type": "module",
+                        "content_name": "good_module",
+                        "doc_strings": {
+                            "doc": {
+                                "short_description": "A good module",
+                                "description": [],
+                                "options": [],
+                                "author": [],
+                                "notes": [],
+                                "version_added": "0.1.0",
+                            },
+                            "examples": "",
+                            "return": [],
+                            "metadata": {},
+                        },
+                    },
+                    {
+                        "content_type": "module",
+                        "content_name": "bad_module",
+                        "doc_strings": None,  # Will cause extraction to fail
+                    },
+                ],
+            },
+        }
+
+        async def mock_api_get(self_client, path, params=None, timeout=None):
+            if "versions/" in path and "docs-blob" not in path:
+                return SAMPLE_VERSIONS_RESPONSE
+            if "docs-blob" in path:
+                return blob_with_bad_module
+            return {}
+
+        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+            client = GalaxyClient()
+            import logging
+            with caplog.at_level(logging.WARNING, logger="ansible_know"):
+                docs, meta = await client.fetch_collection_docs("netbox.netbox")
+
+        assert "netbox.netbox.good_module" in docs
+        assert "netbox.netbox.bad_module" not in docs
+        assert len(docs) == 1
+        assert any("bad_module" in r.message and "metadata extraction failed" in r.message for r in caplog.records)
+
 
 class TestListCollectionModules:
     @pytest.mark.asyncio

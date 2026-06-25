@@ -540,7 +540,7 @@ class GalaxyClient:
                 raw_doc = transform_galaxy_to_ansible_doc_format(fqcn, item)
                 result[fqcn] = extract_module_metadata(raw_doc)
             except Exception:
-                logger.warning("Skipping module %s: metadata extraction failed", fqcn)
+                logger.warning("Skipping module %s: metadata extraction failed", fqcn, exc_info=True)
 
         meta: DocProvenance = {
             "doc_source": "galaxy",
