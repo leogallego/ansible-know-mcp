@@ -11,6 +11,19 @@ _PKG_DIR = Path(__file__).resolve().parent
 
 TEMPLATE_DIR = _PKG_DIR / "templates"
 
+
+def _get_cache_dir() -> Path:
+    """Return the disk cache directory, respecting XDG and env overrides."""
+    explicit = os.environ.get("ANSIBLE_KNOW_CACHE_DIR")
+    if explicit:
+        return Path(explicit)
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".cache"
+    return base / "ansible-know"
+
+
+CACHE_DIR = _get_cache_dir()
+
 def __getattr__(name: str):
     if name == "SKILLS_DIR":
         value = Path(os.environ.get(
