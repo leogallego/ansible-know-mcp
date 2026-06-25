@@ -40,19 +40,16 @@ class TestResolveModuleDoc:
         assert result["doc_source"] == "local"
 
     @pytest.mark.asyncio
-    async def test_non_missing_collection_error_not_retried(self, mock_ansible_doc, missing):
+    async def test_non_missing_collection_error_returns_unavailable(self, mock_ansible_doc, missing):
         from ansible_know.errors import AnsibleDocError
         mock_ansible_doc.side_effect = AnsibleDocError("ansible-doc timed out")
 
-        with patch(
-            "ansible_know.galaxy.GalaxyClient.fetch_module_doc",
-            side_effect=AssertionError("Galaxy should not be called"),
-        ):
-            from ansible_know.resolution import resolve_module_doc
-            with pytest.raises(AnsibleDocError, match="timed out"):
-                await resolve_module_doc(
-                    "ansible.builtin.copy", missing_collections=missing,
-                )
+        from ansible_know.resolution import resolve_module_doc
+        result = await resolve_module_doc(
+            "ansible.builtin.copy", missing_collections=missing,
+        )
+        assert result["doc_source"] == "unavailable"
+        assert "ansible.builtin" not in missing
 
     @pytest.mark.asyncio
     async def test_galaxy_fallback_on_missing_collection(self, mock_ansible_doc, missing):
@@ -230,11 +227,11 @@ class TestNegativeCache:
         mock_ansible_doc.side_effect = AnsibleDocError("ansible-doc timed out")
 
         from ansible_know.resolution import resolve_module_doc
-        with pytest.raises(AnsibleDocError):
-            await resolve_module_doc(
-                "ansible.builtin.copy", missing_collections=missing,
-            )
+        result = await resolve_module_doc(
+            "ansible.builtin.copy", missing_collections=missing,
+        )
 
+        assert result["doc_source"] == "unavailable"
         assert "ansible.builtin" not in missing
 
     def test_clear_missing_namespace(self):

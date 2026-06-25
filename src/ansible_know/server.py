@@ -410,12 +410,16 @@ async def get_module_doc(
 
         state = await _get_state(ctx)
         http_client = _get_http_client(ctx)
-        return await resolution.resolve_module_doc(
+        result = await resolution.resolve_module_doc(
             module_name, http_client=http_client, galaxy_servers=state.galaxy_servers,
             client_factory=_galaxy_factory(ctx),
             missing_collections=state.missing_collections,
             collections_path=state.collection_manager.get_collections_path(),
         )
+        if "error" in result:
+            ns = extract_namespace(module_name)
+            result["error"] = maybe_add_hint(result["error"], ns)
+        return result
     except Exception as exc:
         logger.warning("get_module_doc failed: %s", exc)
         ns = extract_namespace(module_name)

@@ -135,24 +135,28 @@ async def resolve_module_doc(
     cpath = collections_path
 
     local_doc: dict[str, Any] = {}
+    local_error: str | None = None
 
     if not (namespace and missing_collections is not None and namespace in missing_collections):
         try:
             local_doc = await run_in_executor(
                 parser.get_module_doc, module_name, collections_path=cpath,
             )
-        except CollectionNotFoundError:
+        except CollectionNotFoundError as exc:
             if namespace and missing_collections is not None:
                 missing_collections.add(namespace)
+            local_error = str(exc)
             local_doc = {}
-        except AnsibleDocError:
-            raise
+        except AnsibleDocError as exc:
+            logger.warning("Local module doc failed for %s: %s", module_name, exc)
+            local_error = str(exc)
+            local_doc = {}
 
     if local_doc:
-        metadata = parser.extract_module_metadata(local_doc)
-        metadata["content_type"] = "module"
-        metadata["doc_source"] = "local"
-        return metadata
+        result = dict(parser.extract_module_metadata(local_doc))
+        result["content_type"] = "module"
+        result["doc_source"] = "local"
+        return result
 
     if client_factory is None:
         return {
@@ -160,8 +164,9 @@ async def resolve_module_doc(
             "content_type": "module",
             "doc_source": "unavailable",
             "error": sanitize_error(
-                f"Collection '{namespace}' not installed locally"
-            ) if namespace else "Module not found",
+                local_error or f"Collection '{namespace}' not installed locally"
+                if namespace else local_error or "Module not found"
+            ),
             "params": [],
         }
 
@@ -183,11 +188,12 @@ async def resolve_module_doc(
             result["doc_source_server"] = galaxy_meta["doc_source_server"]
         return result
     except GalaxyError as galaxy_exc:
+        logger.warning("Galaxy fallback also failed: %s", galaxy_exc)
         return {
             "module_name": module_name,
             "content_type": "module",
             "doc_source": "unavailable",
-            "error": sanitize_error(str(galaxy_exc)),
+            "error": sanitize_error(local_error or str(galaxy_exc)),
             "params": [],
         }
 
@@ -231,10 +237,10 @@ async def resolve_plugin_doc(
             local_doc = {}
 
     if local_doc:
-        metadata = parser.extract_plugin_metadata(local_doc, plugin_type)
-        metadata["content_type"] = "plugin"
-        metadata["doc_source"] = "local"
-        return metadata
+        result = dict(parser.extract_plugin_metadata(local_doc, plugin_type))
+        result["content_type"] = "plugin"
+        result["doc_source"] = "local"
+        return result
 
     if client_factory is None:
         return {
@@ -308,10 +314,10 @@ async def resolve_role_doc(
             local_doc = {}
 
     if local_doc:
-        metadata = parser.extract_role_metadata(local_doc)
-        metadata["content_type"] = "role"
-        metadata["doc_source"] = "local"
-        return metadata
+        result = dict(parser.extract_role_metadata(local_doc))
+        result["content_type"] = "role"
+        result["doc_source"] = "local"
+        return result
 
     if client_factory is None:
         return {
