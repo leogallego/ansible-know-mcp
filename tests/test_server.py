@@ -1767,12 +1767,10 @@ class TestSearchPlugins:
         assert "error" in result
 
     @pytest.mark.asyncio
-    async def test_empty_keyword_returns_all(self):
-        mock_results = {"ansible.builtin.env": "Read env vars"}
-        with patch("ansible_know.parser.search_plugins", return_value=mock_results):
-            from ansible_know.server import search_plugins
-            result = await search_plugins("", plugin_type="lookup")
-        assert "ansible.builtin.env" in result
+    async def test_empty_keyword_rejected(self):
+        from ansible_know.server import search_plugins
+        result = await search_plugins("", plugin_type="lookup")
+        assert "error" in result
 
 
 class TestGetPluginDoc:

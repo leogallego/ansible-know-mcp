@@ -87,7 +87,7 @@ decorated tool, resource, and prompt handler functions. FastMCP manages:
 | ID | Severity | Description | Location |
 |----|----------|-------------|----------|
 | ~~V-T1~~ | ~~Warning~~ | ~~Lifespan context is an untyped `dict[str, Any]` accessed by string keys.~~ **Fixed in PR #87** — `LifespanContext` TypedDict with typed keys (`http_client`, `shared`, `sessions`). | ~~`server.py:103-108`~~ → `state.py` |
-| V-T2 | Warning | `_run_in_executor()` uses deprecated `asyncio.get_event_loop()`. Should use `asyncio.get_running_loop()` — the function is only called from async context. | `server.py:126-129` |
+| ~~V-T2~~ | ~~Warning~~ | ~~`_run_in_executor()` uses deprecated `asyncio.get_event_loop()`. Should use `asyncio.get_running_loop()` — the function is only called from async context.~~ **Fixed** — `async_utils.py` uses `asyncio.get_running_loop()`. `_run_in_executor` was moved from `server.py` to `async_utils.py` in PR #89. | ~~`server.py:126-129`~~ → `async_utils.py` |
 | ~~V-T3~~ | ~~Info~~ | ~~Tool return types are `dict[str, Any]` rather than typed dicts.~~ **Fixed in PR #105** — all 12 tool handlers now use specific TypedDicts (`GetModuleDocResult`, `GetRoleDocResult`, `CollectionSearchResult`, etc.) with `| ErrorResponse` unions. Safe because `from __future__ import annotations` makes annotations strings at runtime — FastMCP never sees the TypedDict classes. Note: PR #60 originally reverted TypedDict annotations to `dict[str, Any]` over FastMCP wrapping concerns, but that concern is moot with stringified annotations. | ~~All tool handlers~~ → `types.py`, `server.py` |
 
 ---
@@ -139,7 +139,7 @@ business logic. Domain modules are imported lazily to avoid loading
 
 | ID | Severity | Description | Location |
 |----|----------|-------------|----------|
-| V-D1 | Warning | `server.py` calls `skills._module_to_skill_name()` — a private function (leading underscore). This crosses the public API boundary. Should be exposed as a public function or the skill name derivation should be the caller's responsibility. | `server.py:753`, `server.py:880` |
+| ~~V-D1~~ | ~~Warning~~ | ~~`server.py` calls `skills._module_to_skill_name()` — a private function (leading underscore). This crosses the public API boundary.~~ **Fixed** — renamed to `module_to_skill_name()` (public, in `skills.__all__`). `server.py` no longer calls it; namespace/short_name extraction is inlined at the call site. | ~~`server.py:753`, `server.py:880`~~ |
 | ~~V-D2~~ | ~~Warning~~ | ~~`parser.py` does not define `__all__`. All module-level functions are implicitly public, including internal helpers like `_get_module_name()` and `_run_ansible_doc()`.~~ **Fixed** — `parser.py` now defines `__all__`. | ~~`parser.py`~~ |
 | ~~V-D3~~ | ~~Warning~~ | ~~`skills.py` does not define `__all__`.~~ **Fixed** — `skills.py` now defines `__all__`. | ~~`skills.py`~~ |
 | ~~V-D4~~ | ~~Warning~~ | ~~`collection_manifest.py` does not define `__all__`.~~ **Fixed** — `collection_manifest.py` now defines `__all__`. | ~~`collection_manifest.py`~~ |
@@ -199,7 +199,7 @@ layer and `_ReadmeParser` in `readme_parser.py` are the other classes.)
 | ~~V-E1~~ | ~~Error~~ | ~~`server.py` calls `GalaxyClient` directly in `search_collections()` and `_try_galaxy_servers()`, bypassing the Domain layer entirely. Galaxy access should be mediated through a domain-level service.~~ **Fixed in PR #66** — Galaxy access is now mediated through `resolution.py`. | ~~`server.py:168-192`, `server.py:480-486`~~ |
 | ~~V-E2~~ | ~~Warning~~ | ~~`GalaxyClient` has no abstract base class or Protocol.~~ **Fixed in PR #66:** `GalaxyDocClient` Protocol and `GalaxyClientFactory` Protocol defined in `types.py`. `resolution.py` depends on the Protocol, not the concrete class. `GalaxyClient` satisfies the Protocol structurally. | ~~`galaxy.py:111`~~ → `types.py` |
 | ~~V-E3~~ | ~~Warning~~ | ~~`GalaxyClient._transform_to_ansible_doc_format()` is a static method that converts Galaxy format to ansible-doc format. This is a data transformation that belongs in the Domain layer (parser), not the External Access layer.~~ **Fixed in PR #69** — Moved to `parser.transform_galaxy_to_ansible_doc_format()`. `galaxy.py` lazy-imports it. | ~~`galaxy.py:381-417`~~ → `parser.py` |
-| V-E4 | Warning | `collections.py` module-level mutable state (`_tmp_dir`, `_installed`, `_install_locks`) makes the module impossible to test in isolation without monkeypatching globals. Should be encapsulated in a class. | `collections.py:26-29` |
+| ~~V-E4~~ | ~~Warning~~ | ~~`collections.py` module-level mutable state (`_tmp_dir`, `_installed`, `_install_locks`) makes the module impossible to test in isolation without monkeypatching globals. Should be encapsulated in a class.~~ **Fixed in PR #87** — state encapsulated in `CollectionManager` class, created per-session via `SessionManager`. | ~~`collections.py:26-29`~~ → `collections.py:CollectionManager` |
 | ~~V-E5~~ | ~~Info~~ | ~~`galaxy.py` uses `asyncio.Semaphore` for enrichment throttling but creates it lazily with event-loop detection (`_get_enrichment_semaphore`). This is fragile if the event loop changes.~~ **Fixed in PR #106** — semaphore moved to `SharedState` (created once at lifespan). `GalaxyClient` accepts it as constructor parameter. `_galaxy_factory()` closure injects it from context. | ~~`galaxy.py:40-46`~~ → `state.py`, `galaxy.py`, `server.py` |
 
 ---
@@ -269,7 +269,7 @@ AnsibleKnowError
 
 | ID | Severity | Description | Location |
 |----|----------|-------------|----------|
-| V-F1 | Warning | `config.py` evaluates `Path.cwd()` at import time for `SKILLS_DIR`. This captures the working directory at the moment the module is first imported, which may differ from the intended runtime directory. Should be a function or lazy property. | `config.py:14-17` |
+| ~~V-F1~~ | ~~Warning~~ | ~~`config.py` evaluates `Path.cwd()` at import time for `SKILLS_DIR`. This captures the working directory at the moment the module is first imported, which may differ from the intended runtime directory. Should be a function or lazy property.~~ **Fixed** — `SKILLS_DIR` now uses `__getattr__` module-level lazy evaluation with caching. | ~~`config.py:14-17`~~ → `config.py:__getattr__` |
 | ~~V-F2~~ | ~~Info~~ | ~~`types.py` `TypedDict` definitions use `dict[str, Any]` for nested structures (e.g., `params: list[dict[str, Any]]`). More specific nested types would improve type safety.~~ **Fixed in PRs #104, #106** — `params` tightened to `list[ParamDict]` (PR #104), `entry_points` tightened to `dict[str, EntryPointInfo]` (PR #106). | ~~`types.py:14`, `types.py:22`~~ → `types.py` |
 | V-F3 | Info | `galaxy_config.py` `GalaxyServerConfig` is a frozen dataclass, which is correct for an immutable configuration value object. No issues. | `galaxy_config.py:24-35` |
 
@@ -366,9 +366,10 @@ Foundation   → (no internal dependencies)
 
 3. ~~**V-T1**: Define a `LifespanContext` TypedDict or dataclass for the lifespan
    context dict.~~ **Fixed in PR #87** — `LifespanContext` TypedDict in `state.py`.
-4. **V-T2**: Replace `asyncio.get_event_loop()` with `asyncio.get_running_loop()`.
-5. **V-D1**: Make `_module_to_skill_name()` public (rename to
-   `module_to_skill_name()`).
+4. ~~**V-T2**: Replace `asyncio.get_event_loop()` with `asyncio.get_running_loop()`.~~
+   **Fixed** — `async_utils.py` uses `asyncio.get_running_loop()`.
+5. ~~**V-D1**: Make `_module_to_skill_name()` public (rename to
+   `module_to_skill_name()`).~~ **Fixed** — renamed and added to `skills.__all__`.
 6. ~~**V-D2–V-D5**: Add `__all__` to all modules.~~ **Fixed** — all modules now define `__all__`.
 7. ~~**V-D7 / V-L2**: Move `_resolve_module_doc()` and `_resolve_role_doc()` to a
    domain-level resolution module.~~ **Fixed in PR #66**.
@@ -377,13 +378,15 @@ Foundation   → (no internal dependencies)
    **Fixed in PR #66** — `GalaxyDocClient` Protocol in `types.py`.
 10. ~~**V-E3**: Move `_transform_to_ansible_doc_format()` to `parser.py`.~~
     **Fixed in PR #69** — now `parser.transform_galaxy_to_ansible_doc_format()`.
-11. **V-E4**: Encapsulate `collections.py` state in a `CollectionManager` class.
+11. ~~**V-E4**: Encapsulate `collections.py` state in a `CollectionManager` class.~~
+    **Fixed in PR #87** — `CollectionManager` class, created per-session.
 12. ~~**V-S2**: Use `asyncio.Lock` or explicit synchronization for
     `_missing_collections`.~~ **Mitigated in PR #87** — now per-session.
 13. ~~**V-S3**: Design a `ServerState` or session context that encapsulates all
     mutable state.~~ **Partially resolved in PR #87** — `SharedState` +
     `SessionManager` with per-session `ServerState`.
-14. **V-F1**: Make `SKILLS_DIR` lazy (function or descriptor).
+14. ~~**V-F1**: Make `SKILLS_DIR` lazy (function or descriptor).~~
+    **Fixed** — uses `__getattr__` lazy evaluation with caching.
 
 ### Priority 3 (Info-level, PEP 8 suggestions)
 

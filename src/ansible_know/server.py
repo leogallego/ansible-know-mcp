@@ -41,6 +41,7 @@ from ansible_know.types import (
     VersionInfo,
 )
 from ansible_know.validation import (
+    extract_namespace,
     sanitize_error,
     truncate_response,
     validate_doc_url,
@@ -428,7 +429,7 @@ async def get_module_doc(
         return metadata
     except Exception as exc:
         logger.warning("get_module_doc failed: %s", exc)
-        ns = ".".join(module_name.split(".")[:2]) if "." in module_name else None
+        ns = extract_namespace(module_name)
         from ansible_know.errors import GalaxyError
         if isinstance(exc.__cause__, GalaxyError):
             return {"error": sanitize_error(str(exc))}
@@ -470,7 +471,7 @@ async def get_role_doc(
         )
     except Exception as exc:
         logger.warning("get_role_doc failed: %s", exc)
-        ns = ".".join(role_name.split(".")[:2]) if "." in role_name else None
+        ns = extract_namespace(role_name)
         return {"error": maybe_add_hint(sanitize_error(str(exc)), ns)}
 
 
@@ -514,7 +515,7 @@ async def get_plugin_doc(
         )
     except Exception as exc:
         logger.warning("get_plugin_doc failed: %s", exc)
-        ns = ".".join(plugin_name.split(".")[:2]) if "." in plugin_name else None
+        ns = extract_namespace(plugin_name)
         return {"error": maybe_add_hint(sanitize_error(str(exc)), ns)}
 
 
@@ -994,7 +995,7 @@ async def generate_skill(
             await ctx.report_progress(progress=50, total=100)
 
         fqcn = metadata["module_name"]
-        namespace = ".".join(fqcn.split(".")[:2])
+        namespace = extract_namespace(fqcn)
         short_name = fqcn.rsplit(".", 1)[-1]
         base_dir = validate_install_path(install_to) if install_to else SKILLS_DIR
         output_dir = base_dir / namespace / short_name
@@ -1010,7 +1011,7 @@ async def generate_skill(
         return {"error": str(exc)}
     except Exception as exc:
         logger.warning("generate_skill failed: %s", exc)
-        ns = ".".join(module_name.split(".")[:2]) if "." in module_name else None
+        ns = extract_namespace(module_name)
         from ansible_know.errors import GalaxyError
         if isinstance(exc.__cause__, GalaxyError):
             return {"error": sanitize_error(str(exc))}
@@ -1059,7 +1060,7 @@ async def generate_role_skill(
         if ctx:
             await ctx.report_progress(progress=50, total=100)
 
-        namespace = ".".join(role_name.split(".")[:2])
+        namespace = extract_namespace(role_name)
         short_name = role_name.rsplit(".", 1)[-1]
         base_dir = validate_install_path(install_to) if install_to else SKILLS_DIR
         output_dir = base_dir / namespace / short_name
@@ -1075,7 +1076,7 @@ async def generate_role_skill(
         return {"error": str(exc)}
     except Exception as exc:
         logger.warning("generate_role_skill failed: %s", exc)
-        ns = ".".join(role_name.split(".")[:2]) if "." in role_name else None
+        ns = extract_namespace(role_name)
         return {"error": maybe_add_hint(sanitize_error(str(exc)), ns)}
 
 
@@ -1129,7 +1130,7 @@ async def generate_plugin_skill(
         if ctx:
             await ctx.report_progress(progress=50, total=100)
 
-        namespace = ".".join(plugin_name.split(".")[:2])
+        namespace = extract_namespace(plugin_name)
         short_name = plugin_name.rsplit(".", 1)[-1]
         base_dir = validate_install_path(install_to) if install_to else SKILLS_DIR
         output_dir = base_dir / namespace / f"{plugin_type}__{short_name}"
@@ -1145,7 +1146,7 @@ async def generate_plugin_skill(
         return {"error": str(exc)}
     except Exception as exc:
         logger.warning("generate_plugin_skill failed: %s", exc)
-        ns = ".".join(plugin_name.split(".")[:2]) if "." in plugin_name else None
+        ns = extract_namespace(plugin_name)
         return {"error": maybe_add_hint(sanitize_error(str(exc)), ns)}
 
 

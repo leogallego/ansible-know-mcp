@@ -177,8 +177,13 @@ class TestValidateKeyword:
     def test_valid_keyword(self):
         validate_keyword("copy")
 
-    def test_empty_keyword_allowed(self):
-        validate_keyword("")
+    def test_empty_keyword_rejected(self):
+        with pytest.raises(ValidationError):
+            validate_keyword("")
+
+    def test_whitespace_keyword_rejected(self):
+        with pytest.raises(ValidationError):
+            validate_keyword("   ")
 
     def test_exact_max_length(self):
         validate_keyword("a" * MAX_KEYWORD_LENGTH)

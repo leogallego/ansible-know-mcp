@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 from ansible_know.async_utils import run_in_executor
 from ansible_know.errors import AnsibleDocError
-from ansible_know.validation import sanitize_error, validate_plugin_type
+from ansible_know.validation import extract_namespace, sanitize_error, validate_plugin_type
 
 logger = logging.getLogger("ansible_know")
 
@@ -132,7 +132,7 @@ async def resolve_module_doc(
     from ansible_know.errors import CollectionNotFoundError, GalaxyError
 
     servers = _get_servers(galaxy_servers)
-    namespace = ".".join(module_name.split(".")[:2]) if "." in module_name else None
+    namespace = extract_namespace(module_name)
     cpath = collections_path
 
     async def _fetch_from_galaxy(client):
@@ -193,7 +193,7 @@ async def resolve_plugin_doc(
     validate_plugin_type(plugin_type)
 
     servers = _get_servers(galaxy_servers)
-    namespace = ".".join(plugin_name.split(".")[:2]) if "." in plugin_name else None
+    namespace = extract_namespace(plugin_name)
     cpath = collections_path
 
     local_doc: dict[str, Any] = {}
@@ -271,7 +271,7 @@ async def resolve_role_doc(
     from ansible_know.errors import CollectionNotFoundError, GalaxyError
 
     servers = _get_servers(galaxy_servers)
-    namespace = ".".join(role_name.split(".")[:2]) if "." in role_name else None
+    namespace = extract_namespace(role_name)
     cpath = collections_path
 
     local_doc: dict[str, Any] = {}

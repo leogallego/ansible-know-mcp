@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 from ansible_know.errors import ValidationError
 
 __all__ = [
+    "extract_namespace",
     "sanitize_error",
     "truncate_response",
     "validate_doc_url",
@@ -69,6 +70,8 @@ def validate_namespace(ns: str) -> None:
 
 
 def validate_keyword(keyword: str) -> None:
+    if not keyword or not keyword.strip():
+        raise ValidationError("Keyword must not be empty.")
     if len(keyword) > MAX_KEYWORD_LENGTH:
         raise ValidationError(
             f"Keyword too long: {len(keyword)} chars (max {MAX_KEYWORD_LENGTH})."
@@ -117,6 +120,15 @@ def validate_path_containment(child: Path, parent: Path) -> None:
         child.resolve().relative_to(parent.resolve())
     except ValueError as exc:
         raise ValidationError("Path escapes the allowed directory.") from exc
+
+
+def extract_namespace(fqcn: str) -> str | None:
+    """Extract the collection namespace from a fully-qualified name.
+
+    Returns 'namespace.collection' from 'namespace.collection.name',
+    or None if the name has no dots.
+    """
+    return ".".join(fqcn.split(".")[:2]) if "." in fqcn else None
 
 
 def sanitize_error(msg: str) -> str:
