@@ -106,7 +106,7 @@ async def _fetch_manifest_url(
     url: str,
     http_client: httpx.AsyncClient | None = None,
 ) -> list[dict[str, Any]]:
-    """Fetch manifest from a URL. Returns empty on error."""
+    """Fetch manifest from a URL. Raises on HTTP/size errors."""
     cached = _manifest_cache.get(source_name)
     if cached is not None:
         return cached
