@@ -331,6 +331,25 @@ class ClearCacheResult(TypedDict):
     cleared: list[str]
 
 
+class _CollectionDocsResultBase(TypedDict):
+    """Required fields for batch collection docs result."""
+
+    modules: dict[str, ModuleMetadata]
+    doc_source: str
+
+
+class CollectionDocsResult(_CollectionDocsResultBase, total=False):
+    """Result of resolve_collection_module_docs / get_collection_docs.
+
+    When doc_source is 'galaxy', includes doc_version and optionally
+    doc_warning/doc_source_server.
+    """
+
+    doc_version: str
+    doc_warning: str
+    doc_source_server: str
+
+
 class GalaxyDocClient(Protocol):
     """Structural interface for Galaxy documentation clients.
 
@@ -350,6 +369,10 @@ class GalaxyDocClient(Protocol):
     async def fetch_plugin_doc(
         self, plugin_name: str, plugin_type: str,
     ) -> tuple[dict[str, Any], DocProvenance]: ...
+
+    async def fetch_collection_docs(
+        self, collection_namespace: str, version: str | None = None,
+    ) -> tuple[dict[str, ModuleMetadata], DocProvenance]: ...
 
     async def search_collections(
         self, query: str, tags: str | None = None,

@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
     from ansible_know.galaxy_config import GalaxyServerConfig
     from ansible_know.types import (
+        CollectionDocsResult,
         ErrorResponse,
         GalaxyClientFactory,
         GetModuleDocResult,
@@ -32,6 +33,7 @@ logger = logging.getLogger("ansible_know")
 
 __all__ = [
     "discover_collection_plugins",
+    "resolve_collection_module_docs",
     "resolve_module_doc",
     "resolve_plugin_doc",
     "resolve_role_doc",
@@ -352,6 +354,65 @@ async def resolve_role_doc(
             "error": sanitize_error(str(galaxy_exc)),
             "entry_points": {},
         }
+
+
+async def resolve_collection_module_docs(
+    collection_namespace: str,
+    version: str | None = None,
+    http_client: httpx.AsyncClient | None = None,
+    galaxy_servers: list[GalaxyServerConfig] | None = None,
+    client_factory: GalaxyClientFactory | None = None,
+    missing_collections: set[str] | None = None,
+) -> CollectionDocsResult | ErrorResponse:
+    """Batch-fetch all module docs for a collection from Galaxy.
+
+    Delegates to ``GalaxyClient.fetch_collection_docs`` via the
+    multi-server fallback chain. Does NOT try local ansible-doc —
+    the caller decides whether to use this (Galaxy-only) path or
+    the existing per-module local path.
+
+    Contract:
+        Preconditions:
+            - ``client_factory`` must be provided. If ``None``, returns
+              an ``ErrorResponse`` immediately (no exception raised).
+
+        Raises:
+            Nothing — errors are returned as ``ErrorResponse`` dicts.
+
+        Silences:
+            - ``GalaxyError`` from all servers: caught and returned as
+              ``{"error": str}`` after sanitization. Individual server
+              failures are logged at INFO level by ``_try_galaxy_servers``.
+    """
+    from ansible_know.errors import GalaxyError
+
+    if client_factory is None:
+        return {"error": "No Galaxy client configured for collection docs"}
+
+    servers = _get_servers(galaxy_servers)
+
+    async def _fetch(client):
+        return await client.fetch_collection_docs(
+            collection_namespace, version=version,
+        )
+
+    try:
+        modules, galaxy_meta = await _try_galaxy_servers(
+            servers, _fetch, client_factory, http_client,
+        )
+        result: CollectionDocsResult = {
+            "modules": modules,
+            "doc_source": "galaxy",
+        }
+        if "doc_version" in galaxy_meta:
+            result["doc_version"] = galaxy_meta["doc_version"]
+        if "doc_warning" in galaxy_meta:
+            result["doc_warning"] = galaxy_meta["doc_warning"]
+        if "doc_source_server" in galaxy_meta:
+            result["doc_source_server"] = galaxy_meta["doc_source_server"]
+        return result
+    except GalaxyError as exc:
+        return {"error": sanitize_error(str(exc))}
 
 
 async def search_galaxy_collections(
