@@ -47,7 +47,7 @@ class TestDocCurationConfig:
     def test_audience_map_has_entries(self):
         from ansible_know.config import AUDIENCE_MAP
         assert isinstance(AUDIENCE_MAP, dict)
-        assert len(AUDIENCE_MAP) == 8
+        assert len(AUDIENCE_MAP) == 9
         assert AUDIENCE_MAP["dev_guide"] == "developer"
         assert AUDIENCE_MAP["playbook_guide"] == "author"
 
@@ -67,6 +67,7 @@ class TestDocCurationConfig:
         from ansible_know.config import GUIDE_TOPIC_PREFIXES
         assert isinstance(GUIDE_TOPIC_PREFIXES, set)
         assert "playbook_guide" in GUIDE_TOPIC_PREFIXES
+        assert "plugins" in GUIDE_TOPIC_PREFIXES
         assert "collections" not in GUIDE_TOPIC_PREFIXES
 
     def test_project_base_urls(self):
