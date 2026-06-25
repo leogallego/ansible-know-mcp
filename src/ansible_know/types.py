@@ -234,6 +234,7 @@ class CollectionSearchResult(TypedDict):
 class _GetModuleDocResultBase(ModuleMetadata):
     """Required fields for get_module_doc tool return."""
 
+    content_type: str
     doc_source: str
 
 
