@@ -1174,7 +1174,14 @@ class TestLifespanHttpClient:
         mock_ctx = _make_mock_ctx(state, shared, http_client=mock_client)
 
         with patch("ansible_know.resolution.resolve_module_doc") as mock_resolve:
-            mock_resolve.return_value = (SAMPLE_MODULE_DOC, None)
+            mock_resolve.return_value = {
+                "module_name": "ansible.builtin.package",
+                "short_description": "Generic OS package manager",
+                "params": [], "examples": "",
+                "is_api_module": False,
+                "content_type": "module",
+                "doc_source": "local",
+            }
             from ansible_know.server import get_module_doc
             await get_module_doc("ansible.builtin.package", ctx=mock_ctx)
 
