@@ -19,7 +19,14 @@ from ansible_know.tagging import derive_tags
 from ansible_know.validation import truncate_response, validate_path_containment
 
 if TYPE_CHECKING:
-    from ansible_know.types import CollectionSkillContext, ModuleMetadata, ModuleTagEntry, ParamDict, SkillEntry
+    from ansible_know.types import (
+        CollectionSkillContext,
+        ModuleMetadata,
+        ModuleTagEntry,
+        ParamDict,
+        PluginManifestInput,
+        SkillEntry,
+    )
 
 logger = logging.getLogger("ansible_know")
 
@@ -364,7 +371,7 @@ def _collection_template_context(
     namespace: str,
     metadata_list: list[ModuleMetadata],
     collection_version: str | None = None,
-    plugins_metadata: list[dict[str, Any]] | None = None,
+    plugins_metadata: list[PluginManifestInput] | None = None,
 ) -> CollectionSkillContext:
     """Build template context for a collection-level skill."""
     modules_by_tag: dict[str, list[ModuleTagEntry]] = {}
@@ -397,10 +404,10 @@ def _collection_template_context(
 
     plugins_by_type: dict[str, list[dict[str, str]]] = {}
     for pmeta in (plugins_metadata or []):
-        ptype = pmeta.get("plugin_type", "other")
+        ptype = pmeta["plugin_type"]
         plugins_by_type.setdefault(ptype, []).append({
             "fqcn": pmeta["fqcn"],
-            "short_description": pmeta.get("description", ""),
+            "short_description": pmeta["description"],
         })
 
     return {
@@ -441,7 +448,7 @@ def render_collection_skill(
     namespace: str,
     metadata_list: list[ModuleMetadata],
     collection_version: str | None = None,
-    plugins_metadata: list[dict[str, Any]] | None = None,
+    plugins_metadata: list[PluginManifestInput] | None = None,
 ) -> str:
     """Render the COLLECTION_SKILL.md.j2 template for a collection-level skill."""
     logger.debug("Rendering collection skill for %s", namespace)
@@ -458,7 +465,7 @@ def write_collection_skill_package(
     namespace: str,
     metadata_list: list[ModuleMetadata],
     collection_version: str | None = None,
-    plugins_metadata: list[dict[str, Any]] | None = None,
+    plugins_metadata: list[PluginManifestInput] | None = None,
 ) -> None:
     """Write the collection-level skill package: SKILL.md only (no scripts/assets)."""
     logger.debug("Writing collection skill package to %s for %s", output_dir, namespace)

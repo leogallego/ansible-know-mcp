@@ -495,9 +495,9 @@ class TestCollectionSkillWithPlugins:
         }]
         plugins = [
             {"fqcn": "netbox.netbox.nb_lookup", "plugin_type": "lookup",
-             "description": "Query NetBox"},
+             "description": "Query NetBox", "param_count": 0},
             {"fqcn": "netbox.netbox.nb_inventory", "plugin_type": "inventory",
-             "description": "Dynamic inventory"},
+             "description": "Dynamic inventory", "param_count": 0},
         ]
         result = render_collection_skill(
             "netbox.netbox", metadata_list,
