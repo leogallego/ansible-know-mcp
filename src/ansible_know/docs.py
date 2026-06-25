@@ -46,11 +46,24 @@ _manifest_cache: BoundedCache[str, list[dict[str, Any]]] = BoundedCache(
 def _postprocess_entries(
     entries: list[dict[str, Any]], source_name: str, base_url: str,
 ) -> list[dict[str, Any]]:
-    """Add _source tag and construct URLs from base_url + path."""
+    """Add _source tag, construct URLs, and precompute lowercase fields."""
     for entry in entries:
         entry["_source"] = source_name
         if "url" not in entry and "path" in entry and base_url:
             entry["url"] = f"{base_url.rstrip('/')}/{entry['path'].lstrip('/')}"
+        topics = entry.get("topics", entry.get("topic", []))
+        if isinstance(topics, str):
+            topics = [topics]
+        entry["_topics"] = topics
+        aud = entry.get("audience", [])
+        if isinstance(aud, str):
+            aud = [aud]
+        entry["_audience"] = aud
+        entry["_searchable"] = "{} {} {}".format(
+            entry.get("title", "").lower(),
+            entry.get("summary", "").lower(),
+            " ".join(t.lower() for t in topics),
+        )
     return entries
 
 
@@ -278,10 +291,10 @@ async def search_docs(
             if core_only and not entry.get("core", False):
                 continue
 
-            entry_topics = entry.get("topics", entry.get("topic", []))
+            entry_topics = entry.get("_topics", entry.get("topics", entry.get("topic", [])))
             if isinstance(entry_topics, str):
                 entry_topics = [entry_topics]
-            entry_audience = entry.get("audience", [])
+            entry_audience = entry.get("_audience", entry.get("audience", []))
             if isinstance(entry_audience, str):
                 entry_audience = [entry_audience]
 
@@ -290,10 +303,13 @@ async def search_docs(
             if audience and audience.lower() not in [a.lower() for a in entry_audience]:
                 continue
 
-            title = entry.get("title", "").lower()
-            summary = entry.get("summary", "").lower()
-            topics_str = " ".join(t.lower() for t in entry_topics)
-            searchable = f"{title} {summary} {topics_str}"
+            searchable = entry.get("_searchable", "")
+            if not searchable:
+                searchable = "{} {} {}".format(
+                    entry.get("title", "").lower(),
+                    entry.get("summary", "").lower(),
+                    " ".join(t.lower() for t in entry_topics),
+                )
 
             if all(w in searchable for w in query_words):
                 results.append({
