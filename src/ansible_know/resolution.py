@@ -17,9 +17,9 @@ if TYPE_CHECKING:
 
     from ansible_know.galaxy_config import GalaxyServerConfig
     from ansible_know.types import (
-        DocProvenance,
         ErrorResponse,
         GalaxyClientFactory,
+        GetModuleDocResult,
         GetPluginDocResult,
         GetRoleDocResult,
     )
@@ -122,11 +122,10 @@ async def resolve_module_doc(
     client_factory: GalaxyClientFactory | None = None,
     missing_collections: set[str] | None = None,
     collections_path: str | None = None,
-) -> tuple[dict[str, Any], DocProvenance | None]:
+) -> GetModuleDocResult | ErrorResponse:
     """Try local ansible-doc, fall back to Galaxy if the collection is missing.
 
-    Returns (raw_doc, galaxy_meta_or_none). Raises on non-missing-collection
-    errors and when both local and Galaxy lookups fail.
+    Returns the complete tool response dict including doc_source and content_type.
     """
     from ansible_know import parser
     from ansible_know.errors import CollectionNotFoundError, GalaxyError
@@ -135,43 +134,62 @@ async def resolve_module_doc(
     namespace = extract_namespace(module_name)
     cpath = collections_path
 
+    local_doc: dict[str, Any] = {}
+
+    if not (namespace and missing_collections is not None and namespace in missing_collections):
+        try:
+            local_doc = await run_in_executor(
+                parser.get_module_doc, module_name, collections_path=cpath,
+            )
+        except CollectionNotFoundError:
+            if namespace and missing_collections is not None:
+                missing_collections.add(namespace)
+            local_doc = {}
+        except AnsibleDocError:
+            raise
+
+    if local_doc:
+        metadata = parser.extract_module_metadata(local_doc)
+        metadata["content_type"] = "module"
+        metadata["doc_source"] = "local"
+        return metadata
+
+    if client_factory is None:
+        return {
+            "module_name": module_name,
+            "content_type": "module",
+            "doc_source": "unavailable",
+            "error": sanitize_error(
+                f"Collection '{namespace}' not installed locally"
+            ) if namespace else "Module not found",
+            "params": [],
+        }
+
     async def _fetch_from_galaxy(client):
         return await client.fetch_module_doc(module_name)
 
-    if namespace and missing_collections is not None and namespace in missing_collections:
-        if client_factory is None:
-            raise CollectionNotFoundError(
-                f"Collection '{namespace}' not installed locally"
-            )
-        try:
-            galaxy_doc, galaxy_meta = await _try_galaxy_servers(
-                servers, _fetch_from_galaxy, client_factory, http_client,
-            )
-            return galaxy_doc, galaxy_meta
-        except GalaxyError as galaxy_exc:
-            raise CollectionNotFoundError(
-                f"Collection '{namespace}' not installed locally"
-            ) from galaxy_exc
-
     try:
-        raw_doc = await run_in_executor(
-            parser.get_module_doc, module_name, collections_path=cpath,
+        galaxy_doc, galaxy_meta = await _try_galaxy_servers(
+            servers, _fetch_from_galaxy, client_factory, http_client,
         )
-        return raw_doc, None
-    except CollectionNotFoundError as local_exc:
-        if namespace and missing_collections is not None:
-            missing_collections.add(namespace)
-        if client_factory is None:
-            raise
-        logger.info("Collection not installed, trying Galaxy: %s", local_exc)
-        try:
-            galaxy_doc, galaxy_meta = await _try_galaxy_servers(
-                servers, _fetch_from_galaxy, client_factory, http_client,
-            )
-            return galaxy_doc, galaxy_meta
-        except GalaxyError as galaxy_exc:
-            logger.warning("Galaxy fallback also failed: %s", galaxy_exc)
-            raise local_exc from galaxy_exc
+        metadata = parser.extract_module_metadata(galaxy_doc)
+        result = dict(metadata)
+        result["content_type"] = "module"
+        result["doc_source"] = "galaxy"
+        result["doc_version"] = galaxy_meta.get("doc_version", "")
+        if "doc_warning" in galaxy_meta:
+            result["doc_warning"] = galaxy_meta["doc_warning"]
+        if "doc_source_server" in galaxy_meta:
+            result["doc_source_server"] = galaxy_meta["doc_source_server"]
+        return result
+    except GalaxyError as galaxy_exc:
+        return {
+            "module_name": module_name,
+            "content_type": "module",
+            "doc_source": "unavailable",
+            "error": sanitize_error(str(galaxy_exc)),
+            "params": [],
+        }
 
 
 async def resolve_plugin_doc(

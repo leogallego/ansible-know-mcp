@@ -32,11 +32,12 @@ class TestResolveModuleDoc:
     async def test_local_success_no_galaxy(self, mock_ansible_doc, missing):
         mock_ansible_doc.return_value = json.dumps(SAMPLE_MODULE_DOC)
         from ansible_know.resolution import resolve_module_doc
-        raw_doc, galaxy_meta = await resolve_module_doc(
+        result = await resolve_module_doc(
             "ansible.builtin.package", missing_collections=missing,
         )
-        assert "ansible.builtin.package" in raw_doc
-        assert galaxy_meta is None
+        assert result["module_name"] == "ansible.builtin.package"
+        assert result["content_type"] == "module"
+        assert result["doc_source"] == "local"
 
     @pytest.mark.asyncio
     async def test_non_missing_collection_error_not_retried(self, mock_ansible_doc, missing):
@@ -78,17 +79,19 @@ class TestResolveModuleDoc:
             return_value=(galaxy_doc, galaxy_meta),
         ):
             from ansible_know.resolution import resolve_module_doc
-            raw_doc, meta = await resolve_module_doc(
+            result = await resolve_module_doc(
                 "netbox.netbox.netbox_device",
                 client_factory=FACTORY,
                 missing_collections=missing,
             )
 
-        assert raw_doc == galaxy_doc
-        assert meta["doc_source"] == "galaxy"
+        assert result["module_name"] == "netbox.netbox.netbox_device"
+        assert result["doc_source"] == "galaxy"
+        assert result["doc_version"] == "3.23.0"
+        assert result["content_type"] == "module"
 
     @pytest.mark.asyncio
-    async def test_both_fail_raises_local_error(self, mock_ansible_doc, missing):
+    async def test_both_fail_returns_error(self, mock_ansible_doc, missing):
         from ansible_know.errors import CollectionNotFoundError, GalaxyError
         mock_ansible_doc.side_effect = CollectionNotFoundError(
             "ansible-doc failed (exit 1): some.col.mod was not found"
@@ -99,12 +102,14 @@ class TestResolveModuleDoc:
             side_effect=GalaxyError("Module 'mod' not found in docs-blob"),
         ):
             from ansible_know.resolution import resolve_module_doc
-            with pytest.raises(CollectionNotFoundError, match="was not found"):
-                await resolve_module_doc(
-                    "some.col.mod",
-                    client_factory=FACTORY,
-                    missing_collections=missing,
-                )
+            result = await resolve_module_doc(
+                "some.col.mod",
+                client_factory=FACTORY,
+                missing_collections=missing,
+            )
+
+        assert result["doc_source"] == "unavailable"
+        assert "error" in result
 
 
 class TestResolveRoleDoc:
@@ -188,14 +193,14 @@ class TestNegativeCache:
             return_value=(galaxy_doc, galaxy_meta),
         ):
             from ansible_know.resolution import resolve_module_doc
-            raw_doc, meta = await resolve_module_doc(
+            result = await resolve_module_doc(
                 "netbox.netbox.netbox_device",
                 client_factory=FACTORY,
                 missing_collections=missing,
             )
 
         mock_ansible_doc.assert_not_called()
-        assert meta["doc_source"] == "galaxy"
+        assert result["doc_source"] == "galaxy"
 
     @pytest.mark.asyncio
     async def test_populates_cache_on_collection_not_found(self, mock_ansible_doc, missing):
@@ -208,14 +213,15 @@ class TestNegativeCache:
             side_effect=GalaxyError("not found"),
         ):
             from ansible_know.resolution import resolve_module_doc
-            with pytest.raises(CollectionNotFoundError):
-                await resolve_module_doc(
-                    "netbox.netbox.netbox_device",
-                    client_factory=FACTORY,
-                    missing_collections=missing,
-                )
+            result = await resolve_module_doc(
+                "netbox.netbox.netbox_device",
+                client_factory=FACTORY,
+                missing_collections=missing,
+            )
 
         assert "netbox.netbox" in missing
+        assert result["doc_source"] == "unavailable"
+        assert "error" in result
 
     @pytest.mark.asyncio
     async def test_does_not_cache_non_collection_errors(self, mock_ansible_doc, missing):
