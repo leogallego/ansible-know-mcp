@@ -18,7 +18,7 @@ from ansible_know.errors import GalaxyError
 
 if TYPE_CHECKING:
     from ansible_know.galaxy_config import GalaxyServerConfig
-    from ansible_know.types import DocProvenance
+    from ansible_know.types import DocProvenance, ModuleMetadata
 
 logger = logging.getLogger("ansible_know")
 
@@ -489,6 +489,73 @@ class GalaxyClient:
         if self.server_name:
             meta["doc_source_server"] = self.server_name
         return doc, meta
+
+    async def fetch_collection_docs(
+        self, collection_namespace: str, version: str | None = None,
+    ) -> tuple[dict[str, ModuleMetadata], DocProvenance]:
+        """Fetch all module docs from a collection in one docs-blob call.
+
+        Extracts every module entry from the blob, returning a dict keyed
+        by module FQCN. Transforms each into
+        the same ``ModuleMetadata`` shape that ``extract_module_metadata``
+        produces from ansible-doc output.
+
+        Contract:
+            Preconditions:
+                - ``collection_namespace`` must be 'namespace.name' format
+                  (two dot-separated segments). Raises ``GalaxyError`` if not.
+
+            Raises:
+                GalaxyError: If the namespace is malformed, the collection is
+                    not found on Galaxy, or the API request fails.
+
+            Silences:
+                - Individual modules whose ``transform_galaxy_to_ansible_doc_format``
+                  or ``extract_module_metadata`` raises are logged and skipped.
+                  The caller receives docs for the remaining modules with no
+                  indication of partial failure (check logs).
+        """
+        from ansible_know.parser import (
+            extract_module_metadata,
+            transform_galaxy_to_ansible_doc_format,
+        )
+
+        parts = collection_namespace.split(".")
+        if len(parts) != 2:
+            raise GalaxyError(
+                f"'{collection_namespace}' is not a valid collection FQCN "
+                f"(expected namespace.name)."
+            )
+        namespace, name = parts
+        resolved_version = version or await self.latest_version(namespace, name)
+        is_latest = version is None
+
+        blob = await self._fetch_docs_blob(namespace, name, resolved_version)
+        result: dict[str, ModuleMetadata] = {}
+        for item in blob.get("contents", []):
+            if item.get("content_type") != "module":
+                continue
+            short_name = item.get("content_name", "")
+            fqcn = f"{collection_namespace}.{short_name}"
+            try:
+                raw_doc = transform_galaxy_to_ansible_doc_format(fqcn, item)
+                result[fqcn] = extract_module_metadata(raw_doc)
+            except Exception:
+                logger.warning("Skipping module %s: metadata extraction failed", fqcn, exc_info=True)
+
+        meta: DocProvenance = {
+            "doc_source": "galaxy",
+            "doc_version": resolved_version,
+        }
+        if is_latest:
+            meta["doc_warning"] = (
+                f"Documentation sourced from Galaxy "
+                f"({namespace}.{name} {resolved_version}). "
+                f"Your installed version may differ."
+            )
+        if self.server_name:
+            meta["doc_source_server"] = self.server_name
+        return result, meta
 
     async def list_collection_modules(
         self, collection_fqcn: str, version: str | None = None,

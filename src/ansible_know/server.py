@@ -25,6 +25,7 @@ from ansible_know.errors import AnsibleDocError, AnsibleKnowError, ValidationErr
 from ansible_know.state import LifespanContext, ServerState, SessionManager, SharedState
 from ansible_know.types import (
     ClearCacheResult,
+    CollectionDocsResult,
     CollectionSearchResult,
     EnsureCollectionResult,
     ErrorResponse,
@@ -729,6 +730,43 @@ async def get_collection_manifest(
         return {"error": maybe_add_hint(sanitize_error(str(exc)), collection_namespace)}
 
 
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+async def get_collection_docs(
+    collection_namespace: Annotated[str, "Collection namespace (e.g. 'netbox.netbox')"],
+    version: Annotated[str | None, "Optional version (e.g. '3.23.0'). If omitted, uses latest."] = None,
+    ctx: Context | None = None,
+) -> CollectionDocsResult | ErrorResponse:
+    """Get full module documentation for all modules in a collection from Galaxy.
+
+    Returns all module docs in a single API call without installing the collection.
+    Result shape: {"modules": {fqcn: {module_name, short_description, params, examples, is_api_module}, ...},
+    "doc_source": "galaxy", "doc_version": str}.
+    On failure returns {"error": str}.
+    """
+    logger.info("get_collection_docs namespace=%r version=%r", collection_namespace, version)
+    await _maybe_warn_upgrade(ctx)
+    try:
+        validate_namespace(collection_namespace)
+    except ValidationError as exc:
+        return {"error": str(exc)}
+
+    try:
+        from ansible_know import resolution
+
+        state = await _get_state(ctx)
+        http_client = _get_http_client(ctx)
+        return await resolution.resolve_collection_module_docs(
+            collection_namespace,
+            version=version,
+            http_client=http_client,
+            galaxy_servers=state.galaxy_servers,
+            client_factory=_galaxy_factory(ctx),
+        )
+    except Exception as exc:
+        logger.warning("get_collection_docs failed: %s", exc)
+        return {"error": maybe_add_hint(sanitize_error(str(exc)), collection_namespace)}
+
+
 @mcp.tool(annotations=ToolAnnotations(idempotentHint=True, readOnlyHint=False, destructiveHint=False))
 async def ensure_collection(
     collection_namespace: Annotated[str, "Collection namespace (e.g. 'netbox.netbox')"],
@@ -1071,6 +1109,18 @@ async def generate_collection_skills(
             collections_path=cpath,
         )
 
+        # Galaxy batch fallback for modules when collection not installed locally
+        galaxy_batch_modules: dict[str, Any] = {}
+        if not modules:
+            batch_result = await resolution.resolve_collection_module_docs(
+                collection_namespace,
+                http_client=_get_http_client(ctx),
+                galaxy_servers=state.galaxy_servers,
+                client_factory=_galaxy_factory(ctx),
+            )
+            if "modules" in batch_result:
+                galaxy_batch_modules = batch_result["modules"]
+
         # Discover roles
         roles_raw = {}
         try:
@@ -1087,14 +1137,14 @@ async def generate_collection_skills(
 
         # Combined guard — reject only if ALL content types are empty
         has_plugins = any(plugins for _, plugins in plugin_list_results)
-        if not modules and not roles_raw and not has_plugins:
+        if not modules and not galaxy_batch_modules and not roles_raw and not has_plugins:
             return {"error": (
                 f"No modules, roles, or plugins found in collection '{collection_namespace}'."
                 + collection_hint(collection_namespace)
             )}
 
         plugin_count = sum(len(plugins) for _, plugins in plugin_list_results)
-        total = len(modules) + len(roles_raw) + plugin_count
+        total = len(modules) + len(galaxy_batch_modules) + len(roles_raw) + plugin_count
         succeeded = 0
         failed = 0
         current = 0
@@ -1122,6 +1172,21 @@ async def generate_collection_skills(
                 succeeded += 1
             except Exception as exc:
                 logger.warning("Module skill generation failed for %s: %s", module_name, exc)
+                failed += 1
+
+        # Generate module skills from Galaxy batch (when not installed locally)
+        for module_fqcn, module_meta in sorted(galaxy_batch_modules.items()):
+            if ctx:
+                await ctx.report_progress(progress=current, total=total)
+            current += 1
+            try:
+                metadata_list.append(module_meta)
+                short_name = module_fqcn.rsplit(".", 1)[-1]
+                output_dir = base_dir / collection_namespace / short_name
+                await run_in_executor(skills.write_module_skill_package, output_dir, module_meta)
+                succeeded += 1
+            except Exception as exc:
+                logger.warning("Module skill generation failed for %s: %s", module_fqcn, exc)
                 failed += 1
 
         # Generate role skills
