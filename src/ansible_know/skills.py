@@ -19,7 +19,7 @@ from ansible_know.tagging import derive_tags
 from ansible_know.validation import truncate_response, validate_path_containment
 
 if TYPE_CHECKING:
-    from ansible_know.types import CollectionSkillContext, ModuleMetadata, ModuleTagEntry, ParamDict
+    from ansible_know.types import CollectionSkillContext, ModuleMetadata, ModuleTagEntry, ParamDict, SkillEntry
 
 logger = logging.getLogger("ansible_know")
 
@@ -140,7 +140,7 @@ def extract_skill_description(skill_md: Path) -> str:
 
 def list_skills_sync(
     skills_dir: Path, collection: str | None,
-) -> list[dict[str, str]]:
+) -> list[SkillEntry]:
     """List generated skills from *skills_dir*.
 
     When *collection* is given, returns module/role/plugin skills within that
