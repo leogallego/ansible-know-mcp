@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from itertools import zip_longest
 from pathlib import Path
 from typing import Any
 
@@ -222,12 +223,10 @@ async def _search_rtd_api(
                 per_source.append(hits)
             elif isinstance(hits, BaseException):
                 logger.debug("RTD search failed for one project: %s", hits)
-        results: list[SearchDocsEntry] = []
-        max_len = max((len(s) for s in per_source), default=0)
-        for i in range(max_len):
-            for source_hits in per_source:
-                if i < len(source_hits):
-                    results.append(source_hits[i])
+        results: list[SearchDocsEntry] = [
+            hit for group in zip_longest(*per_source)
+            for hit in group if hit is not None
+        ]
     finally:
         if should_close:
             await client.aclose()

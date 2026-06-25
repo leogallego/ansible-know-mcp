@@ -419,6 +419,32 @@ class TestSearchRtdApi:
         assert len(results) <= 5
 
 
+LINT_MANIFEST = {
+    "version": "2.0",
+    "base_url": "https://docs.example.com",
+    "files": [
+        {
+            "path": "rules/no-handler.html",
+            "topic": "rules",
+            "title": "no-handler",
+            "summary": "Use handlers instead of when: result.changed",
+            "audience": "author",
+            "lines": 50,
+        },
+    ],
+}
+
+
+@pytest.fixture
+def lint_sources(tmp_path):
+    """Patch get_doc_sources to return a lint-like single-entry manifest."""
+    p_file = tmp_path / "lint_manifest.json"
+    p_file.write_text(json.dumps(LINT_MANIFEST))
+    sources = {"lint": {"file": str(p_file), "description": "Lint"}}
+    with patch("ansible_know.docs.get_doc_sources", return_value=sources):
+        yield
+
+
 class TestTokenizedSearch:
     @pytest.mark.asyncio
     async def test_multi_word_matches_across_fields(self, file_sources):
@@ -428,51 +454,15 @@ class TestTokenizedSearch:
         assert results[0]["title"] == "Variable Precedence"
 
     @pytest.mark.asyncio
-    async def test_multi_word_matches_title_and_topic(self, tmp_path):
-        manifest = {
-            "version": "2.0",
-            "base_url": "https://docs.example.com",
-            "files": [
-                {
-                    "path": "rules/no-handler.html",
-                    "topic": "rules",
-                    "title": "no-handler",
-                    "summary": "Use handlers instead of when: result.changed",
-                    "audience": "author",
-                    "lines": 50,
-                },
-            ],
-        }
-        p_file = tmp_path / "tok_manifest.json"
-        p_file.write_text(json.dumps(manifest))
-        sources = {"lint": {"file": str(p_file), "description": "Lint"}}
-        with patch("ansible_know.docs.get_doc_sources", return_value=sources):
-            results = await search_docs("handler rules")
+    async def test_multi_word_matches_title_and_topic(self, lint_sources):
+        results = await search_docs("handler rules")
         assert len(results) == 1
         assert results[0]["title"] == "no-handler"
 
     @pytest.mark.asyncio
-    async def test_source_key_not_searchable(self, tmp_path):
+    async def test_source_key_not_searchable(self, lint_sources):
         """Source dict key name (e.g. 'lint') must not be part of searchable text."""
-        manifest = {
-            "version": "2.0",
-            "base_url": "https://docs.example.com",
-            "files": [
-                {
-                    "path": "rules/no-handler.html",
-                    "topic": "rules",
-                    "title": "no-handler",
-                    "summary": "Use handlers instead of when: result.changed",
-                    "audience": "author",
-                    "lines": 50,
-                },
-            ],
-        }
-        p_file = tmp_path / "tok_manifest.json"
-        p_file.write_text(json.dumps(manifest))
-        sources = {"lint": {"file": str(p_file), "description": "Lint"}}
-        with patch("ansible_know.docs.get_doc_sources", return_value=sources), \
-             patch("ansible_know.docs._search_rtd_api", new_callable=AsyncMock, return_value=[]):
+        with patch("ansible_know.docs._search_rtd_api", new_callable=AsyncMock, return_value=[]):
             results = await search_docs("lint rules")
         assert results == []
 
