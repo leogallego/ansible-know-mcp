@@ -138,7 +138,7 @@ ls -1 docs/superpowers/specs/ docs/specs/
 ```bash
 ls -1 docs/superpowers/plans/
 ```
-- **Description:** Directory listing of implementation plans. Highlights: 11 feature implementation plans (excluding the presentation plan itself), demonstrating detailed actionable planning for each spec.
+- **Description:** Directory listing of implementation plans. Highlights: 10 feature implementation plans (excluding the presentation plan itself), demonstrating detailed actionable planning for each spec.
 
 ---
 
