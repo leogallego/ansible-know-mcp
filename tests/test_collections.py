@@ -113,6 +113,14 @@ class TestEnsureCollectionInstalls:
         assert result["status"] == "already_installed"
         mock_run.assert_not_called()
 
+    def test_passes_no_cache_flag(self, mgr):
+        galaxy_stdout = "Installing 'netbox.netbox:4.1.0' to '<path>'\nnetbox.netbox:4.1.0 was installed successfully"
+        with patch("ansible_know.collections._find_ansible_galaxy", return_value="/usr/bin/ansible-galaxy"):
+            with patch("subprocess.run", return_value=_make_subprocess_result(stdout=galaxy_stdout)) as mock_run:
+                mgr.ensure_collection("netbox.netbox")
+        args = mock_run.call_args[0][0]
+        assert "--no-cache" in args
+
     def test_reinstalls_different_version(self, mgr):
         galaxy_stdout_1 = "Installing 'netbox.netbox:3.9.0' to '<path>'\nnetbox.netbox:3.9.0 was installed successfully"
         galaxy_stdout_2 = "Installing 'netbox.netbox:4.0.0' to '<path>'\nnetbox.netbox:4.0.0 was installed successfully"

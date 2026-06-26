@@ -119,7 +119,7 @@ class CollectionManager:
             galaxy = _find_ansible_galaxy()
 
             collection_spec = f"{collection_fqcn}:=={version}" if version else collection_fqcn
-            cmd = [galaxy, "collection", "install", collection_spec, "-p", tmpdir, "--force"]
+            cmd = [galaxy, "collection", "install", collection_spec, "-p", tmpdir, "--force", "--no-cache"]
 
             with self._install_gate:
                 try:
