@@ -71,6 +71,24 @@ Choose modules based on what you need to manage:
 {% endfor %}
 
 {% endfor %}
+{% if plugins_by_type %}
+## Available Plugins
+
+These plugins provide data retrieval, transformation, and infrastructure integration.
+**Use plugins instead of raw modules** when a plugin exists for your use case —
+they are more concise and integrate naturally with Jinja2.
+
+{% for ptype, plugins in plugins_by_type | dictsort %}
+### {{ ptype | capitalize }} Plugins
+
+| Plugin | Purpose |
+|--------|---------|
+{% for p in plugins -%}
+| `{{ p.fqcn }}` | {{ p.short_description }} |
+{% endfor %}
+
+{% endfor %}
+{% endif %}
 ## Phase 3 — Design Block
 
 Before writing YAML, output a human-readable design for review:

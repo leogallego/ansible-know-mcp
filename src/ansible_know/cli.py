@@ -14,7 +14,7 @@ from typing import Literal
 __all__ = ["ServerConfig", "parse_args"]
 
 _VALID_TRANSPORTS = ("stdio", "http")
-_DEFAULT_HOST = "0.0.0.0"
+_DEFAULT_HOST = "127.0.0.1"
 _DEFAULT_PORT = 8080
 
 

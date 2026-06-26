@@ -10,13 +10,14 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from itertools import zip_longest
 from pathlib import Path
 from typing import Any
 
 import httpx
 
 from ansible_know.cache import BoundedCache
-from ansible_know.config import RTD_PROJECT_SLUGS, SEARCH_DOCS_LIMIT, get_doc_sources
+from ansible_know.config import CACHE_DIR, RTD_PROJECT_SLUGS, SEARCH_DOCS_LIMIT, get_doc_sources
 from ansible_know.errors import AnsibleKnowError
 from ansible_know.text_utils import clean_rtd_markdown
 from ansible_know.types import FetchDocResult, SearchDocsEntry
@@ -38,6 +39,7 @@ RTD_DOCS_DOMAIN = "https://docs.ansible.com"
 
 _manifest_cache: BoundedCache[str, list[dict[str, Any]]] = BoundedCache(
     max_size=50, ttl=CACHE_TTL_SECONDS,
+    path=CACHE_DIR / "doc-manifests.json",
 )
 
 
@@ -45,11 +47,24 @@ _manifest_cache: BoundedCache[str, list[dict[str, Any]]] = BoundedCache(
 def _postprocess_entries(
     entries: list[dict[str, Any]], source_name: str, base_url: str,
 ) -> list[dict[str, Any]]:
-    """Add _source tag and construct URLs from base_url + path."""
+    """Add _source tag, construct URLs, and precompute lowercase fields."""
     for entry in entries:
         entry["_source"] = source_name
         if "url" not in entry and "path" in entry and base_url:
             entry["url"] = f"{base_url.rstrip('/')}/{entry['path'].lstrip('/')}"
+        topics = entry.get("topics", entry.get("topic", []))
+        if isinstance(topics, str):
+            topics = [topics]
+        entry["_topics"] = topics
+        aud = entry.get("audience", [])
+        if isinstance(aud, str):
+            aud = [aud]
+        entry["_audience"] = aud
+        entry["_searchable"] = "{} {} {}".format(
+            entry.get("title", "").lower(),
+            entry.get("summary", "").lower(),
+            " ".join(t.lower() for t in topics),
+        )
     return entries
 
 
@@ -216,12 +231,16 @@ async def _search_rtd_api(
             *[_search_one(name, slug) for name, slug in slugs_to_search],
             return_exceptions=True,
         )
-        results: list[SearchDocsEntry] = []
+        per_source: list[list[SearchDocsEntry]] = []
         for hits in all_hits:
             if isinstance(hits, list):
-                results.extend(hits)
+                per_source.append(hits)
             elif isinstance(hits, BaseException):
                 logger.debug("RTD search failed for one project: %s", hits)
+        results: list[SearchDocsEntry] = [
+            hit for group in zip_longest(*per_source)
+            for hit in group if hit is not None
+        ]
     finally:
         if should_close:
             await client.aclose()
@@ -252,6 +271,7 @@ async def search_docs(
     """
     sources = get_doc_sources()
     query_lower = query.lower()
+    query_words = query_lower.split()
     results: list[SearchDocsEntry] = []
     has_filters = bool(topic or audience or core_only)
     manifest_had_entries = False
@@ -272,10 +292,10 @@ async def search_docs(
             if core_only and not entry.get("core", False):
                 continue
 
-            entry_topics = entry.get("topics", entry.get("topic", []))
+            entry_topics = entry.get("_topics", entry.get("topics", entry.get("topic", [])))
             if isinstance(entry_topics, str):
                 entry_topics = [entry_topics]
-            entry_audience = entry.get("audience", [])
+            entry_audience = entry.get("_audience", entry.get("audience", []))
             if isinstance(entry_audience, str):
                 entry_audience = [entry_audience]
 
@@ -284,12 +304,15 @@ async def search_docs(
             if audience and audience.lower() not in [a.lower() for a in entry_audience]:
                 continue
 
-            title = entry.get("title", "").lower()
-            summary = entry.get("summary", "").lower()
-            topics_str = " ".join(t.lower() for t in entry_topics)
-            searchable = f"{title} {summary} {topics_str}"
+            searchable = entry.get("_searchable", "")
+            if not searchable:
+                searchable = "{} {} {}".format(
+                    entry.get("title", "").lower(),
+                    entry.get("summary", "").lower(),
+                    " ".join(t.lower() for t in entry_topics),
+                )
 
-            if query_lower in searchable:
+            if all(w in searchable for w in query_words):
                 results.append({
                     "title": entry.get("title", ""),
                     "summary": entry.get("summary", ""),

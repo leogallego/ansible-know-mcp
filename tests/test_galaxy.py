@@ -541,6 +541,127 @@ class TestFetchModuleDoc:
         assert "param1" in options
 
 
+class TestFetchCollectionDocs:
+    @pytest.mark.asyncio
+    async def test_returns_all_module_docs(self):
+        """Batch extracts docs for every module in the blob."""
+        async def mock_api_get(self_client, path, params=None, timeout=None):
+            if "versions/" in path and "docs-blob" not in path:
+                return SAMPLE_VERSIONS_RESPONSE
+            if "docs-blob" in path:
+                return SAMPLE_DOCS_BLOB
+            return {}
+
+        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+            client = GalaxyClient()
+            docs, meta = await client.fetch_collection_docs("netbox.netbox")
+
+        assert "netbox.netbox.netbox_device" in docs
+        assert "netbox.netbox.netbox_site" in docs
+        assert len(docs) == 2  # only modules, not inventory plugin
+        assert docs["netbox.netbox.netbox_device"]["module_name"] == "netbox.netbox.netbox_device"
+        assert docs["netbox.netbox.netbox_device"]["short_description"] == "Create, update or delete devices"
+        assert meta["doc_source"] == "galaxy"
+        assert meta["doc_version"] == "3.23.0"
+
+    @pytest.mark.asyncio
+    async def test_with_explicit_version(self):
+        """Explicit version skips latest_version lookup and omits warning."""
+        async def mock_api_get(self_client, path, params=None, timeout=None):
+            if "docs-blob" in path:
+                assert "3.20.0" in path
+                return SAMPLE_DOCS_BLOB
+            return {}
+
+        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+            client = GalaxyClient()
+            docs, meta = await client.fetch_collection_docs(
+                "netbox.netbox", version="3.20.0",
+            )
+
+        assert meta["doc_version"] == "3.20.0"
+        assert "doc_warning" not in meta
+
+    @pytest.mark.asyncio
+    async def test_empty_collection_returns_empty_dict(self):
+        """Collection with no modules returns empty dict, not error."""
+        empty_blob = {"docs_blob": {"contents": [
+            {"content_type": "inventory", "content_name": "nb_inventory",
+             "doc_strings": {"doc": {"short_description": "Inv plugin"}, "examples": "", "return": [], "metadata": {}}},
+        ]}}
+
+        async def mock_api_get(self_client, path, params=None, timeout=None):
+            if "versions/" in path and "docs-blob" not in path:
+                return SAMPLE_VERSIONS_RESPONSE
+            if "docs-blob" in path:
+                return empty_blob
+            return {}
+
+        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+            client = GalaxyClient()
+            docs, meta = await client.fetch_collection_docs("netbox.netbox")
+
+        assert docs == {}
+        assert meta["doc_source"] == "galaxy"
+
+    @pytest.mark.asyncio
+    async def test_rejects_invalid_namespace(self):
+        """Namespace must be namespace.name format."""
+        client = GalaxyClient()
+        with pytest.raises(GalaxyError, match="not a valid collection FQCN"):
+            await client.fetch_collection_docs("just_one_part")
+
+    @pytest.mark.asyncio
+    async def test_silences_individual_module_failures(self, caplog):
+        """Individual module extraction failures are logged and skipped."""
+        blob_with_bad_module = {
+            "docs_blob": {
+                "contents": [
+                    {
+                        "content_type": "module",
+                        "content_name": "good_module",
+                        "doc_strings": {
+                            "doc": {
+                                "short_description": "A good module",
+                                "description": [],
+                                "options": [],
+                                "author": [],
+                                "notes": [],
+                                "version_added": "0.1.0",
+                            },
+                            "examples": "",
+                            "return": [],
+                            "metadata": {},
+                        },
+                    },
+                    {
+                        "content_type": "module",
+                        "content_name": "bad_module",
+                        "doc_strings": None,  # Will cause extraction to fail
+                    },
+                ],
+            },
+        }
+
+        async def mock_api_get(self_client, path, params=None, timeout=None):
+            if "versions/" in path and "docs-blob" not in path:
+                return SAMPLE_VERSIONS_RESPONSE
+            if "docs-blob" in path:
+                return blob_with_bad_module
+            return {}
+
+        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+            client = GalaxyClient()
+            import logging
+            with caplog.at_level(logging.WARNING, logger="ansible_know"):
+                docs, meta = await client.fetch_collection_docs("netbox.netbox")
+
+        assert "netbox.netbox.good_module" in docs
+        assert "netbox.netbox.bad_module" not in docs
+        assert len(docs) == 1
+        assert any("bad_module" in r.message and "metadata extraction failed" in r.message for r in caplog.records)
+
+
 class TestListCollectionModules:
     @pytest.mark.asyncio
     async def test_lists_modules_only(self):
@@ -1345,3 +1466,76 @@ class TestGalaxyClientAuth:
         assert gc._token == "tok123"
         assert gc._verify is False
         assert gc.server_name == "test_hub"
+
+
+class TestFindPlugin:
+    def test_finds_lookup_plugin(self, sample_docs_blob_with_plugins):
+        blob = sample_docs_blob_with_plugins["docs_blob"]
+        result = GalaxyClient._find_plugin(blob, "nb_lookup", "lookup")
+        assert result is not None
+        assert result["content_name"] == "nb_lookup"
+
+    def test_finds_filter_plugin(self, sample_docs_blob_with_plugins):
+        blob = sample_docs_blob_with_plugins["docs_blob"]
+        result = GalaxyClient._find_plugin(blob, "nb_filter", "filter")
+        assert result is not None
+
+    def test_returns_none_for_missing(self, sample_docs_blob_with_plugins):
+        blob = sample_docs_blob_with_plugins["docs_blob"]
+        result = GalaxyClient._find_plugin(blob, "nonexistent", "lookup")
+        assert result is None
+
+    def test_does_not_match_module_as_plugin(self, sample_docs_blob_with_plugins):
+        blob = sample_docs_blob_with_plugins["docs_blob"]
+        result = GalaxyClient._find_plugin(blob, "netbox_device", "lookup")
+        assert result is None
+
+
+class TestFetchPluginDoc:
+    @pytest.mark.asyncio
+    async def test_fetches_lookup_doc(self, sample_docs_blob_with_plugins):
+        client = GalaxyClient(base_url="https://galaxy.example.com")
+        with patch.object(client, "latest_version", return_value="1.0.0"):
+            with patch.object(client, "_fetch_docs_blob",
+                              return_value=sample_docs_blob_with_plugins["docs_blob"]):
+                doc, meta = await client.fetch_plugin_doc(
+                    "netbox.netbox.nb_lookup", "lookup",
+                )
+        assert "netbox.netbox.nb_lookup" in doc
+        assert meta["doc_source"] == "galaxy"
+
+    @pytest.mark.asyncio
+    async def test_raises_on_missing_plugin(self, sample_docs_blob_with_plugins):
+        client = GalaxyClient(base_url="https://galaxy.example.com")
+        with patch.object(client, "latest_version", return_value="1.0.0"):
+            with patch.object(client, "_fetch_docs_blob",
+                              return_value=sample_docs_blob_with_plugins["docs_blob"]):
+                with pytest.raises(GalaxyError, match="not found"):
+                    await client.fetch_plugin_doc(
+                        "netbox.netbox.nonexistent", "lookup",
+                    )
+
+
+class TestListCollectionPlugins:
+    @pytest.mark.asyncio
+    async def test_lists_plugins(self, sample_docs_blob_with_plugins):
+        client = GalaxyClient(base_url="https://galaxy.example.com")
+        with patch.object(client, "latest_version", return_value="1.0.0"):
+            with patch.object(client, "_fetch_docs_blob",
+                              return_value=sample_docs_blob_with_plugins["docs_blob"]):
+                plugins, meta = await client.list_collection_plugins("netbox.netbox")
+        assert "netbox.netbox.nb_lookup" in plugins
+        assert plugins["netbox.netbox.nb_lookup"]["plugin_type"] == "lookup"
+        assert "netbox.netbox.nb_filter" in plugins
+        assert "netbox.netbox.nb_inventory" in plugins
+        assert len(plugins) == 3
+
+    @pytest.mark.asyncio
+    async def test_excludes_modules_and_roles(self, sample_docs_blob_with_plugins):
+        client = GalaxyClient(base_url="https://galaxy.example.com")
+        with patch.object(client, "latest_version", return_value="1.0.0"):
+            with patch.object(client, "_fetch_docs_blob",
+                              return_value=sample_docs_blob_with_plugins["docs_blob"]):
+                plugins, _ = await client.list_collection_plugins("netbox.netbox")
+        fqcns = list(plugins.keys())
+        assert not any("netbox_device" in f for f in fqcns)

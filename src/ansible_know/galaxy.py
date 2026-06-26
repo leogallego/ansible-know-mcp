@@ -13,12 +13,12 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from ansible_know.cache import BoundedCache
-from ansible_know.config import GALAXY_BASE_URL
+from ansible_know.config import CACHE_DIR, GALAXY_BASE_URL
 from ansible_know.errors import GalaxyError
 
 if TYPE_CHECKING:
     from ansible_know.galaxy_config import GalaxyServerConfig
-    from ansible_know.types import DocProvenance
+    from ansible_know.types import DocProvenance, ModuleMetadata
 
 logger = logging.getLogger("ansible_know")
 
@@ -36,9 +36,11 @@ ENRICHMENT_CONCURRENCY = 5
 # cross-instance collisions. Thread-safe via BoundedCache.
 _version_cache: BoundedCache[tuple[str, str], str] = BoundedCache(
     max_size=500, ttl=CACHE_TTL_SECONDS,
+    path=CACHE_DIR / "galaxy-versions.json",
 )
 _blob_cache: BoundedCache[tuple[str, str, str], dict[str, Any]] = BoundedCache(
     max_size=50, ttl=CACHE_TTL_SECONDS,
+    path=CACHE_DIR / "galaxy-blobs.json",
 )
 
 
@@ -252,6 +254,10 @@ class GalaxyClient:
             role_count = sum(
                 1 for c in contents if c.get("content_type") == "role"
             )
+            from ansible_know.config import PLUGIN_TYPES
+            plugin_count = sum(
+                1 for c in contents if c.get("content_type") in PLUGIN_TYPES
+            )
             tags_list = [t["name"] for t in cv.get("tags", []) if isinstance(t, dict)]
             candidates.append({
                 "namespace": f"{ns}.{name}",
@@ -260,6 +266,7 @@ class GalaxyClient:
                 "latest_version": cv.get("version", ""),
                 "module_count": module_count,
                 "role_count": role_count,
+                "plugin_count": plugin_count,
                 "deprecated": False,
                 "signed": item.get("is_signed", False),
                 "_ns": ns,
@@ -331,6 +338,18 @@ class GalaxyClient:
         for item in blob.get("contents", []):
             if (
                 item.get("content_type") == "role"
+                and item.get("content_name") == short_name
+            ):
+                return item
+        return None
+
+    @staticmethod
+    def _find_plugin(
+        blob: dict[str, Any], short_name: str, plugin_type: str,
+    ) -> dict[str, Any] | None:
+        for item in blob.get("contents", []):
+            if (
+                item.get("content_type") == plugin_type
                 and item.get("content_name") == short_name
             ):
                 return item
@@ -436,6 +455,110 @@ class GalaxyClient:
             meta["doc_source_server"] = self.server_name
         return role_metadata, meta
 
+    async def fetch_plugin_doc(
+        self, plugin_name: str, plugin_type: str, version: str | None = None,
+    ) -> tuple[dict[str, Any], DocProvenance]:
+        """Fetch plugin documentation from Galaxy.
+
+        Returns (plugin_doc, meta) where plugin_doc mimics ansible-doc --json
+        format and meta contains provenance fields.
+        """
+        namespace, name, short_plugin = _parse_fqcn(plugin_name)
+        resolved_version = version or await self.latest_version(namespace, name)
+        is_latest = version is None
+
+        blob = await self._fetch_docs_blob(namespace, name, resolved_version)
+        plugin_entry = self._find_plugin(blob, short_plugin, plugin_type)
+        if plugin_entry is None:
+            raise GalaxyError(
+                f"Plugin '{short_plugin}' (type={plugin_type}) not found in "
+                f"{namespace}.{name} {resolved_version} docs-blob."
+            )
+
+        from ansible_know.parser import transform_galaxy_to_ansible_doc_format
+        doc = transform_galaxy_to_ansible_doc_format(plugin_name, plugin_entry)
+
+        meta: DocProvenance = {
+            "doc_source": "galaxy",
+            "doc_version": resolved_version,
+        }
+        if is_latest:
+            meta["doc_warning"] = (
+                f"Documentation sourced from Galaxy "
+                f"({namespace}.{name} {resolved_version}). "
+                f"Your installed version may differ."
+            )
+        if self.server_name:
+            meta["doc_source_server"] = self.server_name
+        return doc, meta
+
+    async def fetch_collection_docs(
+        self, collection_namespace: str, version: str | None = None,
+    ) -> tuple[dict[str, ModuleMetadata], DocProvenance]:
+        """Fetch all module docs from a collection in one docs-blob call.
+
+        Extracts every module entry from the blob, returning a dict keyed
+        by module FQCN. Transforms each into
+        the same ``ModuleMetadata`` shape that ``extract_module_metadata``
+        produces from ansible-doc output.
+
+        Contract:
+            Preconditions:
+                - ``collection_namespace`` must be 'namespace.name' format
+                  (two dot-separated segments). Raises ``GalaxyError`` if not.
+
+            Raises:
+                GalaxyError: If the namespace is malformed, the collection is
+                    not found on Galaxy, or the API request fails.
+
+            Silences:
+                - Individual modules whose ``transform_galaxy_to_ansible_doc_format``
+                  or ``extract_module_metadata`` raises are logged and skipped.
+                  The caller receives docs for the remaining modules with no
+                  indication of partial failure (check logs).
+        """
+        from ansible_know.parser import (
+            extract_module_metadata,
+            transform_galaxy_to_ansible_doc_format,
+        )
+
+        parts = collection_namespace.split(".")
+        if len(parts) != 2:
+            raise GalaxyError(
+                f"'{collection_namespace}' is not a valid collection FQCN "
+                f"(expected namespace.name)."
+            )
+        namespace, name = parts
+        resolved_version = version or await self.latest_version(namespace, name)
+        is_latest = version is None
+
+        blob = await self._fetch_docs_blob(namespace, name, resolved_version)
+        result: dict[str, ModuleMetadata] = {}
+        for item in blob.get("contents", []):
+            if item.get("content_type") != "module":
+                continue
+            short_name = item.get("content_name", "")
+            fqcn = f"{collection_namespace}.{short_name}"
+            try:
+                raw_doc = transform_galaxy_to_ansible_doc_format(fqcn, item)
+                result[fqcn] = extract_module_metadata(raw_doc)
+            except Exception:
+                logger.warning("Skipping module %s: metadata extraction failed", fqcn, exc_info=True)
+
+        meta: DocProvenance = {
+            "doc_source": "galaxy",
+            "doc_version": resolved_version,
+        }
+        if is_latest:
+            meta["doc_warning"] = (
+                f"Documentation sourced from Galaxy "
+                f"({namespace}.{name} {resolved_version}). "
+                f"Your installed version may differ."
+            )
+        if self.server_name:
+            meta["doc_source_server"] = self.server_name
+        return result, meta
+
     async def list_collection_modules(
         self, collection_fqcn: str, version: str | None = None,
     ) -> tuple[dict[str, str], dict[str, str]]:
@@ -499,3 +622,44 @@ class GalaxyClient:
 
         meta = {"source": "galaxy", "version": resolved_version}
         return roles, meta
+
+    async def list_collection_plugins(
+        self, collection_fqcn: str, version: str | None = None,
+    ) -> tuple[dict[str, dict[str, str]], dict[str, str]]:
+        """List plugins in a collection from the Galaxy docs-blob.
+
+        Returns (plugins, meta) where plugins is
+        {fqcn: {"description": str, "plugin_type": str}, ...}.
+        Excludes modules and roles.
+
+        Not currently called from the MCP server — manifest generation uses
+        local parser.list_plugins instead. This method enables future Galaxy
+        fallback for manifest generation when collections are not installed
+        locally (parallel to fetch_plugin_doc which IS used for fallback).
+        """
+        from ansible_know.config import PLUGIN_TYPES
+
+        parts = collection_fqcn.split(".")
+        if len(parts) != 2:
+            raise GalaxyError(
+                f"'{collection_fqcn}' is not a valid collection FQCN "
+                f"(expected namespace.name)."
+            )
+        namespace, name = parts
+        resolved_version = version or await self.latest_version(namespace, name)
+
+        blob = await self._fetch_docs_blob(namespace, name, resolved_version)
+        plugins: dict[str, dict[str, str]] = {}
+        for item in blob.get("contents", []):
+            ct = item.get("content_type", "")
+            if ct not in PLUGIN_TYPES:
+                continue
+            short = item.get("content_name", "")
+            fqcn = f"{collection_fqcn}.{short}"
+            desc = item.get("doc_strings", {}).get("doc", {}).get(
+                "short_description", "",
+            ) or ""
+            plugins[fqcn] = {"description": desc, "plugin_type": ct}
+
+        meta = {"source": "galaxy", "version": resolved_version}
+        return plugins, meta

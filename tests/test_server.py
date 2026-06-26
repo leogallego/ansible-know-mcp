@@ -216,13 +216,17 @@ class TestGenerateSkillTool:
 class TestGenerateCollectionSkillsTool:
     @pytest.mark.asyncio
     async def test_generates_collection_skills(self, tmp_path, mock_ansible_doc, monkeypatch):
-        mock_ansible_doc.side_effect = [
-            json.dumps(SAMPLE_MODULE_LIST),
-            json.dumps(SAMPLE_MODULE_DOC),
-            json.dumps(SAMPLE_MODULE_DOC),
-            json.dumps(SAMPLE_MODULE_DOC),
-            json.dumps(SAMPLE_MODULE_DOC),
+        # Module list, role list (empty), 14x plugin list (empty), then 4x module docs
+        responses = [
+            json.dumps(SAMPLE_MODULE_LIST),  # search_modules
+            json.dumps({}),  # list_roles
         ]
+        # 14 plugin types all return empty
+        responses.extend([json.dumps({})] * 14)
+        # 4 module doc fetches
+        responses.extend([json.dumps(SAMPLE_MODULE_DOC)] * 4)
+
+        mock_ansible_doc.side_effect = responses
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
         from ansible_know.server import generate_collection_skills
         result = await generate_collection_skills("ansible.builtin", install_to=str(tmp_path))
@@ -230,6 +234,51 @@ class TestGenerateCollectionSkillsTool:
         assert result["succeeded"] + result["failed"] == 4
         assert result["collection_skill"] == "ansible.builtin"
         assert (tmp_path / "ansible.builtin" / "SKILL.md").exists()
+
+    @pytest.mark.asyncio
+    async def test_galaxy_batch_fallback(self, tmp_path, mock_ansible_doc, monkeypatch):
+        """When search_modules returns empty, falls back to Galaxy batch fetch."""
+        # search_modules returns empty (collection not installed)
+        # list_roles returns empty
+        # 14 plugin types return empty
+        responses = [
+            json.dumps({}),  # search_modules — empty
+            json.dumps({}),  # list_roles — empty
+        ]
+        responses.extend([json.dumps({})] * 14)  # 14 plugin types
+
+        mock_ansible_doc.side_effect = responses
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+
+        sample_batch = {
+            "netbox.netbox.netbox_device": {
+                "module_name": "netbox.netbox.netbox_device",
+                "short_description": "Create, update or delete devices",
+                "params": [{"name": "data", "type": "dict", "required": True,
+                            "default": None, "choices": None,
+                            "description": "Device data", "aliases": []}],
+                "examples": "- name: Create\n  netbox.netbox.netbox_device:\n    data: {}\n",
+                "is_api_module": True,
+            },
+        }
+
+        with patch(
+            "ansible_know.resolution.resolve_collection_module_docs",
+            new_callable=AsyncMock,
+            return_value={
+                "modules": sample_batch,
+                "doc_source": "galaxy",
+                "doc_version": "3.23.0",
+            },
+        ):
+            from ansible_know.server import generate_collection_skills
+            result = await generate_collection_skills(
+                "netbox.netbox", install_to=str(tmp_path),
+            )
+
+        assert result["total"] == 1
+        assert result["succeeded"] == 1
+        assert (tmp_path / "netbox.netbox" / "netbox_device" / "SKILL.md").exists()
 
 
 class TestFQCNValidation:
@@ -343,78 +392,78 @@ class TestSkillNameValidation:
 
 class TestGetSkillSync:
     def test_returns_content_for_namespace_skill(self, tmp_path):
-        from ansible_know.server import _get_skill_sync
+        from ansible_know.skills import get_skill_sync
 
         coll_dir = tmp_path / "netbox.netbox"
         coll_dir.mkdir()
         (coll_dir / "SKILL.md").write_text("collection skill content")
-        assert _get_skill_sync(tmp_path, "netbox.netbox") == "collection skill content"
+        assert get_skill_sync(tmp_path, "netbox.netbox") == "collection skill content"
 
     def test_returns_content_for_nested_module_skill(self, tmp_path):
-        from ansible_know.server import _get_skill_sync
+        from ansible_know.skills import get_skill_sync
 
         mod_dir = tmp_path / "netbox.netbox" / "netbox_device"
         mod_dir.mkdir(parents=True)
         (mod_dir / "SKILL.md").write_text("module skill content")
-        assert _get_skill_sync(tmp_path, "netbox.netbox.netbox_device") == "module skill content"
+        assert get_skill_sync(tmp_path, "netbox.netbox.netbox_device") == "module skill content"
 
     def test_falls_back_to_flat_layout(self, tmp_path):
-        from ansible_know.server import _get_skill_sync
+        from ansible_know.skills import get_skill_sync
 
         flat_dir = tmp_path / "netbox.netbox.netbox_device"
         flat_dir.mkdir()
         (flat_dir / "SKILL.md").write_text("flat skill content")
-        assert _get_skill_sync(tmp_path, "netbox.netbox.netbox_device") == "flat skill content"
+        assert get_skill_sync(tmp_path, "netbox.netbox.netbox_device") == "flat skill content"
 
     def test_raises_for_missing_skill(self, tmp_path):
-        from ansible_know.server import _get_skill_sync
+        from ansible_know.skills import get_skill_sync
 
         with pytest.raises(FileNotFoundError, match="not found"):
-            _get_skill_sync(tmp_path, "no.such.module")
+            get_skill_sync(tmp_path, "no.such.module")
 
 
 class TestExtractSkillDescription:
     def test_extracts_simple_description(self, tmp_path):
-        from ansible_know.server import _extract_skill_description
+        from ansible_know.skills import extract_skill_description
 
         skill_md = tmp_path / "SKILL.md"
         skill_md.write_text("---\nname: test\ndescription: A test skill\n---\n")
-        assert _extract_skill_description(skill_md) == "A test skill"
+        assert extract_skill_description(skill_md) == "A test skill"
 
     def test_returns_empty_when_no_description(self, tmp_path):
-        from ansible_know.server import _extract_skill_description
+        from ansible_know.skills import extract_skill_description
 
         skill_md = tmp_path / "SKILL.md"
         skill_md.write_text("---\nname: test\n---\nSome content\n")
-        assert _extract_skill_description(skill_md) == ""
+        assert extract_skill_description(skill_md) == ""
 
     def test_returns_empty_for_empty_file(self, tmp_path):
-        from ansible_know.server import _extract_skill_description
+        from ansible_know.skills import extract_skill_description
 
         skill_md = tmp_path / "SKILL.md"
         skill_md.write_text("")
-        assert _extract_skill_description(skill_md) == ""
+        assert extract_skill_description(skill_md) == ""
 
     def test_strips_folded_scalar_marker(self, tmp_path):
-        from ansible_know.server import _extract_skill_description
+        from ansible_know.skills import extract_skill_description
 
         skill_md = tmp_path / "SKILL.md"
         skill_md.write_text("---\nname: test\ndescription: >-\n  Multiline\n---\n")
-        assert _extract_skill_description(skill_md) == ""
+        assert extract_skill_description(skill_md) == ""
 
     def test_description_with_colon_in_value(self, tmp_path):
-        from ansible_know.server import _extract_skill_description
+        from ansible_know.skills import extract_skill_description
 
         skill_md = tmp_path / "SKILL.md"
         skill_md.write_text("---\nname: test\ndescription: Manage devices: create and update\n---\n")
-        assert _extract_skill_description(skill_md) == "Manage devices: create and update"
+        assert extract_skill_description(skill_md) == "Manage devices: create and update"
 
     def test_description_bare_colon_no_value(self, tmp_path):
-        from ansible_know.server import _extract_skill_description
+        from ansible_know.skills import extract_skill_description
 
         skill_md = tmp_path / "SKILL.md"
         skill_md.write_text("---\nname: test\ndescription:\n---\n")
-        assert _extract_skill_description(skill_md) == ""
+        assert extract_skill_description(skill_md) == ""
 
 
 class TestPathTraversal:
@@ -529,14 +578,19 @@ class TestMissingCollectionHints:
         assert "ensure_collection" not in result["error"]
 
     @pytest.mark.asyncio
-    async def test_get_module_doc_hint_on_local_only_failure(self, mock_ansible_doc):
-        from ansible_know.errors import AnsibleDocError
-        mock_ansible_doc.side_effect = AnsibleDocError(
+    async def test_get_module_doc_hint_suppressed_when_galaxy_tried(self, mock_ansible_doc):
+        from ansible_know.errors import CollectionNotFoundError, GalaxyError
+        mock_ansible_doc.side_effect = CollectionNotFoundError(
             "ansible-doc failed (exit 1): netbox.netbox was not found"
         )
-        from ansible_know.server import get_module_doc
-        result = await get_module_doc("netbox.netbox.netbox_device")
-        assert "ensure_collection" in result["error"]
+        with patch(
+            "ansible_know.galaxy.GalaxyClient.fetch_module_doc",
+            side_effect=GalaxyError("Galaxy also failed"),
+        ):
+            from ansible_know.server import get_module_doc
+            result = await get_module_doc("netbox.netbox.netbox_device")
+        assert "error" in result
+        assert "ensure_collection" not in result["error"]
 
     @pytest.mark.asyncio
     async def test_search_modules_hint(self, mock_ansible_doc):
@@ -643,18 +697,18 @@ class TestGalaxyDocsFallback:
         assert result["short_description"] == "Create, update or delete devices"
 
     @pytest.mark.asyncio
-    async def test_get_module_doc_no_fallback_for_non_missing_errors(self, mock_ansible_doc):
-        from ansible_know.errors import AnsibleDocError
+    async def test_get_module_doc_falls_back_to_galaxy_on_ansible_doc_error(self, mock_ansible_doc):
+        from ansible_know.errors import AnsibleDocError, GalaxyError
         mock_ansible_doc.side_effect = AnsibleDocError("ansible-doc timed out")
 
         with patch(
             "ansible_know.galaxy.GalaxyClient.fetch_module_doc",
-            side_effect=AssertionError("Galaxy fallback should not fire"),
+            side_effect=GalaxyError("not found on Galaxy"),
         ):
             from ansible_know.server import get_module_doc
             result = await get_module_doc("ansible.builtin.copy")
         assert "error" in result
-        assert "timed out" in result["error"]
+        assert "not found on Galaxy" in result["error"]
 
     @pytest.mark.asyncio
     async def test_get_module_doc_returns_error_when_both_fail(self, mock_ansible_doc):
@@ -1170,7 +1224,14 @@ class TestLifespanHttpClient:
         mock_ctx = _make_mock_ctx(state, shared, http_client=mock_client)
 
         with patch("ansible_know.resolution.resolve_module_doc") as mock_resolve:
-            mock_resolve.return_value = (SAMPLE_MODULE_DOC, None)
+            mock_resolve.return_value = {
+                "module_name": "ansible.builtin.package",
+                "short_description": "Generic OS package manager",
+                "params": [], "examples": "",
+                "is_api_module": False,
+                "content_type": "module",
+                "doc_source": "local",
+            }
             from ansible_know.server import get_module_doc
             await get_module_doc("ansible.builtin.package", ctx=mock_ctx)
 
@@ -1743,3 +1804,177 @@ class TestClearCache:
 
         assert "error" in result
         assert "Invalid scope" in result["error"]
+
+
+class TestSearchPlugins:
+    @pytest.mark.asyncio
+    async def test_returns_matching_plugins(self):
+        mock_results = {
+            "netbox.netbox.nb_lookup": "Queries and returns elements from NetBox",
+        }
+        with patch("ansible_know.parser.search_plugins", return_value=mock_results):
+            from ansible_know.server import search_plugins
+            result = await search_plugins("netbox", plugin_type="lookup")
+        assert "netbox.netbox.nb_lookup" in result
+
+    @pytest.mark.asyncio
+    async def test_validates_plugin_type(self):
+        from ansible_know.server import search_plugins
+        result = await search_plugins("test", plugin_type="bogus_type")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_empty_keyword_rejected(self):
+        from ansible_know.server import search_plugins
+        result = await search_plugins("", plugin_type="lookup")
+        assert "error" in result
+
+
+class TestGetPluginDoc:
+    @pytest.mark.asyncio
+    async def test_returns_plugin_metadata(self):
+        mock_result = {
+            "plugin_name": "netbox.netbox.nb_lookup",
+            "plugin_type": "lookup",
+            "short_description": "Queries NetBox",
+            "params": [],
+            "examples": "",
+            "doc_source": "local",
+            "content_type": "plugin",
+        }
+        with patch("ansible_know.resolution.resolve_plugin_doc", return_value=mock_result):
+            from ansible_know.server import get_plugin_doc
+            result = await get_plugin_doc("netbox.netbox.nb_lookup", "lookup")
+        assert result["plugin_name"] == "netbox.netbox.nb_lookup"
+        assert result["plugin_type"] == "lookup"
+
+    @pytest.mark.asyncio
+    async def test_validates_fqcn(self):
+        from ansible_know.server import get_plugin_doc
+        result = await get_plugin_doc("invalid", "lookup")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_validates_plugin_type(self):
+        from ansible_know.server import get_plugin_doc
+        result = await get_plugin_doc("ns.col.name", "bogus")
+        assert "error" in result
+
+
+class TestGeneratePluginSkill:
+    @pytest.mark.asyncio
+    async def test_returns_skill_content(self, tmp_path):
+        mock_result = {
+            "plugin_name": "netbox.netbox.nb_lookup",
+            "plugin_type": "lookup",
+            "short_description": "Queries NetBox",
+            "params": [],
+            "examples": "",
+            "doc_source": "local",
+            "content_type": "plugin",
+        }
+        with patch("ansible_know.resolution.resolve_plugin_doc", return_value=mock_result):
+            with patch("ansible_know.skills.write_plugin_skill_package"):
+                from ansible_know.server import generate_plugin_skill
+                result = await generate_plugin_skill(
+                    "netbox.netbox.nb_lookup", "lookup",
+                )
+        assert isinstance(result, str)
+        assert "nb_lookup" in result
+
+
+class TestGetPluginSkill:
+    @pytest.mark.asyncio
+    async def test_finds_plugin_skill_by_fqcn(self, tmp_path):
+        skill_dir = tmp_path / "netbox.netbox" / "lookup__nb_lookup"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("---\nname: netbox.netbox.nb_lookup\n---\nlookup skill")
+        with patch("ansible_know.config.SKILLS_DIR", tmp_path):
+            from ansible_know.server import get_skill
+            result = await get_skill("netbox.netbox.nb_lookup")
+        assert "lookup skill" in result
+
+    @pytest.mark.asyncio
+    async def test_module_skill_takes_precedence(self, tmp_path):
+        # If both a module and plugin skill exist, module (direct name) wins
+        mod_dir = tmp_path / "netbox.netbox" / "nb_lookup"
+        mod_dir.mkdir(parents=True)
+        (mod_dir / "SKILL.md").write_text("module skill")
+        plugin_dir = tmp_path / "netbox.netbox" / "lookup__nb_lookup"
+        plugin_dir.mkdir(parents=True)
+        (plugin_dir / "SKILL.md").write_text("plugin skill")
+        with patch("ansible_know.config.SKILLS_DIR", tmp_path):
+            from ansible_know.server import get_skill
+            result = await get_skill("netbox.netbox.nb_lookup")
+        assert "module skill" in result
+
+
+class TestListPluginSkills:
+    @pytest.mark.asyncio
+    async def test_strips_type_prefix_from_name(self, tmp_path):
+        skill_dir = tmp_path / "netbox.netbox" / "lookup__nb_lookup"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("---\nname: test\n---\n")
+        with patch("ansible_know.config.SKILLS_DIR", tmp_path):
+            from ansible_know.server import list_skills
+            result = await list_skills(collection="netbox.netbox")
+        names = [s["name"] for s in result]
+        assert "netbox.netbox.nb_lookup" in names
+        assert "netbox.netbox.lookup__nb_lookup" not in names
+
+
+class TestResourceSkillsListPlugins:
+    def test_strips_type_prefix_in_resource(self, tmp_path):
+        skill_dir = tmp_path / "netbox.netbox" / "lookup__nb_lookup"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("---\nname: test\n---\n")
+        with patch("ansible_know.config.SKILLS_DIR", tmp_path):
+            from ansible_know.server import resource_skills_list
+            result = json.loads(resource_skills_list())
+        assert "netbox.netbox.nb_lookup" in result
+        assert "netbox.netbox.lookup__nb_lookup" not in result
+
+
+class TestGetCollectionDocsTool:
+    @pytest.mark.asyncio
+    async def test_returns_batch_docs(self, mock_ansible_doc):
+        from ansible_know.server import get_collection_docs
+
+        sample_result = {
+            "modules": {
+                "netbox.netbox.netbox_device": {
+                    "module_name": "netbox.netbox.netbox_device",
+                    "short_description": "Create, update or delete devices",
+                    "params": [],
+                    "examples": "",
+                    "is_api_module": True,
+                },
+            },
+            "doc_source": "galaxy",
+            "doc_version": "3.23.0",
+        }
+
+        with patch(
+            "ansible_know.resolution.resolve_collection_module_docs",
+            new_callable=AsyncMock,
+            return_value=sample_result,
+        ):
+            result = await get_collection_docs("netbox.netbox")
+
+        assert "modules" in result
+        assert "netbox.netbox.netbox_device" in result["modules"]
+        assert result["doc_source"] == "galaxy"
+
+    @pytest.mark.asyncio
+    async def test_rejects_invalid_namespace(self):
+        from ansible_know.server import get_collection_docs
+
+        result = await get_collection_docs("invalid")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_rejects_fqcn_with_three_parts(self):
+        from ansible_know.server import get_collection_docs
+
+        result = await get_collection_docs("a.b.c")
+        assert "error" in result

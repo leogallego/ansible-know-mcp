@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 from ansible_know.errors import ValidationError
 
 __all__ = [
+    "extract_namespace",
     "sanitize_error",
     "truncate_response",
     "validate_doc_url",
@@ -17,6 +18,7 @@ __all__ = [
     "validate_keyword",
     "validate_namespace",
     "validate_path_containment",
+    "validate_plugin_type",
     "validate_query",
     "validate_skill_name",
     "validate_tags",
@@ -68,6 +70,8 @@ def validate_namespace(ns: str) -> None:
 
 
 def validate_keyword(keyword: str) -> None:
+    if not keyword or not keyword.strip():
+        raise ValidationError("Keyword must not be empty.")
     if len(keyword) > MAX_KEYWORD_LENGTH:
         raise ValidationError(
             f"Keyword too long: {len(keyword)} chars (max {MAX_KEYWORD_LENGTH})."
@@ -118,6 +122,15 @@ def validate_path_containment(child: Path, parent: Path) -> None:
         raise ValidationError("Path escapes the allowed directory.") from exc
 
 
+def extract_namespace(fqcn: str) -> str | None:
+    """Extract the collection namespace from a fully-qualified name.
+
+    Returns 'namespace.collection' from 'namespace.collection.name',
+    or None if the name has no dots.
+    """
+    return ".".join(fqcn.split(".")[:2]) if "." in fqcn else None
+
+
 def sanitize_error(msg: str) -> str:
     return _PATH_RE.sub("<path>", str(msg))
 
@@ -126,6 +139,17 @@ def truncate_response(text: str) -> str:
     if len(text) > MAX_RESPONSE_SIZE:
         return text[:MAX_RESPONSE_SIZE] + "\n\n[Truncated — response exceeded size limit]"
     return text
+
+
+def validate_plugin_type(plugin_type: str) -> None:
+    """Raise ValidationError if plugin_type is not a recognized ansible-doc type."""
+    from ansible_know.config import PLUGIN_TYPES
+
+    if plugin_type not in PLUGIN_TYPES:
+        raise ValidationError(
+            f"Invalid plugin type '{plugin_type}'. "
+            f"Valid types: {', '.join(sorted(PLUGIN_TYPES))}"
+        )
 
 
 def validate_doc_url(url: str) -> None:

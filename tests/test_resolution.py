@@ -1,11 +1,13 @@
 """Tests for ansible_know.resolution module."""
 
 import json
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from ansible_know.errors import CollectionNotFoundError, GalaxyError
 from ansible_know.galaxy import GalaxyClient
+from ansible_know.resolution import discover_collection_plugins, resolve_plugin_doc
 from tests.conftest import SAMPLE_MODULE_DOC, SAMPLE_ROLE_DOC
 
 FACTORY = GalaxyClient.from_config
@@ -30,26 +32,24 @@ class TestResolveModuleDoc:
     async def test_local_success_no_galaxy(self, mock_ansible_doc, missing):
         mock_ansible_doc.return_value = json.dumps(SAMPLE_MODULE_DOC)
         from ansible_know.resolution import resolve_module_doc
-        raw_doc, galaxy_meta = await resolve_module_doc(
+        result = await resolve_module_doc(
             "ansible.builtin.package", missing_collections=missing,
         )
-        assert "ansible.builtin.package" in raw_doc
-        assert galaxy_meta is None
+        assert result["module_name"] == "ansible.builtin.package"
+        assert result["content_type"] == "module"
+        assert result["doc_source"] == "local"
 
     @pytest.mark.asyncio
-    async def test_non_missing_collection_error_not_retried(self, mock_ansible_doc, missing):
+    async def test_non_missing_collection_error_returns_unavailable(self, mock_ansible_doc, missing):
         from ansible_know.errors import AnsibleDocError
         mock_ansible_doc.side_effect = AnsibleDocError("ansible-doc timed out")
 
-        with patch(
-            "ansible_know.galaxy.GalaxyClient.fetch_module_doc",
-            side_effect=AssertionError("Galaxy should not be called"),
-        ):
-            from ansible_know.resolution import resolve_module_doc
-            with pytest.raises(AnsibleDocError, match="timed out"):
-                await resolve_module_doc(
-                    "ansible.builtin.copy", missing_collections=missing,
-                )
+        from ansible_know.resolution import resolve_module_doc
+        result = await resolve_module_doc(
+            "ansible.builtin.copy", missing_collections=missing,
+        )
+        assert result["doc_source"] == "unavailable"
+        assert "ansible.builtin" not in missing
 
     @pytest.mark.asyncio
     async def test_galaxy_fallback_on_missing_collection(self, mock_ansible_doc, missing):
@@ -76,17 +76,19 @@ class TestResolveModuleDoc:
             return_value=(galaxy_doc, galaxy_meta),
         ):
             from ansible_know.resolution import resolve_module_doc
-            raw_doc, meta = await resolve_module_doc(
+            result = await resolve_module_doc(
                 "netbox.netbox.netbox_device",
                 client_factory=FACTORY,
                 missing_collections=missing,
             )
 
-        assert raw_doc == galaxy_doc
-        assert meta["doc_source"] == "galaxy"
+        assert result["module_name"] == "netbox.netbox.netbox_device"
+        assert result["doc_source"] == "galaxy"
+        assert result["doc_version"] == "3.23.0"
+        assert result["content_type"] == "module"
 
     @pytest.mark.asyncio
-    async def test_both_fail_raises_local_error(self, mock_ansible_doc, missing):
+    async def test_both_fail_returns_error(self, mock_ansible_doc, missing):
         from ansible_know.errors import CollectionNotFoundError, GalaxyError
         mock_ansible_doc.side_effect = CollectionNotFoundError(
             "ansible-doc failed (exit 1): some.col.mod was not found"
@@ -97,12 +99,14 @@ class TestResolveModuleDoc:
             side_effect=GalaxyError("Module 'mod' not found in docs-blob"),
         ):
             from ansible_know.resolution import resolve_module_doc
-            with pytest.raises(CollectionNotFoundError, match="was not found"):
-                await resolve_module_doc(
-                    "some.col.mod",
-                    client_factory=FACTORY,
-                    missing_collections=missing,
-                )
+            result = await resolve_module_doc(
+                "some.col.mod",
+                client_factory=FACTORY,
+                missing_collections=missing,
+            )
+
+        assert result["doc_source"] == "unavailable"
+        assert "error" in result
 
 
 class TestResolveRoleDoc:
@@ -186,14 +190,14 @@ class TestNegativeCache:
             return_value=(galaxy_doc, galaxy_meta),
         ):
             from ansible_know.resolution import resolve_module_doc
-            raw_doc, meta = await resolve_module_doc(
+            result = await resolve_module_doc(
                 "netbox.netbox.netbox_device",
                 client_factory=FACTORY,
                 missing_collections=missing,
             )
 
         mock_ansible_doc.assert_not_called()
-        assert meta["doc_source"] == "galaxy"
+        assert result["doc_source"] == "galaxy"
 
     @pytest.mark.asyncio
     async def test_populates_cache_on_collection_not_found(self, mock_ansible_doc, missing):
@@ -206,14 +210,15 @@ class TestNegativeCache:
             side_effect=GalaxyError("not found"),
         ):
             from ansible_know.resolution import resolve_module_doc
-            with pytest.raises(CollectionNotFoundError):
-                await resolve_module_doc(
-                    "netbox.netbox.netbox_device",
-                    client_factory=FACTORY,
-                    missing_collections=missing,
-                )
+            result = await resolve_module_doc(
+                "netbox.netbox.netbox_device",
+                client_factory=FACTORY,
+                missing_collections=missing,
+            )
 
         assert "netbox.netbox" in missing
+        assert result["doc_source"] == "unavailable"
+        assert "error" in result
 
     @pytest.mark.asyncio
     async def test_does_not_cache_non_collection_errors(self, mock_ansible_doc, missing):
@@ -222,11 +227,11 @@ class TestNegativeCache:
         mock_ansible_doc.side_effect = AnsibleDocError("ansible-doc timed out")
 
         from ansible_know.resolution import resolve_module_doc
-        with pytest.raises(AnsibleDocError):
-            await resolve_module_doc(
-                "ansible.builtin.copy", missing_collections=missing,
-            )
+        result = await resolve_module_doc(
+            "ansible.builtin.copy", missing_collections=missing,
+        )
 
+        assert result["doc_source"] == "unavailable"
         assert "ansible.builtin" not in missing
 
     def test_clear_missing_namespace(self):
@@ -357,3 +362,201 @@ class TestSearchGalaxyCollections:
                 await search_galaxy_collections(
                     "net", galaxy_servers=[server], client_factory=FACTORY,
                 )
+
+
+class TestDiscoverCollectionPlugins:
+    @pytest.mark.asyncio
+    async def test_returns_results_for_each_type(self):
+        with patch("ansible_know.parser.list_plugins", return_value={}):
+            results = await discover_collection_plugins("netbox.netbox")
+        from ansible_know.config import PLUGIN_TYPES
+        assert len(results) == len(PLUGIN_TYPES)
+        assert all(isinstance(r, tuple) and len(r) == 2 for r in results)
+
+    @pytest.mark.asyncio
+    async def test_collects_discovered_plugins(self):
+        def fake_list(ptype, collection_filter=None, collections_path=None):
+            if ptype == "lookup":
+                return {"netbox.netbox.nb_lookup": "Query NetBox"}
+            return {}
+
+        with patch("ansible_know.parser.list_plugins", side_effect=fake_list):
+            results = await discover_collection_plugins("netbox.netbox")
+
+        lookup_results = [r for r in results if r[0] == "lookup"]
+        assert len(lookup_results) == 1
+        assert "netbox.netbox.nb_lookup" in lookup_results[0][1]
+
+    @pytest.mark.asyncio
+    async def test_handles_failures_gracefully(self):
+        from ansible_know.errors import AnsibleDocError
+
+        def failing_list(ptype, collection_filter=None, collections_path=None):
+            if ptype == "lookup":
+                return {"netbox.netbox.nb_lookup": "Query NetBox"}
+            raise AnsibleDocError("not supported")
+
+        with patch("ansible_know.parser.list_plugins", side_effect=failing_list):
+            results = await discover_collection_plugins("netbox.netbox")
+
+        from ansible_know.config import PLUGIN_TYPES
+        assert len(results) == len(PLUGIN_TYPES)
+        lookup_results = [r for r in results if r[0] == "lookup"]
+        assert lookup_results[0][1] == {"netbox.netbox.nb_lookup": "Query NetBox"}
+        failed_results = [r for r in results if r[0] != "lookup"]
+        assert all(plugins == {} for _, plugins in failed_results)
+
+
+class TestResolvePluginDoc:
+    @pytest.mark.asyncio
+    async def test_returns_local_doc(self):
+        mock_doc = {
+            "netbox.netbox.nb_lookup": {
+                "doc": {
+                    "short_description": "Queries NetBox",
+                    "options": {},
+                },
+                "examples": "",
+            },
+        }
+        with patch("ansible_know.parser.get_plugin_doc", return_value=mock_doc):
+            with patch("ansible_know.parser.extract_plugin_metadata", return_value={
+                "plugin_name": "netbox.netbox.nb_lookup",
+                "plugin_type": "lookup",
+                "short_description": "Queries NetBox",
+                "params": [],
+                "examples": "",
+            }):
+                result = await resolve_plugin_doc("netbox.netbox.nb_lookup", "lookup")
+        assert result["doc_source"] == "local"
+        assert result["plugin_type"] == "lookup"
+        assert result["plugin_name"] == "netbox.netbox.nb_lookup"
+        assert result["content_type"] == "plugin"
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_galaxy(self):
+        galaxy_doc = {
+            "netbox.netbox.nb_lookup": {
+                "doc": {"short_description": "Queries NetBox", "options": {}},
+                "examples": "",
+            },
+        }
+        galaxy_meta = {"doc_source": "galaxy", "doc_version": "1.0.0"}
+
+        mock_client = AsyncMock()
+        mock_client.fetch_plugin_doc = AsyncMock(return_value=(galaxy_doc, galaxy_meta))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+
+        def factory(config, http_client=None):
+            return mock_client
+
+        with patch("ansible_know.parser.get_plugin_doc", side_effect=CollectionNotFoundError("not found")):
+            with patch("ansible_know.parser.extract_plugin_metadata", return_value={
+                "plugin_name": "netbox.netbox.nb_lookup",
+                "plugin_type": "lookup",
+                "short_description": "Queries NetBox",
+                "params": [],
+                "examples": "",
+            }):
+                from ansible_know.galaxy_config import GalaxyServerConfig
+                servers = [GalaxyServerConfig(name="galaxy", url="https://galaxy.ansible.com")]
+                result = await resolve_plugin_doc(
+                    "netbox.netbox.nb_lookup", "lookup",
+                    galaxy_servers=servers,
+                    client_factory=factory,
+                )
+        assert result["doc_source"] == "galaxy"
+        assert result["content_type"] == "plugin"
+
+    @pytest.mark.asyncio
+    async def test_unavailable_when_no_client(self):
+        with patch("ansible_know.parser.get_plugin_doc", side_effect=CollectionNotFoundError("not found")):
+            result = await resolve_plugin_doc("netbox.netbox.nb_lookup", "lookup")
+        assert result["doc_source"] == "unavailable"
+        assert result["content_type"] == "plugin"
+        assert result["plugin_type"] == "lookup"
+        assert "params" in result
+
+
+class TestResolveCollectionModuleDocs:
+    """Tests for resolve_collection_module_docs batch resolution."""
+
+    @pytest.mark.asyncio
+    async def test_returns_galaxy_docs(self, missing):
+        """Batch fetch via Galaxy returns all module docs."""
+        from ansible_know.resolution import resolve_collection_module_docs
+
+        sample_modules = {
+            "netbox.netbox.netbox_device": {
+                "module_name": "netbox.netbox.netbox_device",
+                "short_description": "Create, update or delete devices",
+                "params": [],
+                "examples": "",
+                "is_api_module": True,
+            },
+        }
+        galaxy_meta = {"doc_source": "galaxy", "doc_version": "3.23.0"}
+
+        with patch(
+            "ansible_know.galaxy.GalaxyClient.fetch_collection_docs",
+            new_callable=AsyncMock,
+            return_value=(sample_modules, galaxy_meta),
+        ):
+            result = await resolve_collection_module_docs(
+                "netbox.netbox",
+                galaxy_servers=[],
+                client_factory=FACTORY,
+            )
+
+        assert result["doc_source"] == "galaxy"
+        assert "netbox.netbox.netbox_device" in result["modules"]
+        assert result["doc_version"] == "3.23.0"
+
+    @pytest.mark.asyncio
+    async def test_galaxy_failure_returns_error(self, missing):
+        """When Galaxy fails, returns error response."""
+        from ansible_know.resolution import resolve_collection_module_docs
+
+        with patch(
+            "ansible_know.galaxy.GalaxyClient.fetch_collection_docs",
+            new_callable=AsyncMock,
+            side_effect=GalaxyError("Connection failed"),
+        ):
+            result = await resolve_collection_module_docs(
+                "netbox.netbox",
+                galaxy_servers=[],
+                client_factory=FACTORY,
+            )
+
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_no_factory_returns_error(self, missing):
+        """Without client_factory, returns error immediately."""
+        from ansible_know.resolution import resolve_collection_module_docs
+
+        result = await resolve_collection_module_docs(
+            "netbox.netbox",
+        )
+
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_passes_version_through(self, missing):
+        """Explicit version is forwarded to Galaxy client."""
+        from ansible_know.resolution import resolve_collection_module_docs
+
+        with patch(
+            "ansible_know.galaxy.GalaxyClient.fetch_collection_docs",
+            new_callable=AsyncMock,
+            return_value=({}, {"doc_source": "galaxy", "doc_version": "3.20.0"}),
+        ) as mock_fetch:
+            await resolve_collection_module_docs(
+                "netbox.netbox",
+                version="3.20.0",
+                galaxy_servers=[],
+                client_factory=FACTORY,
+            )
+
+        mock_fetch.assert_called_once_with("netbox.netbox", version="3.20.0")

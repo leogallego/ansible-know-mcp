@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import re
 import stat
 from collections import Counter
 from pathlib import Path
@@ -15,20 +16,36 @@ from typing import TYPE_CHECKING, Any
 
 from ansible_know.config import TEMPLATE_DIR
 from ansible_know.tagging import derive_tags
+from ansible_know.validation import truncate_response, validate_path_containment
 
 if TYPE_CHECKING:
-    from ansible_know.types import CollectionSkillContext, ModuleMetadata, ModuleTagEntry, ParamDict
+    from ansible_know.types import (
+        CollectionSkillContext,
+        ModuleMetadata,
+        ModuleTagEntry,
+        ParamDict,
+        PluginManifestInput,
+        SkillEntry,
+    )
 
 logger = logging.getLogger("ansible_know")
 
+PLUGIN_SKILL_DIR_RE = re.compile(r"^([a-z]+)__(.+)$")
+
 __all__ = [
+    "PLUGIN_SKILL_DIR_RE",
+    "extract_skill_description",
+    "get_skill_sync",
+    "list_skills_sync",
     "module_to_skill_name",
     "render_collection_skill",
     "render_module_skill",
+    "render_plugin_skill",
     "render_role_skill",
     "render_skill",
     "write_collection_skill_package",
     "write_module_skill_package",
+    "write_plugin_skill_package",
     "write_role_skill_package",
     "write_skill_package",
 ]
@@ -114,6 +131,113 @@ def write_module_skill_package(output_dir: Path, metadata: dict[str, Any]) -> No
 
 
 write_skill_package = write_module_skill_package
+
+
+# --- Skill reading / listing ---
+
+
+def extract_skill_description(skill_md: Path) -> str:
+    """Extract description from a SKILL.md frontmatter."""
+    content = skill_md.read_text()
+    for line in content.splitlines():
+        if line.startswith("description:"):
+            return line.partition(":")[2].strip().strip(">-").strip()
+    return ""
+
+
+def list_skills_sync(
+    skills_dir: Path, collection: str | None,
+) -> list[SkillEntry]:
+    """List generated skills from *skills_dir*.
+
+    When *collection* is given, returns module/role/plugin skills within that
+    collection directory.  Otherwise returns top-level (collection-level and
+    standalone) skill entries.
+    """
+    results: list[dict[str, str]] = []
+    if not skills_dir.exists():
+        return results
+
+    if collection:
+        collection_dir = (skills_dir / collection).resolve()
+        validate_path_containment(collection_dir, skills_dir)
+        if not collection_dir.is_dir():
+            return results
+        for sub_dir in sorted(collection_dir.iterdir()):
+            try:
+                skill_md = sub_dir / "SKILL.md"
+                if sub_dir.is_dir() and not sub_dir.is_symlink() and skill_md.exists():
+                    dir_name = sub_dir.name
+                    from ansible_know.config import PLUGIN_TYPES
+                    match = PLUGIN_SKILL_DIR_RE.match(dir_name)
+                    if match and match.group(1) in PLUGIN_TYPES:
+                        display_name = f"{collection}.{match.group(2)}"
+                    else:
+                        display_name = f"{collection}.{dir_name}"
+                    results.append({
+                        "name": display_name,
+                        "description": extract_skill_description(skill_md),
+                        "path": str(sub_dir),
+                    })
+            except OSError:
+                logger.warning("Skipping unreadable skill: %s", sub_dir.name)
+                continue
+    else:
+        for skill_dir in sorted(skills_dir.iterdir()):
+            try:
+                if not skill_dir.is_dir() or skill_dir.is_symlink():
+                    continue
+                skill_md = skill_dir / "SKILL.md"
+                if skill_md.exists():
+                    results.append({
+                        "name": skill_dir.name,
+                        "description": extract_skill_description(skill_md),
+                        "path": str(skill_dir),
+                    })
+            except OSError:
+                logger.warning("Skipping unreadable skill: %s", skill_dir.name)
+                continue
+    return results
+
+
+def get_skill_sync(skills_dir: Path, skill_name: str) -> str:
+    """Read a skill's SKILL.md content from disk.
+
+    Callers MUST validate *skill_name* with ``validate_skill_name()`` first.
+
+    Raises:
+        FileNotFoundError: If no matching SKILL.md exists.
+        ValidationError: If a resolved path escapes *skills_dir*.
+        OSError: On permission or I/O errors reading the file.
+    """
+    parts = skill_name.split(".")
+    if len(parts) >= 3:
+        namespace = ".".join(parts[:2])
+        short_name = ".".join(parts[2:])
+
+        nested_path = (skills_dir / namespace / short_name / "SKILL.md").resolve()
+        validate_path_containment(nested_path, skills_dir)
+        if nested_path.exists():
+            return truncate_response(nested_path.read_text())
+
+        from ansible_know.config import PLUGIN_TYPES
+        for ptype in PLUGIN_TYPES:
+            plugin_path = (skills_dir / namespace / f"{ptype}__{short_name}" / "SKILL.md").resolve()
+            validate_path_containment(plugin_path, skills_dir)
+            if plugin_path.exists():
+                return truncate_response(plugin_path.read_text())
+
+        flat_path = (skills_dir / skill_name / "SKILL.md").resolve()
+        validate_path_containment(flat_path, skills_dir)
+        if flat_path.exists():
+            return truncate_response(flat_path.read_text())
+    else:
+        skill_path = (skills_dir / skill_name / "SKILL.md").resolve()
+        validate_path_containment(skill_path, skills_dir)
+        if skill_path.exists():
+            return truncate_response(skill_path.read_text())
+
+    raise FileNotFoundError(f"Skill '{skill_name}' not found.")
 
 
 def _build_example_args(params: list[ParamDict], examples_yaml: str = "") -> str:
@@ -204,6 +328,42 @@ def write_role_skill_package(output_dir: Path, metadata: dict[str, Any]) -> None
     (assets_dir / "playbook.yml").write_text(playbook_template.render(**ctx))
 
 
+# --- Plugin-level skill ---
+
+
+def _plugin_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
+    """Build template context from plugin metadata."""
+    plugin_name = metadata["plugin_name"]
+    return {
+        "plugin_name": plugin_name,
+        "plugin_type": metadata["plugin_type"],
+        "skill_name": plugin_name.rsplit(".", 1)[-1],
+        "short_description": metadata.get("short_description", ""),
+        "params": metadata.get("params", []),
+        "examples": metadata.get("examples", "").strip(),
+    }
+
+
+def render_plugin_skill(metadata: dict[str, Any]) -> str:
+    """Render the PLUGIN_SKILL.md.j2 template with plugin metadata."""
+    logger.debug("Rendering plugin skill for %s", metadata.get("plugin_name", "?"))
+    env = _get_template_env()
+    template = env.get_template("PLUGIN_SKILL.md.j2")
+    return template.render(**_plugin_template_context(metadata))
+
+
+def write_plugin_skill_package(output_dir: Path, metadata: dict[str, Any]) -> None:
+    """Write the plugin skill package: SKILL.md only (no scripts/ or assets/)."""
+    logger.debug(
+        "Writing plugin skill package to %s for %s",
+        output_dir, metadata.get("plugin_name", "?"),
+    )
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    content = render_plugin_skill(metadata)
+    (output_dir / "SKILL.md").write_text(content)
+
+
 # --- Collection-level skill ---
 
 
@@ -211,6 +371,7 @@ def _collection_template_context(
     namespace: str,
     metadata_list: list[ModuleMetadata],
     collection_version: str | None = None,
+    plugins_metadata: list[PluginManifestInput] | None = None,
 ) -> CollectionSkillContext:
     """Build template context for a collection-level skill."""
     modules_by_tag: dict[str, list[ModuleTagEntry]] = {}
@@ -241,6 +402,14 @@ def _collection_template_context(
 
     common_params = _find_common_params(metadata_list)
 
+    plugins_by_type: dict[str, list[dict[str, str]]] = {}
+    for pmeta in (plugins_metadata or []):
+        ptype = pmeta["plugin_type"]
+        plugins_by_type.setdefault(ptype, []).append({
+            "fqcn": pmeta["fqcn"],
+            "short_description": pmeta["description"],
+        })
+
     return {
         "collection_namespace": namespace,
         "collection_version": collection_version,
@@ -248,6 +417,7 @@ def _collection_template_context(
         "all_api": all_api,
         "common_params": common_params,
         "module_count": len(metadata_list),
+        "plugins_by_type": plugins_by_type,
     }
 
 
@@ -278,12 +448,15 @@ def render_collection_skill(
     namespace: str,
     metadata_list: list[ModuleMetadata],
     collection_version: str | None = None,
+    plugins_metadata: list[PluginManifestInput] | None = None,
 ) -> str:
     """Render the COLLECTION_SKILL.md.j2 template for a collection-level skill."""
     logger.debug("Rendering collection skill for %s", namespace)
     env = _get_template_env()
     template = env.get_template("COLLECTION_SKILL.md.j2")
-    ctx = _collection_template_context(namespace, metadata_list, collection_version)
+    ctx = _collection_template_context(
+        namespace, metadata_list, collection_version, plugins_metadata,
+    )
     return template.render(**ctx)
 
 
@@ -292,10 +465,13 @@ def write_collection_skill_package(
     namespace: str,
     metadata_list: list[ModuleMetadata],
     collection_version: str | None = None,
+    plugins_metadata: list[PluginManifestInput] | None = None,
 ) -> None:
     """Write the collection-level skill package: SKILL.md only (no scripts/assets)."""
     logger.debug("Writing collection skill package to %s for %s", output_dir, namespace)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    content = render_collection_skill(namespace, metadata_list, collection_version)
+    content = render_collection_skill(
+        namespace, metadata_list, collection_version, plugins_metadata,
+    )
     (output_dir / "SKILL.md").write_text(content)

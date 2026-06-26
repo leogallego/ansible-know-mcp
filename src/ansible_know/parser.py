@@ -15,10 +15,12 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from ansible_know.config import PLUGIN_TYPES
 from ansible_know.errors import AnsibleDocError, CollectionNotFoundError, is_missing_collection_error
+from ansible_know.validation import validate_plugin_type
 
 if TYPE_CHECKING:
-    from ansible_know.types import EntryPointInfo, ModuleMetadata, ParamDict, RoleMetadata
+    from ansible_know.types import EntryPointInfo, ModuleMetadata, ParamDict, PluginMetadata, RoleMetadata
 
 logger = logging.getLogger("ansible_know")
 
@@ -26,14 +28,18 @@ __all__ = [
     "extract_examples",
     "extract_module_metadata",
     "extract_params",
+    "extract_plugin_metadata",
     "extract_role_metadata",
     "extract_short_description",
     "get_module_doc",
+    "get_plugin_doc",
     "get_role_doc",
     "is_api_module",
     "list_modules",
+    "list_plugins",
     "list_roles",
     "search_modules",
+    "search_plugins",
     "transform_galaxy_to_ansible_doc_format",
 ]
 
@@ -380,4 +386,116 @@ def extract_role_metadata(role_doc: dict[str, Any]) -> RoleMetadata:
         "role_name": role_name,
         "short_description": first_desc,
         "entry_points": entry_points,
+    }
+
+
+def list_plugins(
+    plugin_type: str,
+    collection_filter: str | None = None,
+    *,
+    collections_path: str | None = None,
+) -> dict[str, str]:
+    """List available plugins of a given type with short descriptions.
+
+    Args:
+        plugin_type: One of PLUGIN_TYPES (e.g., "lookup", "filter").
+        collection_filter: Optional collection filter (e.g., "netbox.netbox").
+        collections_path: Optional path to prepend to ANSIBLE_COLLECTIONS_PATH.
+
+    Returns:
+        Dict mapping fully-qualified plugin names to their short descriptions.
+    """
+    validate_plugin_type(plugin_type)
+    args = ["--list", "-t", plugin_type, "--json"]
+    if collection_filter:
+        args.append(collection_filter)
+    raw = _run_ansible_doc(*args, collections_path=collections_path)
+    try:
+        plugins = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise AnsibleDocError(f"Failed to parse plugin list JSON: {exc}") from exc
+    return plugins
+
+
+def get_plugin_doc(
+    plugin_name: str,
+    plugin_type: str,
+    *,
+    collections_path: str | None = None,
+) -> dict[str, Any]:
+    """Fetch full documentation for a single plugin.
+
+    Returns the parsed JSON from `ansible-doc -t <type> <plugin> --json`.
+    """
+    validate_plugin_type(plugin_type)
+    raw = _run_ansible_doc(
+        "-t", plugin_type, plugin_name, "--json",
+        collections_path=collections_path,
+    )
+    try:
+        doc = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise AnsibleDocError(f"Failed to parse plugin doc JSON: {exc}") from exc
+    return doc
+
+
+def search_plugins(
+    keyword: str,
+    plugin_type: str | None = None,
+    collection_filter: str | None = None,
+    *,
+    collections_path: str | None = None,
+) -> dict[str, str]:
+    """Search plugins by keyword in name or description.
+
+    When plugin_type is None, searches across all plugin types
+    sequentially (14 ansible-doc calls). The MCP server tool bypasses
+    this path and parallelizes across types via asyncio.gather — this
+    all-type codepath exists for direct parser callers (scripts, tests,
+    REPL exploration).
+    """
+    if plugin_type is not None:
+        validate_plugin_type(plugin_type)
+        all_plugins = list_plugins(
+            plugin_type, collection_filter, collections_path=collections_path,
+        )
+    else:
+        all_plugins: dict[str, str] = {}
+        errors: list[str] = []
+        for ptype in PLUGIN_TYPES:
+            try:
+                found = list_plugins(
+                    ptype, collection_filter, collections_path=collections_path,
+                )
+                all_plugins.update(found)
+            except AnsibleDocError as exc:
+                errors.append(str(exc))
+                continue
+
+        if not all_plugins and errors:
+            raise AnsibleDocError(
+                f"Plugin discovery failed for all {len(errors)} types. "
+                f"Last error: {errors[-1]}"
+            )
+
+    keyword_lower = keyword.lower()
+    return {
+        name: desc
+        for name, desc in all_plugins.items()
+        if keyword_lower in name.lower() or keyword_lower in (desc or "").lower()
+    }
+
+
+def extract_plugin_metadata(
+    plugin_doc: dict[str, Any], plugin_type: str,
+) -> PluginMetadata:
+    """Extract all metadata needed for plugin skill generation."""
+    plugin_name = _get_module_name(plugin_doc)
+    logger.debug("Extracting plugin metadata for %s (type=%s)", plugin_name, plugin_type)
+    return {
+        "plugin_name": plugin_name,
+        "plugin_type": plugin_type,
+        "short_description": extract_short_description(plugin_doc),
+        "params": extract_params(plugin_doc),
+        "examples": extract_examples(plugin_doc),
     }

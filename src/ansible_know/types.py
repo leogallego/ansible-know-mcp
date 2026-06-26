@@ -53,6 +53,49 @@ class RoleMetadata(TypedDict):
     entry_points: dict[str, EntryPointInfo]
 
 
+class PluginMetadata(TypedDict):
+    """Plugin metadata extracted by parser.extract_plugin_metadata()."""
+
+    plugin_name: str
+    plugin_type: str
+    short_description: str
+    params: list[ParamDict]
+    examples: str
+
+
+class RoleManifestInput(TypedDict):
+    """Input shape for role metadata passed to manifest/skill generation.
+
+    Distinct from ManifestRoleEntry which adds has_skill (computed internally).
+    """
+
+    fqcn: str
+    description: str
+    has_argument_specs: bool
+    entry_points: list[str]
+
+
+class PluginManifestInput(TypedDict):
+    """Input shape for plugin metadata passed to manifest/skill generation.
+
+    Distinct from ManifestPluginEntry which adds has_skill (computed internally).
+    """
+
+    fqcn: str
+    plugin_type: str
+    description: str
+    param_count: int
+
+
+class ManifestPluginEntry(PluginManifestInput):
+    """Single plugin entry in a collection manifest.
+
+    Extends PluginManifestInput with has_skill (computed internally).
+    """
+
+    has_skill: bool
+
+
 class _DocProvenanceBase(TypedDict):
     doc_source: str
     doc_version: str
@@ -116,6 +159,7 @@ class CollectionSkillContext(TypedDict):
     all_api: bool
     common_params: list[ParamDict]
     module_count: int
+    plugins_by_type: dict[str, list[dict[str, str]]]
 
 
 class ManifestModuleEntry(TypedDict):
@@ -130,13 +174,12 @@ class ManifestModuleEntry(TypedDict):
     tags: list[str]
 
 
-class ManifestRoleEntry(TypedDict):
-    """Single role entry in a collection manifest."""
+class ManifestRoleEntry(RoleManifestInput):
+    """Single role entry in a collection manifest.
 
-    fqcn: str
-    description: str
-    has_argument_specs: bool
-    entry_points: list[str]
+    Extends RoleManifestInput with has_skill (computed internally).
+    """
+
     has_skill: bool
 
 
@@ -148,9 +191,11 @@ class ManifestResult(TypedDict):
     generated: str
     module_count: int
     role_count: int
+    plugin_count: int
     has_collection_skill: bool
     modules: list[ManifestModuleEntry]
     roles: list[ManifestRoleEntry]
+    plugins: list[ManifestPluginEntry]
 
 
 class _CollectionInfoBase(TypedDict):
@@ -162,6 +207,7 @@ class _CollectionInfoBase(TypedDict):
     latest_version: str
     module_count: int
     role_count: int
+    plugin_count: int
     deprecated: bool
     signed: bool
 
@@ -188,6 +234,7 @@ class CollectionSearchResult(TypedDict):
 class _GetModuleDocResultBase(ModuleMetadata):
     """Required fields for get_module_doc tool return."""
 
+    content_type: str
     doc_source: str
 
 
@@ -228,6 +275,25 @@ class GetRoleDocResult(_GetRoleDocResultBase, total=False):
     error: str
 
 
+class _GetPluginDocResultBase(PluginMetadata):
+    """Required fields for get_plugin_doc tool return."""
+
+    content_type: str
+    doc_source: str
+
+
+class GetPluginDocResult(_GetPluginDocResultBase, total=False):
+    """Full result of get_plugin_doc tool.
+
+    Extends PluginMetadata with provenance. When doc_source is 'galaxy',
+    includes doc_version and optionally doc_warning/doc_source_server.
+    """
+
+    doc_version: str
+    doc_warning: str
+    doc_source_server: str
+
+
 class SearchDocsEntry(TypedDict):
     """Single entry from search_docs results."""
 
@@ -265,6 +331,25 @@ class ClearCacheResult(TypedDict):
     cleared: list[str]
 
 
+class _CollectionDocsResultBase(TypedDict):
+    """Required fields for batch collection docs result."""
+
+    modules: dict[str, ModuleMetadata]
+    doc_source: str
+
+
+class CollectionDocsResult(_CollectionDocsResultBase, total=False):
+    """Result of resolve_collection_module_docs / get_collection_docs.
+
+    When doc_source is 'galaxy', includes doc_version and optionally
+    doc_warning/doc_source_server.
+    """
+
+    doc_version: str
+    doc_warning: str
+    doc_source_server: str
+
+
 class GalaxyDocClient(Protocol):
     """Structural interface for Galaxy documentation clients.
 
@@ -280,6 +365,14 @@ class GalaxyDocClient(Protocol):
     async def fetch_role_doc(
         self, role_name: str,
     ) -> tuple[dict[str, Any], DocProvenance]: ...
+
+    async def fetch_plugin_doc(
+        self, plugin_name: str, plugin_type: str,
+    ) -> tuple[dict[str, Any], DocProvenance]: ...
+
+    async def fetch_collection_docs(
+        self, collection_namespace: str, version: str | None = None,
+    ) -> tuple[dict[str, ModuleMetadata], DocProvenance]: ...
 
     async def search_collections(
         self, query: str, tags: str | None = None,

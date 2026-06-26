@@ -11,6 +11,19 @@ _PKG_DIR = Path(__file__).resolve().parent
 
 TEMPLATE_DIR = _PKG_DIR / "templates"
 
+
+def _get_cache_dir() -> Path:
+    """Return the disk cache directory, respecting XDG and env overrides."""
+    explicit = os.environ.get("ANSIBLE_KNOW_CACHE_DIR")
+    if explicit:
+        return Path(explicit)
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".cache"
+    return base / "ansible-know"
+
+
+CACHE_DIR = _get_cache_dir()
+
 def __getattr__(name: str):
     if name == "SKILLS_DIR":
         value = Path(os.environ.get(
@@ -29,6 +42,7 @@ AUDIENCE_MAP: dict[str, str] = {
     "getting_started": "author",
     "getting_started_ee": "author",
     "vault_guide": "author",
+    "plugins": "both",
     "tips_tricks": "author",
     "command_guide": "author",
 }
@@ -47,6 +61,7 @@ GUIDE_TOPIC_PREFIXES: set[str] = {
     "tips_tricks",
     "network",
     "os_guide",
+    "plugins",
     "scenario_guides",
     "user_guide",
     "community",
@@ -195,4 +210,20 @@ SEARCH_DOCS_LIMIT = 20
 GALAXY_BASE_URL = os.environ.get(
     "ANSIBLE_KNOW_GALAXY_URL",
     "https://galaxy.ansible.com",
+)
+
+PLUGIN_TYPES: tuple[str, ...] = (
+    "become", "cache", "callback", "cliconf", "connection",
+    "filter", "httpapi", "inventory", "lookup", "netconf",
+    "shell", "strategy", "test", "vars",
+)
+
+JINJA2_PLUGIN_TYPES: tuple[str, ...] = ("filter", "lookup", "test")
+
+PLAYBOOK_PLUGIN_TYPES: tuple[str, ...] = (
+    "become", "callback", "connection", "inventory", "strategy",
+)
+
+INFRA_PLUGIN_TYPES: tuple[str, ...] = (
+    "cache", "cliconf", "httpapi", "netconf", "shell", "vars",
 )
