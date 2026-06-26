@@ -158,7 +158,8 @@ class TestCorruptFileHandling:
         cache_file = tmp_path / "corrupt.json"
         cache_file.write_text("not valid json")
         with caplog.at_level("WARNING", logger="ansible_know"):
-            BoundedCache(max_size=10, ttl=3600, path=cache_file)
+            cache = BoundedCache(max_size=10, ttl=3600, path=cache_file)
+            cache.get("trigger_load")  # lazy load triggers on first access
         assert any("corrupt" in r.message.lower() or "failed" in r.message.lower() for r in caplog.records)
 
 
@@ -203,6 +204,97 @@ class TestClearDeletesDiskFile:
         cache.clear()
         assert not cache_file.exists()
         assert len(cache) == 0
+
+
+class TestLazyLoading:
+    """Disk load should be deferred to first access, not construction."""
+
+    def test_construction_does_not_read_disk(self, tmp_path: Path):
+        cache_file = tmp_path / "test_cache.json"
+        # Write a cache file with known data
+        cache1: BoundedCache[str, int] = BoundedCache(
+            max_size=10, ttl=3600, path=cache_file,
+        )
+        cache1.put("key1", 42)
+
+        # Construct a new cache — should NOT load yet
+        cache2: BoundedCache[str, int] = BoundedCache(
+            max_size=10, ttl=3600, path=cache_file,
+        )
+        # Internal data should be empty before first access
+        assert cache2._disk_loaded is False
+
+    def test_first_get_triggers_load(self, tmp_path: Path):
+        cache_file = tmp_path / "test_cache.json"
+        cache1: BoundedCache[str, int] = BoundedCache(
+            max_size=10, ttl=3600, path=cache_file,
+        )
+        cache1.put("key1", 42)
+
+        cache2: BoundedCache[str, int] = BoundedCache(
+            max_size=10, ttl=3600, path=cache_file,
+        )
+        assert cache2._disk_loaded is False
+        result = cache2.get("key1")
+        assert cache2._disk_loaded is True
+        assert result == 42
+
+    def test_first_put_triggers_load(self, tmp_path: Path):
+        cache_file = tmp_path / "test_cache.json"
+        cache1: BoundedCache[str, int] = BoundedCache(
+            max_size=10, ttl=3600, path=cache_file,
+        )
+        cache1.put("existing", 100)
+
+        cache2: BoundedCache[str, int] = BoundedCache(
+            max_size=10, ttl=3600, path=cache_file,
+        )
+        cache2.put("new_key", 200)
+        # Both old and new entries should be available
+        assert cache2.get("existing") == 100
+        assert cache2.get("new_key") == 200
+
+    def test_len_triggers_load(self, tmp_path: Path):
+        cache_file = tmp_path / "test_cache.json"
+        cache1: BoundedCache[str, int] = BoundedCache(
+            max_size=10, ttl=3600, path=cache_file,
+        )
+        cache1.put("a", 1)
+        cache1.put("b", 2)
+
+        cache2: BoundedCache[str, int] = BoundedCache(
+            max_size=10, ttl=3600, path=cache_file,
+        )
+        assert len(cache2) == 2
+
+    def test_contains_triggers_load(self, tmp_path: Path):
+        cache_file = tmp_path / "test_cache.json"
+        cache1: BoundedCache[str, int] = BoundedCache(
+            max_size=10, ttl=3600, path=cache_file,
+        )
+        cache1.put("key1", 42)
+
+        cache2: BoundedCache[str, int] = BoundedCache(
+            max_size=10, ttl=3600, path=cache_file,
+        )
+        assert "key1" in cache2
+
+
+class TestWriteOutsideLock:
+    """Disk writes should not hold the cache lock."""
+
+    def test_put_releases_lock_before_disk_write(self, tmp_path: Path):
+        cache_file = tmp_path / "test_cache.json"
+        cache: BoundedCache[str, int] = BoundedCache(
+            max_size=10, ttl=3600, path=cache_file,
+        )
+        cache.put("key1", 42)
+        # After put() returns, the lock should not be held
+        assert not cache._lock.locked()
+        # Data should be on disk
+        assert cache_file.exists()
+        # Data should be in memory
+        assert cache.get("key1") == 42
 
 
 class TestNoPersistenceWithoutPath:

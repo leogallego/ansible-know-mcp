@@ -44,9 +44,11 @@ class BoundedCache(Generic[K, V]):
         max_size: Maximum number of entries before LRU eviction.
         ttl: Time-to-live in seconds. None means entries never expire.
         path: Path to a JSON file for disk persistence. When provided,
-            entries are loaded from disk on construction and written
-            through on put(). Set ANSIBLE_KNOW_NO_DISK_CACHE=1 to
-            disable persistence even when a path is given.
+            entries are loaded lazily from disk on first access and
+            written through on put(). Disk writes happen outside the
+            lock to avoid blocking concurrent reads.
+            Set ANSIBLE_KNOW_NO_DISK_CACHE=1 to disable persistence
+            even when a path is given.
     """
 
     def __init__(
@@ -59,6 +61,7 @@ class BoundedCache(Generic[K, V]):
         self._ttl = ttl
         self._data: OrderedDict[K, tuple[V, float]] = OrderedDict()
         self._lock = threading.Lock()
+        self._disk_loaded = False
 
         no_disk = os.environ.get("ANSIBLE_KNOW_NO_DISK_CACHE", "").strip()
         if path is not None and no_disk != "1":
@@ -66,6 +69,14 @@ class BoundedCache(Generic[K, V]):
         else:
             self._path = None
 
+    def _ensure_loaded(self) -> None:
+        """Load from disk on first access (lazy initialization).
+
+        Must be called while holding self._lock.
+        """
+        if self._disk_loaded:
+            return
+        self._disk_loaded = True
         if self._path is not None:
             self._load_from_disk()
 
@@ -74,6 +85,7 @@ class BoundedCache(Generic[K, V]):
 
     def get(self, key: K) -> V | None:
         with self._lock:
+            self._ensure_loaded()
             entry = self._data.get(key)
             if entry is None:
                 return None
@@ -92,7 +104,9 @@ class BoundedCache(Generic[K, V]):
             del self._data[k]
 
     def put(self, key: K, value: V) -> None:
+        snapshot = None
         with self._lock:
+            self._ensure_loaded()
             self._data[key] = (value, time.monotonic())
             self._data.move_to_end(key)
             if len(self._data) > self._max_size:
@@ -100,11 +114,14 @@ class BoundedCache(Generic[K, V]):
             while len(self._data) > self._max_size:
                 self._data.popitem(last=False)
             if self._path is not None:
-                self._write_to_disk()
+                snapshot = list(self._data.items())
+        if snapshot is not None:
+            self._write_to_disk(snapshot)
 
     def clear(self) -> None:
         with self._lock:
             self._data.clear()
+            self._disk_loaded = True
             if self._path is not None:
                 try:
                     self._path.unlink(missing_ok=True)
@@ -117,23 +134,29 @@ class BoundedCache(Generic[K, V]):
 
     def __len__(self) -> int:
         with self._lock:
+            self._ensure_loaded()
             return len(self._data)
 
     def __contains__(self, key: K) -> bool:
-        # Non-mutating: expired entries are left for get()/put() to clean up.
         with self._lock:
+            self._ensure_loaded()
             entry = self._data.get(key)
             if entry is None:
                 return False
             return not self._is_expired(entry[1])
 
-    def _write_to_disk(self) -> None:
-        """Persist current entries to disk using epoch timestamps."""
+    def _write_to_disk(
+        self, snapshot: list[tuple[K, tuple[V, float]]],
+    ) -> None:
+        """Persist entries to disk using epoch timestamps.
+
+        Called outside the lock with a snapshot of the data.
+        """
         assert self._path is not None
         now_mono = time.monotonic()
         now_epoch = time.time()
         entries = []
-        for key, (value, mono_ts) in self._data.items():
+        for key, (value, mono_ts) in snapshot:
             age = now_mono - mono_ts
             epoch_ts = now_epoch - age
             entries.append({
