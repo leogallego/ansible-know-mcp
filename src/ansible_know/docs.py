@@ -17,7 +17,7 @@ from typing import Any
 import httpx
 
 from ansible_know.cache import BoundedCache
-from ansible_know.config import RTD_PROJECT_SLUGS, SEARCH_DOCS_LIMIT, get_doc_sources
+from ansible_know.config import CACHE_DIR, RTD_PROJECT_SLUGS, SEARCH_DOCS_LIMIT, get_doc_sources
 from ansible_know.errors import AnsibleKnowError
 from ansible_know.text_utils import clean_rtd_markdown
 from ansible_know.types import FetchDocResult, SearchDocsEntry
@@ -39,6 +39,7 @@ RTD_DOCS_DOMAIN = "https://docs.ansible.com"
 
 _manifest_cache: BoundedCache[str, list[dict[str, Any]]] = BoundedCache(
     max_size=50, ttl=CACHE_TTL_SECONDS,
+    path=CACHE_DIR / "doc-manifests.json",
 )
 
 

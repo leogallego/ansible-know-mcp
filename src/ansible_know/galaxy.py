@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from ansible_know.cache import BoundedCache
-from ansible_know.config import GALAXY_BASE_URL
+from ansible_know.config import CACHE_DIR, GALAXY_BASE_URL
 from ansible_know.errors import GalaxyError
 
 if TYPE_CHECKING:
@@ -36,9 +36,11 @@ ENRICHMENT_CONCURRENCY = 5
 # cross-instance collisions. Thread-safe via BoundedCache.
 _version_cache: BoundedCache[tuple[str, str], str] = BoundedCache(
     max_size=500, ttl=CACHE_TTL_SECONDS,
+    path=CACHE_DIR / "galaxy-versions.json",
 )
 _blob_cache: BoundedCache[tuple[str, str, str], dict[str, Any]] = BoundedCache(
     max_size=50, ttl=CACHE_TTL_SECONDS,
+    path=CACHE_DIR / "galaxy-blobs.json",
 )
 
 
