@@ -22,14 +22,14 @@ Each entry includes:
 ---
 - name: Create a device in NetBox
   hosts: localhost
-  gather_facts: no
+  gather_facts: false
   tasks:
     - name: Add device
       netbox.netbox.netbox_device:
-        device_name: "{{ inventory_hostname }}"  # WRONG: should be 'name'
-        device_role: "router"                    # WRONG: should be 'role'
-        device_type: "Juniper MX480"             # WRONG: should be 'type'
-        site_name: "DC01"                        # WRONG: should be 'site'
+        device_name: "{{ inventory_hostname }}"  # WRONG: should be 'name' under 'data'
+        device_role: "router"                    # WRONG: should be 'role' under 'data'
+        device_type: "Juniper MX480"             # WRONG: should be 'device_type' under 'data'
+        site_name: "DC01"                        # WRONG: should be 'site' under 'data'
         netbox_url: "{{ netbox_api_url }}"
         netbox_token: "{{ netbox_token }}"
 ```
@@ -44,16 +44,18 @@ Each entry includes:
 ---
 - name: Create a device in NetBox
   hosts: localhost
-  gather_facts: no
+  gather_facts: false
   tasks:
     - name: Add device
       netbox.netbox.netbox_device:
-        name: "{{ inventory_hostname }}"         # CORRECT parameter
-        role: "router"                           # CORRECT parameter
-        type: "Juniper MX480"                    # CORRECT parameter
-        site: "DC01"                             # CORRECT parameter
-        url: "{{ netbox_api_url }}"
-        token: "{{ netbox_token }}"
+        netbox_url: "{{ netbox_api_url }}"       # CORRECT: connection URL
+        netbox_token: "{{ netbox_token }}"       # CORRECT: connection token
+        data:                                     # CORRECT: device parameters nested under 'data'
+          name: "{{ inventory_hostname }}"       # CORRECT parameter
+          role: "router"                         # CORRECT parameter
+          device_type: "Juniper MX480"           # CORRECT parameter
+          site: "DC01"                           # CORRECT parameter
+        state: present                           # CORRECT: explicit state
 ```
 
 ---

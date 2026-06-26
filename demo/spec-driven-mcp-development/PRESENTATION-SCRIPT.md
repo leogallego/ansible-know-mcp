@@ -82,9 +82,9 @@ The issue can come before or after the spec. What matters is that the spec and p
 
 **[Show: SHOT-06-spec-example]**
 
-This is a real design spec for Galaxy collection discovery. Look at the structure: problem statement, goal, context table showing what already exists, and the design section defining scope and constraints.
+This is a real design spec for Galaxy collection discovery. Look at the structure: problem statement at the top, goal section, context table showing what already exists, and the design section defining scope and constraints.
 
-This isn't AI-generated prose. It's a structured engineering document. Line 14 shows the problem: "AI agents need to discover Ansible collections on Galaxy without knowing collection names upfront." Line 22 shows the goal: "Add search_collections tool that queries Galaxy API v3." The context table at line 28 shows what tools already existed and what was missing.
+This isn't AI-generated prose. It's a structured engineering document. The problem section near the top states: "AI agents need to discover Ansible collections on Galaxy without knowing collection names upfront." The goal section defines the objective: "Add search_collections tool that queries Galaxy API v3." The context table shows what tools already existed and what was missing.
 
 The spec defines the API endpoint we're going to use, the response structure we expect, and the error cases we'll handle. It's explicit, concrete, and falsifiable. This document became the contract between me and the AI agent implementing the feature.
 
@@ -114,7 +114,7 @@ Plugin support was a bigger challenge. Ansible has 14 plugin types — lookup, f
 
 Without a spec, I would have started coding. I would have added lookup plugin support, shipped it, then realized I needed filter plugins too. Then test plugins. Each one would have been a separate architectural decision, probably inconsistent with the previous ones. By the fifth plugin type, I'd be refactoring earlier implementations to match new patterns.
 
-Instead, I wrote the spec first. Look at the plan. Line 8 shows the scope: "Support all 14 plugin types with same workflow as modules." That single scope statement prevented eight weeks of rework. Line 22 shows the architecture overview: which files need changes, what new functions to add. Line 45 shows the file structure table: parser.py gets `list_plugins` and `get_plugin_doc`, skills.py gets `generate_plugin_skill`, server.py gets two new tools.
+Instead, I wrote the spec first. Look at the plan. The scope section near the top states: "Support all 14 plugin types with same workflow as modules." That single scope statement prevented eight weeks of rework. The architecture overview shows which files need changes, what new functions to add. The file structure table shows parser.py gets `list_plugins` and `get_plugin_doc`, skills.py gets `generate_plugin_skill`, server.py gets two new tools.
 
 Same methodology, bigger problem. The spec-driven approach scaled. The plan became checkboxes, the checkboxes became commits, the commits became a pull request. One feature, one consistent implementation, fourteen plugin types.
 
