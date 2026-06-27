@@ -62,14 +62,14 @@ class TestGenerateManifest:
         manifest = generate_manifest("ansible.builtin", [metadata], skills_dir=tmp_path)
         write_manifest(manifest, "ansible.builtin", skills_dir=tmp_path)
 
-        manifest_path = tmp_path / "ansible.builtin" / "MANIFEST.json"
+        manifest_path = tmp_path / "ansible-builtin" / "MANIFEST.json"
         assert manifest_path.exists()
 
         loaded = json.loads(manifest_path.read_text())
         assert loaded["collection"] == "ansible.builtin"
 
     def test_detects_existing_skills(self, tmp_path, sample_module_doc):
-        skill_dir = tmp_path / "ansible.builtin" / "package"
+        skill_dir = tmp_path / "ansible-builtin" / "package"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text("test")
 
@@ -91,7 +91,7 @@ class TestGenerateManifest:
         assert manifest["has_collection_skill"] is False
 
     def test_has_collection_skill_true_when_exists(self, tmp_path, sample_module_doc):
-        skill_dir = tmp_path / "ansible.builtin"
+        skill_dir = tmp_path / "ansible-builtin"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text("collection skill content")
 
@@ -149,7 +149,7 @@ class TestGenerateManifestWithRoles:
         assert manifest["roles"] == []
 
     def test_role_has_skill_detection(self, tmp_path):
-        skill_dir = tmp_path / "ansible.builtin" / "test_role"
+        skill_dir = tmp_path / "ansible-builtin" / "test-role"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text("test")
 
@@ -217,7 +217,7 @@ class TestManifestPluginEntries:
         assert manifest["plugins"] == []
 
     def test_plugin_skill_detection(self, tmp_path):
-        skill_dir = tmp_path / "netbox.netbox" / "lookup__nb_lookup"
+        skill_dir = tmp_path / "netbox-netbox" / "lookup-nb-lookup"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text("---\nname: test\n---\n")
 

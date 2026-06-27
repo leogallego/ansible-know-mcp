@@ -923,10 +923,9 @@ async def generate_skill(
             await ctx.report_progress(progress=50, total=100)
 
         fqcn = metadata["module_name"]
-        namespace = extract_namespace(fqcn)
-        short_name = fqcn.rsplit(".", 1)[-1]
         base_dir = validate_install_path(install_to) if install_to else SKILLS_DIR
-        output_dir = base_dir / namespace / short_name
+        collection_dir = skills.collection_skill_name(extract_namespace(fqcn))
+        output_dir = base_dir / collection_dir / skills.fqcn_to_skill_name(fqcn)
 
         await run_in_executor(skills.write_module_skill_package, output_dir, metadata)
         logger.info("generate_skill wrote to %s", output_dir)
@@ -985,10 +984,9 @@ async def generate_role_skill(
         if ctx:
             await ctx.report_progress(progress=50, total=100)
 
-        namespace = extract_namespace(role_name)
-        short_name = role_name.rsplit(".", 1)[-1]
         base_dir = validate_install_path(install_to) if install_to else SKILLS_DIR
-        output_dir = base_dir / namespace / short_name
+        collection_dir = skills.collection_skill_name(extract_namespace(role_name))
+        output_dir = base_dir / collection_dir / skills.role_skill_name(role_name)
 
         await run_in_executor(skills.write_role_skill_package, output_dir, metadata)
         logger.info("generate_role_skill wrote to %s", output_dir)
@@ -1055,10 +1053,9 @@ async def generate_plugin_skill(
         if ctx:
             await ctx.report_progress(progress=50, total=100)
 
-        namespace = extract_namespace(plugin_name)
-        short_name = plugin_name.rsplit(".", 1)[-1]
         base_dir = validate_install_path(install_to) if install_to else SKILLS_DIR
-        output_dir = base_dir / namespace / f"{plugin_type}__{short_name}"
+        collection_dir = skills.collection_skill_name(extract_namespace(plugin_name))
+        output_dir = base_dir / collection_dir / skills.plugin_skill_name(plugin_name, plugin_type)
 
         await run_in_executor(skills.write_plugin_skill_package, output_dir, metadata)
         logger.info("generate_plugin_skill wrote to %s", output_dir)
@@ -1151,6 +1148,7 @@ async def generate_collection_skills(
         metadata_list = []
 
         base_dir = validate_install_path(install_to) if install_to else SKILLS_DIR
+        collection_dir_name = skills.collection_skill_name(collection_namespace)
 
         installed_version = state.collection_manager.list_installed().get(collection_namespace)
 
@@ -1166,8 +1164,7 @@ async def generate_collection_skills(
                 metadata = parser.extract_module_metadata(raw_doc)
                 metadata_list.append(metadata)
 
-                short_name = metadata["module_name"].rsplit(".", 1)[-1]
-                output_dir = base_dir / collection_namespace / short_name
+                output_dir = base_dir / collection_dir_name / skills.fqcn_to_skill_name(module_name)
                 await run_in_executor(skills.write_module_skill_package, output_dir, metadata)
                 succeeded += 1
             except Exception as exc:
@@ -1181,8 +1178,7 @@ async def generate_collection_skills(
             current += 1
             try:
                 metadata_list.append(module_meta)
-                short_name = module_fqcn.rsplit(".", 1)[-1]
-                output_dir = base_dir / collection_namespace / short_name
+                output_dir = base_dir / collection_dir_name / skills.fqcn_to_skill_name(module_fqcn)
                 await run_in_executor(skills.write_module_skill_package, output_dir, module_meta)
                 succeeded += 1
             except Exception as exc:
@@ -1221,8 +1217,7 @@ async def generate_collection_skills(
                     "entry_points": entry_points,
                 })
 
-                short_name = role_fqcn.rsplit(".", 1)[-1]
-                output_dir = base_dir / collection_namespace / short_name
+                output_dir = base_dir / collection_dir_name / skills.role_skill_name(role_fqcn)
                 await run_in_executor(
                     skills.write_role_skill_package, output_dir, role_meta,
                 )
@@ -1251,8 +1246,7 @@ async def generate_collection_skills(
                         "param_count": len(meta["params"]),
                     })
 
-                    short_name = pfqcn.rsplit(".", 1)[-1]
-                    output_dir = base_dir / collection_namespace / f"{ptype}__{short_name}"
+                    output_dir = base_dir / collection_dir_name / skills.plugin_skill_name(pfqcn, ptype)
                     await run_in_executor(
                         skills.write_plugin_skill_package, output_dir, meta,
                     )
@@ -1276,7 +1270,7 @@ async def generate_collection_skills(
 
         await run_in_executor(
             skills.write_collection_skill_package,
-            base_dir / collection_namespace, collection_namespace,
+            base_dir / collection_dir_name, collection_namespace,
             metadata_list, installed_version, plugins_metadata,
         )
 
@@ -1341,24 +1335,29 @@ def resource_skills_list() -> str:
     import json
 
     from ansible_know.config import PLUGIN_TYPES, SKILLS_DIR
-    from ansible_know.skills import PLUGIN_SKILL_DIR_RE
+    from ansible_know.skills import (
+        PLUGIN_SKILL_DIR_RE,
+        skill_dir_to_collection_fqcn,
+        skill_dir_to_short_fqcn,
+    )
 
     skills_list: list[str] = []
     if SKILLS_DIR.exists():
         for skill_dir in sorted(SKILLS_DIR.iterdir()):
             if not skill_dir.is_dir() or skill_dir.is_symlink():
                 continue
+            collection_fqcn = skill_dir_to_collection_fqcn(skill_dir.name)
             skill_md = skill_dir / "SKILL.md"
             if skill_md.exists():
-                skills_list.append(skill_dir.name)
+                skills_list.append(collection_fqcn)
             for sub_dir in sorted(skill_dir.iterdir()):
                 if sub_dir.is_dir() and not sub_dir.is_symlink() and (sub_dir / "SKILL.md").exists():
                     dir_name = sub_dir.name
                     match = PLUGIN_SKILL_DIR_RE.match(dir_name)
                     if match and match.group(1) in PLUGIN_TYPES:
-                        skills_list.append(f"{skill_dir.name}.{match.group(2)}")
+                        skills_list.append(f"{collection_fqcn}.{skill_dir_to_short_fqcn(match.group(2))}")
                     else:
-                        skills_list.append(f"{skill_dir.name}.{dir_name}")
+                        skills_list.append(f"{collection_fqcn}.{skill_dir_to_short_fqcn(dir_name)}")
     return json.dumps(skills_list, indent=2)
 
 

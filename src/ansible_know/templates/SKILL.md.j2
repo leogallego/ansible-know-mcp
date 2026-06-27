@@ -1,11 +1,19 @@
 ---
-name: {{ module_name }}
+name: {{ spec_name }}
 description: >-
   {{ short_description }}
 {% if is_api_module %}
   Use when managing {{ skill_name | replace('_', ' ') }} resources via API with Ansible.
 {% else %}
   Use when managing {{ skill_name | replace('_', ' ') }} resources on remote hosts via Ansible.
+{% endif %}
+compatibility: Requires ansible-core and the {{ collection }} collection
+metadata:
+  fqcn: {{ fqcn }}
+  collection: {{ collection }}
+  plugin-type: {{ plugin_type }}
+{% if doc_version %}
+  version: "{{ doc_version }}"
 {% endif %}
 ---
 

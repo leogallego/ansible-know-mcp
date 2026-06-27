@@ -1,9 +1,17 @@
 {# src/ansible_know/templates/PLUGIN_SKILL.md.j2 #}
 ---
-name: {{ plugin_name }}
+name: {{ spec_name }}
 description: >-
   {{ short_description }}
   Use when you need the {{ skill_name | replace('_', ' ') }} {{ plugin_type }} plugin in Ansible.
+compatibility: Requires ansible-core and the {{ collection }} collection
+metadata:
+  fqcn: {{ fqcn }}
+  collection: {{ collection }}
+  plugin-type: {{ plugin_type }}
+{% if doc_version %}
+  version: "{{ doc_version }}"
+{% endif %}
 ---
 
 # {{ plugin_name }} ({{ plugin_type }} plugin)
