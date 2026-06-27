@@ -1,8 +1,16 @@
 ---
-name: {{ role_name }}
+name: {{ spec_name }}
 description: >-
   {{ short_description }}
   Use when configuring {{ skill_name | replace('_', ' ') }} via Ansible role.
+compatibility: Requires ansible-core and the {{ collection }} collection
+metadata:
+  fqcn: {{ fqcn }}
+  collection: {{ collection }}
+  plugin-type: {{ plugin_type }}
+{% if doc_version %}
+  version: "{{ doc_version }}"
+{% endif %}
 ---
 
 # {{ role_name }}

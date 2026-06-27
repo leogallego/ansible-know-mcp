@@ -30,19 +30,23 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("ansible_know")
 
-PLUGIN_SKILL_DIR_RE = re.compile(r"^([a-z]+)__(.+)$")
+PLUGIN_SKILL_DIR_RE = re.compile(r"^([a-z]+)-(.+)$")
 
 __all__ = [
     "PLUGIN_SKILL_DIR_RE",
+    "collection_skill_name",
     "extract_skill_description",
+    "fqcn_to_skill_name",
     "get_skill_sync",
     "list_skills_sync",
     "module_to_skill_name",
+    "plugin_skill_name",
     "render_collection_skill",
     "render_module_skill",
     "render_plugin_skill",
     "render_role_skill",
     "render_skill",
+    "role_skill_name",
     "write_collection_skill_package",
     "write_module_skill_package",
     "write_plugin_skill_package",
@@ -64,24 +68,67 @@ def _get_template_env():
     )
 
 
+def _to_kebab(name: str) -> str:
+    """Convert underscores and dots to hyphens for spec-compliant naming."""
+    return name.replace("_", "-").replace(".", "-")
+
+
+def fqcn_to_skill_name(fqcn: str) -> str:
+    """Convert a module/role FQCN to a spec-compliant kebab-case skill name.
+
+    Takes the short name (after last dot) and converts underscores to hyphens.
+    """
+    short = fqcn.rsplit(".", 1)[-1]
+    return _to_kebab(short)
+
+
+def plugin_skill_name(fqcn: str, plugin_type: str) -> str:
+    """Convert a plugin FQCN to a spec-compliant skill name with type prefix."""
+    short = fqcn.rsplit(".", 1)[-1]
+    return f"{plugin_type}-{_to_kebab(short)}"
+
+
+def role_skill_name(fqcn: str) -> str:
+    """Convert a role FQCN to a spec-compliant kebab-case skill name."""
+    return fqcn_to_skill_name(fqcn)
+
+
+def collection_skill_name(namespace: str) -> str:
+    """Convert a collection namespace to a spec-compliant kebab-case skill name."""
+    return _to_kebab(namespace)
+
+
 def module_to_skill_name(module_name: str) -> str:
     """Convert a module FQCN to a skill directory name."""
-    return module_name
+    return fqcn_to_skill_name(module_name)
+
+
+def _extract_namespace(fqcn: str) -> str:
+    """Extract namespace (first two parts) from a FQCN."""
+    parts = fqcn.split(".")
+    return ".".join(parts[:2]) if len(parts) >= 3 else fqcn
 
 
 def _module_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
     """Build the shared template context from module metadata."""
+    fqcn = metadata["module_name"]
     params = metadata["params"]
     example_args = _build_example_args(params, metadata.get("examples", ""))
+    namespace = _extract_namespace(fqcn)
     return {
-        "module_name": metadata["module_name"],
-        "skill_name": metadata["module_name"].rsplit(".", 1)[-1],
+        "module_name": fqcn,
+        "spec_name": fqcn_to_skill_name(fqcn),
+        "skill_name": fqcn.rsplit(".", 1)[-1],
         "short_description": metadata["short_description"],
         "params": params,
         "examples": metadata["examples"].strip() if metadata["examples"] else "",
         "example_args": example_args,
         "is_api_module": metadata.get("is_api_module", False),
         "examples_contain_play": _examples_contain_play(metadata.get("examples", "")),
+        "fqcn": fqcn,
+        "collection": namespace,
+        "plugin_type": "module",
+        "doc_version": metadata.get("doc_version"),
     }
 
 
@@ -159,7 +206,8 @@ def list_skills_sync(
         return results
 
     if collection:
-        collection_dir = (skills_dir / collection).resolve()
+        collection_dir_name = collection_skill_name(collection)
+        collection_dir = (skills_dir / collection_dir_name).resolve()
         validate_path_containment(collection_dir, skills_dir)
         if not collection_dir.is_dir():
             return results
@@ -171,9 +219,9 @@ def list_skills_sync(
                     from ansible_know.config import PLUGIN_TYPES
                     match = PLUGIN_SKILL_DIR_RE.match(dir_name)
                     if match and match.group(1) in PLUGIN_TYPES:
-                        display_name = f"{collection}.{match.group(2)}"
+                        display_name = f"{collection}.{match.group(2).replace('-', '_')}"
                     else:
-                        display_name = f"{collection}.{dir_name}"
+                        display_name = f"{collection}.{dir_name.replace('-', '_')}"
                     results.append({
                         "name": display_name,
                         "description": extract_skill_description(skill_md),
@@ -214,15 +262,17 @@ def get_skill_sync(skills_dir: Path, skill_name: str) -> str:
     if len(parts) >= 3:
         namespace = ".".join(parts[:2])
         short_name = ".".join(parts[2:])
+        collection_dir_name = collection_skill_name(namespace)
+        kebab_short = _to_kebab(short_name)
 
-        nested_path = (skills_dir / namespace / short_name / "SKILL.md").resolve()
+        nested_path = (skills_dir / collection_dir_name / kebab_short / "SKILL.md").resolve()
         validate_path_containment(nested_path, skills_dir)
         if nested_path.exists():
             return truncate_response(nested_path.read_text())
 
         from ansible_know.config import PLUGIN_TYPES
         for ptype in PLUGIN_TYPES:
-            plugin_path = (skills_dir / namespace / f"{ptype}__{short_name}" / "SKILL.md").resolve()
+            plugin_path = (skills_dir / collection_dir_name / f"{ptype}-{kebab_short}" / "SKILL.md").resolve()
             validate_path_containment(plugin_path, skills_dir)
             if plugin_path.exists():
                 return truncate_response(plugin_path.read_text())
@@ -290,15 +340,21 @@ def _extract_example_values(examples_yaml: str) -> dict[str, str]:
 
 def _role_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
     """Build template context from role metadata."""
-    role_name = metadata["role_name"]
+    fqcn = metadata["role_name"]
+    namespace = _extract_namespace(fqcn)
     return {
-        "role_name": role_name,
-        "skill_name": role_name.rsplit(".", 1)[-1],
+        "role_name": fqcn,
+        "spec_name": role_skill_name(fqcn),
+        "skill_name": fqcn.rsplit(".", 1)[-1],
         "short_description": metadata.get("short_description", ""),
         "entry_points": metadata.get("entry_points", {}),
         "dependencies": metadata.get("dependencies", []),
         "examples": metadata.get("examples", "").strip(),
         "doc_source": metadata.get("doc_source", ""),
+        "fqcn": fqcn,
+        "collection": namespace,
+        "plugin_type": "role",
+        "doc_version": metadata.get("doc_version"),
     }
 
 
@@ -333,14 +389,20 @@ def write_role_skill_package(output_dir: Path, metadata: dict[str, Any]) -> None
 
 def _plugin_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
     """Build template context from plugin metadata."""
-    plugin_name = metadata["plugin_name"]
+    fqcn = metadata["plugin_name"]
+    ptype = metadata["plugin_type"]
+    namespace = _extract_namespace(fqcn)
     return {
-        "plugin_name": plugin_name,
-        "plugin_type": metadata["plugin_type"],
-        "skill_name": plugin_name.rsplit(".", 1)[-1],
+        "plugin_name": fqcn,
+        "plugin_type": ptype,
+        "spec_name": plugin_skill_name(fqcn, ptype),
+        "skill_name": fqcn.rsplit(".", 1)[-1],
         "short_description": metadata.get("short_description", ""),
         "params": metadata.get("params", []),
         "examples": metadata.get("examples", "").strip(),
+        "fqcn": fqcn,
+        "collection": namespace,
+        "doc_version": metadata.get("doc_version"),
     }
 
 
@@ -412,12 +474,15 @@ def _collection_template_context(
 
     return {
         "collection_namespace": namespace,
+        "spec_name": collection_skill_name(namespace),
         "collection_version": collection_version,
         "modules_by_tag": modules_by_tag,
         "all_api": all_api,
         "common_params": common_params,
         "module_count": len(metadata_list),
         "plugins_by_type": plugins_by_type,
+        "collection": namespace,
+        "plugin_type": "collection",
     }
 
 

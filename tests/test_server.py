@@ -138,7 +138,7 @@ class TestListSkillsTool:
     @pytest.mark.asyncio
     async def test_returns_collection_skills_with_filter(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
-        mod_dir = tmp_path / "netbox.netbox" / "netbox_device"
+        mod_dir = tmp_path / "netbox-netbox" / "netbox-device"
         mod_dir.mkdir(parents=True)
         (mod_dir / "SKILL.md").write_text("---\nname: netbox.netbox.netbox_device\ndescription: Device\n---\n")
         from ansible_know.server import list_skills
@@ -174,7 +174,7 @@ class TestGetSkillTool:
     @pytest.mark.asyncio
     async def test_reads_nested_skill(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
-        nested = tmp_path / "netbox.netbox" / "netbox_device"
+        nested = tmp_path / "netbox-netbox" / "netbox-device"
         nested.mkdir(parents=True)
         (nested / "SKILL.md").write_text("nested skill content")
         from ansible_know.server import get_skill
@@ -210,7 +210,7 @@ class TestGenerateSkillTool:
         from ansible_know.server import generate_skill
         result = await generate_skill("ansible.builtin.package")
         assert "ansible.builtin.package" in result
-        assert (tmp_path / "ansible.builtin" / "package" / "SKILL.md").exists()
+        assert (tmp_path / "ansible-builtin" / "package" / "SKILL.md").exists()
 
 
 class TestGenerateCollectionSkillsTool:
@@ -233,7 +233,7 @@ class TestGenerateCollectionSkillsTool:
         assert result["total"] == 4
         assert result["succeeded"] + result["failed"] == 4
         assert result["collection_skill"] == "ansible.builtin"
-        assert (tmp_path / "ansible.builtin" / "SKILL.md").exists()
+        assert (tmp_path / "ansible-builtin" / "SKILL.md").exists()
 
     @pytest.mark.asyncio
     async def test_galaxy_batch_fallback(self, tmp_path, mock_ansible_doc, monkeypatch):
@@ -278,7 +278,7 @@ class TestGenerateCollectionSkillsTool:
 
         assert result["total"] == 1
         assert result["succeeded"] == 1
-        assert (tmp_path / "netbox.netbox" / "netbox_device" / "SKILL.md").exists()
+        assert (tmp_path / "netbox-netbox" / "netbox-device" / "SKILL.md").exists()
 
 
 class TestFQCNValidation:
@@ -402,7 +402,7 @@ class TestGetSkillSync:
     def test_returns_content_for_nested_module_skill(self, tmp_path):
         from ansible_know.skills import get_skill_sync
 
-        mod_dir = tmp_path / "netbox.netbox" / "netbox_device"
+        mod_dir = tmp_path / "netbox-netbox" / "netbox-device"
         mod_dir.mkdir(parents=True)
         (mod_dir / "SKILL.md").write_text("module skill content")
         assert get_skill_sync(tmp_path, "netbox.netbox.netbox_device") == "module skill content"
@@ -759,7 +759,7 @@ class TestGalaxyDocsFallback:
             result = await generate_skill("netbox.netbox.netbox_device")
 
         assert "netbox.netbox.netbox_device" in result
-        assert (tmp_path / "netbox.netbox" / "netbox_device" / "SKILL.md").exists()
+        assert (tmp_path / "netbox-netbox" / "netbox-device" / "SKILL.md").exists()
 
 
 class TestResourceFunctions:
@@ -786,7 +786,7 @@ class TestResourceFunctions:
 
     def test_resource_skill_content_reads_nested(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
-        nested = tmp_path / "ansible.builtin" / "copy"
+        nested = tmp_path / "ansible-builtin" / "copy"
         nested.mkdir(parents=True)
         (nested / "SKILL.md").write_text("nested content")
         from ansible_know.server import resource_skill_content
@@ -804,16 +804,16 @@ class TestResourceFunctions:
 
     def test_resource_skills_list_with_nested_skills(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
-        coll_dir = tmp_path / "netbox.netbox"
+        coll_dir = tmp_path / "netbox-netbox"
         coll_dir.mkdir()
         (coll_dir / "SKILL.md").write_text("# Collection skill")
-        mod_dir = coll_dir / "netbox_device"
+        mod_dir = coll_dir / "netbox-device"
         mod_dir.mkdir()
         (mod_dir / "SKILL.md").write_text("# Device skill")
         from ansible_know.server import resource_skills_list
         result = json.loads(resource_skills_list())
-        assert "netbox.netbox" in result
-        assert "netbox.netbox.netbox_device" in result
+        assert "netbox-netbox" in result
+        assert "netbox-device" in result
 
     def test_resource_skill_content_flat_fallback(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
@@ -1436,9 +1436,9 @@ class TestGenerateRoleSkillTool:
         from ansible_know.server import generate_role_skill
         result = await generate_role_skill("fedora.linux_system_roles.gfs2")
         assert "fedora.linux_system_roles.gfs2" in result
-        assert (tmp_path / "fedora.linux_system_roles" / "gfs2" / "SKILL.md").exists()
-        assert (tmp_path / "fedora.linux_system_roles" / "gfs2" / "assets" / "playbook.yml").exists()
-        assert not (tmp_path / "fedora.linux_system_roles" / "gfs2" / "scripts").exists()
+        assert (tmp_path / "fedora-linux-system-roles" / "gfs2" / "SKILL.md").exists()
+        assert (tmp_path / "fedora-linux-system-roles" / "gfs2" / "assets" / "playbook.yml").exists()
+        assert not (tmp_path / "fedora-linux-system-roles" / "gfs2" / "scripts").exists()
 
     @pytest.mark.asyncio
     async def test_validation_error(self):
@@ -1481,7 +1481,7 @@ class TestGenerateRoleSkillTool:
             result = await generate_role_skill("fedora.linux_system_roles.timesync")
 
         assert "fedora.linux_system_roles.timesync" in result
-        assert (tmp_path / "fedora.linux_system_roles" / "timesync" / "SKILL.md").exists()
+        assert (tmp_path / "fedora-linux-system-roles" / "timesync" / "SKILL.md").exists()
 
 
 class TestGetCollectionManifestWithRoles:
@@ -1886,7 +1886,7 @@ class TestGeneratePluginSkill:
 class TestGetPluginSkill:
     @pytest.mark.asyncio
     async def test_finds_plugin_skill_by_fqcn(self, tmp_path):
-        skill_dir = tmp_path / "netbox.netbox" / "lookup__nb_lookup"
+        skill_dir = tmp_path / "netbox-netbox" / "lookup-nb-lookup"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text("---\nname: netbox.netbox.nb_lookup\n---\nlookup skill")
         with patch("ansible_know.config.SKILLS_DIR", tmp_path):
@@ -1897,10 +1897,10 @@ class TestGetPluginSkill:
     @pytest.mark.asyncio
     async def test_module_skill_takes_precedence(self, tmp_path):
         # If both a module and plugin skill exist, module (direct name) wins
-        mod_dir = tmp_path / "netbox.netbox" / "nb_lookup"
+        mod_dir = tmp_path / "netbox-netbox" / "nb-lookup"
         mod_dir.mkdir(parents=True)
         (mod_dir / "SKILL.md").write_text("module skill")
-        plugin_dir = tmp_path / "netbox.netbox" / "lookup__nb_lookup"
+        plugin_dir = tmp_path / "netbox-netbox" / "lookup-nb-lookup"
         plugin_dir.mkdir(parents=True)
         (plugin_dir / "SKILL.md").write_text("plugin skill")
         with patch("ansible_know.config.SKILLS_DIR", tmp_path):
@@ -1912,7 +1912,7 @@ class TestGetPluginSkill:
 class TestListPluginSkills:
     @pytest.mark.asyncio
     async def test_strips_type_prefix_from_name(self, tmp_path):
-        skill_dir = tmp_path / "netbox.netbox" / "lookup__nb_lookup"
+        skill_dir = tmp_path / "netbox-netbox" / "lookup-nb-lookup"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text("---\nname: test\n---\n")
         with patch("ansible_know.config.SKILLS_DIR", tmp_path):
@@ -1920,19 +1920,18 @@ class TestListPluginSkills:
             result = await list_skills(collection="netbox.netbox")
         names = [s["name"] for s in result]
         assert "netbox.netbox.nb_lookup" in names
-        assert "netbox.netbox.lookup__nb_lookup" not in names
+        assert "netbox.netbox.lookup-nb-lookup" not in names
 
 
 class TestResourceSkillsListPlugins:
-    def test_strips_type_prefix_in_resource(self, tmp_path):
-        skill_dir = tmp_path / "netbox.netbox" / "lookup__nb_lookup"
+    def test_lists_kebab_skill_names_in_resource(self, tmp_path):
+        skill_dir = tmp_path / "netbox-netbox" / "lookup-nb-lookup"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text("---\nname: test\n---\n")
         with patch("ansible_know.config.SKILLS_DIR", tmp_path):
             from ansible_know.server import resource_skills_list
             result = json.loads(resource_skills_list())
-        assert "netbox.netbox.nb_lookup" in result
-        assert "netbox.netbox.lookup__nb_lookup" not in result
+        assert "lookup-nb-lookup" in result
 
 
 class TestGetCollectionDocsTool:

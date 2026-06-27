@@ -47,18 +47,24 @@ def generate_manifest(
     Returns:
         The manifest dict.
     """
+    from ansible_know.skills import (  # noqa: I001
+        collection_skill_name,
+        fqcn_to_skill_name,
+        plugin_skill_name as _plugin_skill_name,
+        role_skill_name as _role_skill_name,
+    )
+
     if skills_dir is None:
         skills_dir = SKILLS_DIR
 
-    collection_dir = skills_dir / collection_namespace
+    collection_dir = skills_dir / collection_skill_name(collection_namespace)
 
     modules_list = []
     for meta in modules_metadata:
         fqcn = meta["module_name"]
         params = meta["params"]
         required_params = [p["name"] for p in params if p.get("required")]
-        short_name = fqcn.rsplit(".", 1)[-1]
-        has_skill = (collection_dir / short_name / "SKILL.md").exists()
+        has_skill = (collection_dir / fqcn_to_skill_name(fqcn) / "SKILL.md").exists()
 
         modules_list.append({
             "fqcn": fqcn,
@@ -73,8 +79,7 @@ def generate_manifest(
     roles_list = []
     for role_meta in (roles_metadata or []):
         fqcn = role_meta["fqcn"]
-        short_name = fqcn.rsplit(".", 1)[-1]
-        has_skill = (collection_dir / short_name / "SKILL.md").exists()
+        has_skill = (collection_dir / _role_skill_name(fqcn) / "SKILL.md").exists()
 
         roles_list.append({
             "fqcn": fqcn,
@@ -88,8 +93,7 @@ def generate_manifest(
     for plugin_meta in (plugins_metadata or []):
         fqcn = plugin_meta["fqcn"]
         ptype = plugin_meta["plugin_type"]
-        short_name = fqcn.rsplit(".", 1)[-1]
-        skill_path = (collection_dir / f"{ptype}__{short_name}" / "SKILL.md").resolve()
+        skill_path = (collection_dir / _plugin_skill_name(fqcn, ptype) / "SKILL.md").resolve()
         try:
             validate_path_containment(skill_path, skills_dir)
             has_skill = skill_path.exists()
@@ -136,10 +140,12 @@ def write_manifest(
         ValidationError: If the resolved path escapes ``skills_dir``.
         OSError: On permission or I/O errors.
     """
+    from ansible_know.skills import collection_skill_name
+
     if skills_dir is None:
         skills_dir = SKILLS_DIR
 
-    collection_dir = (skills_dir / collection_namespace).resolve()
+    collection_dir = (skills_dir / collection_skill_name(collection_namespace)).resolve()
     validate_path_containment(collection_dir, skills_dir)
     collection_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = collection_dir / "MANIFEST.json"
@@ -159,10 +165,12 @@ def load_cached_manifest(
     Backfills plugin_count and plugins fields for cached manifests
     created before plugin support was added.
     """
+    from ansible_know.skills import collection_skill_name
+
     if skills_dir is None:
         skills_dir = SKILLS_DIR
 
-    manifest_path = skills_dir / collection_namespace / "MANIFEST.json"
+    manifest_path = skills_dir / collection_skill_name(collection_namespace) / "MANIFEST.json"
     if not manifest_path.exists():
         return None
 

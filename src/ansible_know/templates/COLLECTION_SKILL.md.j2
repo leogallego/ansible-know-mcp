@@ -1,8 +1,15 @@
 ---
-name: {{ collection_namespace }}
+name: {{ spec_name }}
 description: >-
   Guided playbook development for the {{ collection_namespace }} collection.
   Covers {{ module_count }} module{{ "s" if module_count != 1 else "" }}{% if collection_version %} (v{{ collection_version }}){% endif %}.
+compatibility: Requires ansible-core and the {{ collection }} collection
+metadata:
+  collection: {{ collection }}
+  plugin-type: {{ plugin_type }}
+{% if collection_version %}
+  version: "{{ collection_version }}"
+{% endif %}
 ---
 
 # {{ collection_namespace }} Playbook Guide
