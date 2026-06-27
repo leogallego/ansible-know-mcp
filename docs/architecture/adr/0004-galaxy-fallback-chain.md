@@ -4,6 +4,10 @@
 
 Accepted
 
+## Date
+
+2026-06-19
+
 ## Context
 
 The server needs to provide module and role documentation to AI agents. Users
@@ -100,3 +104,31 @@ their installed version.
 - Consider making Galaxy-first the default (cheaper than spawning
   `ansible-doc` subprocesses) with local as fallback for custom modules.
 - Support `auth_url` + `client_id` for SSO token refresh (AAP Gateway).
+
+## Implementation Notes
+
+- `resolution.py` — `resolve_module_doc()`, `resolve_role_doc()`:
+  local → Galaxy → graceful degradation
+- `galaxy.py` — Galaxy v3 API client: version lookup, docs-blob fetch,
+  collection search, format conversion
+- `readme_parser.py` — Galaxy role README HTML parsing (4 variable
+  documentation patterns)
+- `galaxy_config.py` — Galaxy server configuration parsed from `ansible.cfg`
+  (`load_galaxy_servers()`, `GalaxyServerConfig` dataclass)
+- `server.py:lifespan()` — Galaxy server initialization at startup
+
+## Related Decisions
+
+- [ADR-0002](0002-subprocess-ansible-doc.md) — local `ansible-doc` is the
+  first tier in the fallback chain
+- [ADR-0003](0003-module-level-state.md) — Galaxy caches use `BoundedCache`
+- [ADR-0006](0006-upstream-first-integration.md) — multi-server Galaxy
+  support is a P0 candidate for upstream contribution
+
+## Revision History
+
+| Date | Author | Change |
+|------|--------|--------|
+| 2026-06-19 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Initial decision |
+| 2026-06-19 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Updated: resolution logic moved to resolution.py (PR #66) |
+| 2026-06-26 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Added Implementation Notes, Related Decisions, Revision History |
