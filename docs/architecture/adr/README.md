@@ -13,6 +13,9 @@ decision with its context, rationale, and consequences.
 | [0003](0003-module-level-state.md) | Module-Level Mutable State | Accepted (with known debt) |
 | [0004](0004-galaxy-fallback-chain.md) | Galaxy Fallback Chain with Multi-Server Support | Accepted |
 | [0005](0005-jinja2-skill-generation.md) | Jinja2-Based Skill Package Generation | Accepted |
+| [0006](0006-upstream-first-integration.md) | Upstream-First Integration with next-mcp | Proposed |
+| [0007](0007-agentskills-spec-compliance.md) | agentskills.io Specification Compliance | Proposed |
+| [0008](0008-three-layer-distribution.md) | Three-Layer Skill Distribution Model | Proposed |
 
 ## Format
 

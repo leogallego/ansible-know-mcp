@@ -4,6 +4,10 @@
 
 Accepted
 
+## Date
+
+2026-06-19
+
 ## Context
 
 The server's primary output artifact is a "skill package" — a directory
@@ -115,3 +119,27 @@ Scripts are written with executable permissions (`chmod +x`) via
 - If custom skill formats are needed (e.g., for different AI agent
   frameworks), support template overrides via environment variable or
   configuration.
+
+## Implementation Notes
+
+- `skills.py` — context builders, package writers, skill listing/reading
+- `templates/SKILL.md.j2` — module skill template
+- `templates/PLUGIN_SKILL.md.j2` — plugin skill template
+- `templates/ROLE_SKILL.md.j2` — role skill template
+- `templates/COLLECTION_SKILL.md.j2` — collection-level skill template
+- `templates/run.sh.j2`, `check.sh.j2` — execution scripts
+- `templates/playbook.yml.j2`, `role_playbook.yml.j2` — playbook assets
+
+## Related Decisions
+
+- [ADR-0002](0002-subprocess-ansible-doc.md) — metadata extraction feeds
+  the template context
+- [ADR-0007](0007-agentskills-spec-compliance.md) — templates must produce
+  agentskills.io-compliant frontmatter (issue #148)
+
+## Revision History
+
+| Date | Author | Change |
+|------|--------|--------|
+| 2026-06-19 | Leonardo Gallego (AI-assisted) | Initial decision |
+| 2026-06-26 | Leonardo Gallego (AI-assisted) | Added Implementation Notes, Related Decisions, Revision History |

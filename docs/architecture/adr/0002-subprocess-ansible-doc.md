@@ -4,6 +4,10 @@
 
 Accepted
 
+## Date
+
+2026-06-19
+
 ## Context
 
 The server needs to extract module and role documentation from installed
@@ -91,3 +95,27 @@ The subprocess approach was chosen because:
 - The Galaxy fallback already handles the "no local installation" case;
   consider making Galaxy-first the default for documentation (with local
   as fallback) to reduce ansible-core dependency.
+
+## Implementation Notes
+
+- `parser.py` — all `subprocess.run()` calls to `ansible-doc`
+- `parser.py:_run_ansible_doc()` — single entry point, mocked in all
+  unit tests
+- `parser.py:_find_ansible_doc()` — binary discovery: venv sibling first,
+  then `shutil.which()`
+- `async_utils.py:run_in_executor()` — bridges blocking subprocess calls
+  to async event loop
+
+## Related Decisions
+
+- [ADR-0004](0004-galaxy-fallback-chain.md) — Galaxy fallback when
+  `ansible-doc` cannot find a collection
+- [ADR-0006](0006-upstream-first-integration.md) — subprocess-based docs
+  are a candidate for upstream contribution to next-mcp
+
+## Revision History
+
+| Date | Author | Change |
+|------|--------|--------|
+| 2026-06-19 | Leonardo Gallego (AI-assisted) | Initial decision |
+| 2026-06-26 | Leonardo Gallego (AI-assisted) | Added Implementation Notes, Related Decisions, Revision History |
