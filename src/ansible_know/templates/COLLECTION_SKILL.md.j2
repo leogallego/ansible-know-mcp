@@ -5,6 +5,7 @@ description: >-
   Covers {{ module_count }} module{{ "s" if module_count != 1 else "" }}{% if collection_version %} (v{{ collection_version }}){% endif %}.
 compatibility: Requires ansible-core and the {{ collection }} collection
 metadata:
+  fqcn: {{ fqcn }}
   collection: {{ collection }}
   plugin-type: {{ plugin_type }}
 {% if collection_version %}

@@ -154,12 +154,16 @@ class CollectionSkillContext(TypedDict):
     """Template context for collection-level skill rendering."""
 
     collection_namespace: str
+    fqcn: str
+    spec_name: str
     collection_version: str | None
     modules_by_tag: dict[str, list[ModuleTagEntry]]
     all_api: bool
     common_params: list[ParamDict]
     module_count: int
     plugins_by_type: dict[str, list[dict[str, str]]]
+    collection: str
+    plugin_type: str
 
 
 class ManifestModuleEntry(TypedDict):

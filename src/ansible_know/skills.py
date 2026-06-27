@@ -16,7 +16,11 @@ from typing import TYPE_CHECKING, Any
 
 from ansible_know.config import TEMPLATE_DIR
 from ansible_know.tagging import derive_tags
-from ansible_know.validation import truncate_response, validate_path_containment
+from ansible_know.validation import (
+    extract_namespace,
+    truncate_response,
+    validate_path_containment,
+)
 
 if TYPE_CHECKING:
     from ansible_know.types import (
@@ -41,6 +45,8 @@ __all__ = [
     "list_skills_sync",
     "module_to_skill_name",
     "plugin_skill_name",
+    "skill_dir_to_collection_fqcn",
+    "skill_dir_to_short_fqcn",
     "render_collection_skill",
     "render_module_skill",
     "render_plugin_skill",
@@ -98,15 +104,32 @@ def collection_skill_name(namespace: str) -> str:
     return _to_kebab(namespace)
 
 
+def skill_dir_to_collection_fqcn(kebab_dir: str) -> str:
+    """Reverse a kebab collection directory name to a collection FQCN.
+
+    Splits on the first hyphen: namespace becomes the dot separator,
+    remaining hyphens revert to underscores.
+    ``netbox-netbox`` → ``netbox.netbox``
+    ``fedora-linux-system-roles`` → ``fedora.linux_system_roles``
+    """
+    parts = kebab_dir.split("-", 1)
+    if len(parts) == 2:
+        return parts[0] + "." + parts[1].replace("-", "_")
+    return parts[0]
+
+
+def skill_dir_to_short_fqcn(kebab_dir: str) -> str:
+    """Reverse a kebab skill directory name to the original short name.
+
+    ``netbox-device`` → ``netbox_device``
+    """
+    return kebab_dir.replace("-", "_")
+
+
 def module_to_skill_name(module_name: str) -> str:
     """Convert a module FQCN to a skill directory name."""
     return fqcn_to_skill_name(module_name)
 
-
-def _extract_namespace(fqcn: str) -> str:
-    """Extract namespace (first two parts) from a FQCN."""
-    parts = fqcn.split(".")
-    return ".".join(parts[:2]) if len(parts) >= 3 else fqcn
 
 
 def _module_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
@@ -114,7 +137,7 @@ def _module_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
     fqcn = metadata["module_name"]
     params = metadata["params"]
     example_args = _build_example_args(params, metadata.get("examples", ""))
-    namespace = _extract_namespace(fqcn)
+    namespace = extract_namespace(fqcn) or fqcn
     return {
         "module_name": fqcn,
         "spec_name": fqcn_to_skill_name(fqcn),
@@ -219,9 +242,9 @@ def list_skills_sync(
                     from ansible_know.config import PLUGIN_TYPES
                     match = PLUGIN_SKILL_DIR_RE.match(dir_name)
                     if match and match.group(1) in PLUGIN_TYPES:
-                        display_name = f"{collection}.{match.group(2).replace('-', '_')}"
+                        display_name = f"{collection}.{skill_dir_to_short_fqcn(match.group(2))}"
                     else:
-                        display_name = f"{collection}.{dir_name.replace('-', '_')}"
+                        display_name = f"{collection}.{skill_dir_to_short_fqcn(dir_name)}"
                     results.append({
                         "name": display_name,
                         "description": extract_skill_description(skill_md),
@@ -341,7 +364,7 @@ def _extract_example_values(examples_yaml: str) -> dict[str, str]:
 def _role_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
     """Build template context from role metadata."""
     fqcn = metadata["role_name"]
-    namespace = _extract_namespace(fqcn)
+    namespace = extract_namespace(fqcn) or fqcn
     return {
         "role_name": fqcn,
         "spec_name": role_skill_name(fqcn),
@@ -391,7 +414,7 @@ def _plugin_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
     """Build template context from plugin metadata."""
     fqcn = metadata["plugin_name"]
     ptype = metadata["plugin_type"]
-    namespace = _extract_namespace(fqcn)
+    namespace = extract_namespace(fqcn) or fqcn
     return {
         "plugin_name": fqcn,
         "plugin_type": ptype,
@@ -474,6 +497,7 @@ def _collection_template_context(
 
     return {
         "collection_namespace": namespace,
+        "fqcn": namespace,
         "spec_name": collection_skill_name(namespace),
         "collection_version": collection_version,
         "modules_by_tag": modules_by_tag,

@@ -50,8 +50,8 @@ def generate_manifest(
     from ansible_know.skills import (  # noqa: I001
         collection_skill_name,
         fqcn_to_skill_name,
-        plugin_skill_name as _plugin_skill_name,
-        role_skill_name as _role_skill_name,
+        plugin_skill_name,
+        role_skill_name,
     )
 
     if skills_dir is None:
@@ -79,7 +79,7 @@ def generate_manifest(
     roles_list = []
     for role_meta in (roles_metadata or []):
         fqcn = role_meta["fqcn"]
-        has_skill = (collection_dir / _role_skill_name(fqcn) / "SKILL.md").exists()
+        has_skill = (collection_dir / role_skill_name(fqcn) / "SKILL.md").exists()
 
         roles_list.append({
             "fqcn": fqcn,
@@ -93,7 +93,7 @@ def generate_manifest(
     for plugin_meta in (plugins_metadata or []):
         fqcn = plugin_meta["fqcn"]
         ptype = plugin_meta["plugin_type"]
-        skill_path = (collection_dir / _plugin_skill_name(fqcn, ptype) / "SKILL.md").resolve()
+        skill_path = (collection_dir / plugin_skill_name(fqcn, ptype) / "SKILL.md").resolve()
         try:
             validate_path_containment(skill_path, skills_dir)
             has_skill = skill_path.exists()

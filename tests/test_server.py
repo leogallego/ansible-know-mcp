@@ -812,8 +812,8 @@ class TestResourceFunctions:
         (mod_dir / "SKILL.md").write_text("# Device skill")
         from ansible_know.server import resource_skills_list
         result = json.loads(resource_skills_list())
-        assert "netbox-netbox" in result
-        assert "netbox-device" in result
+        assert "netbox.netbox" in result
+        assert "netbox.netbox.netbox_device" in result
 
     def test_resource_skill_content_flat_fallback(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
@@ -1924,14 +1924,15 @@ class TestListPluginSkills:
 
 
 class TestResourceSkillsListPlugins:
-    def test_lists_kebab_skill_names_in_resource(self, tmp_path):
+    def test_returns_fqcn_for_plugin_skills(self, tmp_path):
         skill_dir = tmp_path / "netbox-netbox" / "lookup-nb-lookup"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text("---\nname: test\n---\n")
         with patch("ansible_know.config.SKILLS_DIR", tmp_path):
             from ansible_know.server import resource_skills_list
             result = json.loads(resource_skills_list())
-        assert "lookup-nb-lookup" in result
+        assert "netbox.netbox.nb_lookup" in result
+        assert "lookup-nb-lookup" not in result
 
 
 class TestGetCollectionDocsTool:
