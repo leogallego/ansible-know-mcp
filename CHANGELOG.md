@@ -5,6 +5,89 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-06-27
+
+### Breaking Changes
+
+- Skill naming changed to agentskills.io spec compliance — kebab-case directories and names, added metadata fields (`fqcn`, `collection`, `plugin-type`, `version`, `compatibility`). **All existing generated skills must be regenerated.** (#150)
+
+### Added
+
+- Batch docs-blob fetch for collection documentation via `get_collection_docs` (#135)
+- Disk persistence for `BoundedCache` with atomic writes (#142)
+
+### Fixed
+
+- Bypass Galaxy CLI cache in `ensure_collection` to avoid stale installs (#143)
+- Improve `search_docs` matching and RTD fallback diversity (#140)
+- Restore FQCN output in `skills://list` resource for compatibility with `get_skill` (#150)
+
+### Changed
+
+- Bump `actions/checkout` from v4/v6 to v7.0.0 (#63)
+
+## [0.6.0] - 2026-06-25
+
+### Added
+
+- Plugin discovery, documentation, and skill generation — `search_plugins`, `get_plugin_doc`, `generate_plugin_skill` for all plugin types (lookup, filter, test, connection, become, strategy, callback, inventory, cache, cliconf, httpapi, netconf, shell, vars) (#122)
+- RTD-native documentation discovery — replaces ai-docs fork with direct docs.ansible.com integration (#116)
+
+### Changed
+
+- Align `resolve_module_doc` return type with role/plugin documentation pattern (#129)
+
+### Fixed
+
+- Tighten `plugins_metadata` and `roles_metadata` parameter typing (#128)
+- Move skill reading functions from server.py to skills.py for better separation of concerns (#130)
+- Remove AnsibleClaw references from templates and source code (#115)
+- Mention resources in MCP server instructions (#114)
+
+## [0.5.2] - 2026-06-22
+
+### Fixed
+
+- Use `typing_extensions.TypedDict` on Python < 3.12 for compatibility (#112)
+
+## [0.5.1] - 2026-06-22
+
+### Added
+
+- Deploy as remote MCP server on Hugging Face Spaces (#109)
+- `clear_cache` MCP tool — clear Galaxy version/docs-blob caches or doc manifests on demand (#110)
+- Collection-level skill generation with nested layout (#88)
+- Session lifecycle management for HTTP transport (#107)
+- Per-session state isolation and periodic PyPI version checks (#87)
+
+### Changed
+
+- Type tool handler returns with TypedDicts (#105)
+- Tighten nested types and fix semaphore lifecycle (#106)
+- Move `derive_tags` to Foundation module and wrap `get_skill` in executor (#103)
+- Add `ManifestResult` and `ParamDict` TypedDicts, split `generate_manifest`, edge-case tests (#104)
+
+## [0.5.0] - 2026-06-20
+
+### Added
+
+- HTTP streamable transport support — MCP clients can use stdio over HTTP (#64, #80)
+- Landing page for know.ansible.ar (#72, #75)
+
+### Changed
+
+- Encapsulate server state for session isolation and improved testability (#68, #77)
+- Extract resolution logic from server.py to separate module (#66, #73)
+- Clean up External Access layer contracts (#69, #74)
+- Batch architecture improvements from review (#60, #70)
+- Move error-handling helpers from server.py to errors.py (#55)
+- Cap fastmcp dependency to <4 with floor at 3.2
+
+### Fixed
+
+- Correct MCP endpoint URL in README — remove trailing slash
+- Improve Connect section layout and skip CI for site changes (#76)
+
 ## [0.4.0] - 2026-06-14
 
 ### Added
@@ -100,6 +183,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OWASP security hardening: FQCN input validation, path traversal protection, error sanitization, output size limits, audit logging
 - 77 tests covering tools, parser, skills, docs, collection manifests, and security
 
+[0.6.1]: https://github.com/leogallego/ansible-know-mcp/compare/v0.6.0...v0.6.1
+[0.6.0]: https://github.com/leogallego/ansible-know-mcp/compare/v0.5.2...v0.6.0
+[0.5.2]: https://github.com/leogallego/ansible-know-mcp/compare/v0.5.1...v0.5.2
+[0.5.1]: https://github.com/leogallego/ansible-know-mcp/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/leogallego/ansible-know-mcp/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/leogallego/ansible-know-mcp/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/leogallego/ansible-know-mcp/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/leogallego/ansible-know-mcp/compare/v0.3.0...v0.3.1
