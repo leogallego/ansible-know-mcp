@@ -141,5 +141,5 @@ Scripts are written with executable permissions (`chmod +x`) via
 
 | Date | Author | Change |
 |------|--------|--------|
-| 2026-06-19 | Leonardo Gallego (AI-assisted) | Initial decision |
-| 2026-06-26 | Leonardo Gallego (AI-assisted) | Added Implementation Notes, Related Decisions, Revision History |
+| 2026-06-19 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Initial decision |
+| 2026-06-26 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Added Implementation Notes, Related Decisions, Revision History |

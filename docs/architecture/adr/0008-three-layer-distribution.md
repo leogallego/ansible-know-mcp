@@ -124,4 +124,4 @@ would break. Spec compliance makes the layers possible.
 
 | Date | Author | Change |
 |------|--------|--------|
-| 2026-06-26 | Leonardo Gallego (AI-assisted) | Initial proposal |
+| 2026-06-26 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Initial proposal |

@@ -107,7 +107,7 @@ All contributions must align with next-mcp's ADRs:
 - **Phase 1** (upstream contributions): provide algorithms, patterns, and
   test cases for TypeScript reimplementation in next-mcp. Key features:
   - Multi-server Galaxy via `ansible.cfg`: `galaxy.py`, `config.py`
-  - Structured Galaxy docs fallback: `galaxy.py:get_docs_blob()`
+  - Structured Galaxy docs fallback: `galaxy.py:GalaxyClient._fetch_docs_blob()`
   - Role README HTML parsing: `readme_parser.py`
 - **Phase 2** (tool deprecation): mark overlapping tools as deprecated in
   `server.py`, emit warnings via `ctx.warning()`, remove after one release
@@ -128,4 +128,4 @@ All contributions must align with next-mcp's ADRs:
 
 | Date | Author | Change |
 |------|--------|--------|
-| 2026-06-26 | Leonardo Gallego (AI-assisted) | Initial proposal |
+| 2026-06-26 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Initial proposal |

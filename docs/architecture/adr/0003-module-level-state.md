@@ -125,10 +125,13 @@ to use module-level state remains unchanged.
 
 - `galaxy.py` — `BoundedCache` instances for `_version_cache`, `_blob_cache`
 - `docs.py` — `BoundedCache` for `_manifest_cache`
-- `collections.py` — `_installed_collections` dict, per-collection locks,
-  `_install_gate`
-- `server.py` — `_missing_collections` set (negative cache)
-- `cache.py` — `BoundedCache[K, V]` with `threading.Lock`, LRU eviction, TTL
+- `collections.py` — `CollectionManager` class (per-session via
+  `SessionManager`): `self._installed`, per-collection locks,
+  `self._install_gate`
+- `state.py` — `SharedState` (process-wide), `ServerState` (per-session
+  including `missing_collections` set), `SessionManager` factory
+- `cache.py` — `BoundedCache[K, V]` with `threading.Lock`, LRU eviction,
+  TTL, optional disk persistence
 
 ## Related Decisions
 
@@ -141,6 +144,6 @@ to use module-level state remains unchanged.
 
 | Date | Author | Change |
 |------|--------|--------|
-| 2026-06-19 | Leonardo Gallego (AI-assisted) | Initial decision |
-| 2026-06-19 | Leonardo Gallego (AI-assisted) | Updated with BoundedCache mitigation (PR #60) |
-| 2026-06-26 | Leonardo Gallego (AI-assisted) | Added Implementation Notes, Related Decisions, Revision History |
+| 2026-06-19 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Initial decision |
+| 2026-06-19 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Updated with BoundedCache mitigation (PR #60) |
+| 2026-06-26 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Added Implementation Notes, Related Decisions, Revision History |

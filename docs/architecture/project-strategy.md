@@ -18,7 +18,7 @@
 | Resources | 6 |
 | Prompts | 5 |
 | Tests | 776 (unit + integration) |
-| Modules | 22 Python source modules |
+| Modules | 21 Python source modules |
 
 ### Core capabilities
 
@@ -88,7 +88,7 @@ All significant decisions are recorded in [docs/architecture/adr/](adr/). Decisi
 
 | ADR | Title | Status | Summary |
 |---|---|---|---|
-| [0006](adr/0006-upstream-first-integration.md) | Upstream-First Integration with next-mcp | Proposed | Contribute knowledge features upstream, keep skill generation |
+| [0006](adr/0006-upstream-first-integration.md) | Upstream-First Integration with @ansible/mcp-server (next) | Proposed | Contribute knowledge features upstream, keep skill generation |
 | [0007](adr/0007-agentskills-spec-compliance.md) | agentskills.io Specification Compliance | Proposed | One output format, spec-compliant; naming and metadata conventions |
 | [0008](adr/0008-three-layer-distribution.md) | Three-Layer Skill Distribution Model | Proposed | Local → Repository → Remote, additive layers |
 
@@ -110,7 +110,7 @@ Prior decisions:
 
 The Ansible DevTools MCP server, bundled in the VS Code extension. Our primary integration partner.
 
-- **Local copy:** `/home/lgallego/Claude/vscode-ansible` (next branch)
+- **Local copy:** clone of `github.com/ansible/vscode-ansible` (next branch)
 - **Repo:** `github.com/ansible/vscode-ansible`
 - **Version:** 0.0.1 (pre-release)
 - **Relationship:** We upstream knowledge features; they distribute skills via the SkillRegistry

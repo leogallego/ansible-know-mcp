@@ -113,7 +113,8 @@ their installed version.
   collection search, format conversion
 - `readme_parser.py` — Galaxy role README HTML parsing (4 variable
   documentation patterns)
-- `config.py` — Galaxy server configuration parsed from `ansible.cfg`
+- `galaxy_config.py` — Galaxy server configuration parsed from `ansible.cfg`
+  (`load_galaxy_servers()`, `GalaxyServerConfig` dataclass)
 - `server.py:lifespan()` — Galaxy server initialization at startup
 
 ## Related Decisions
@@ -128,6 +129,6 @@ their installed version.
 
 | Date | Author | Change |
 |------|--------|--------|
-| 2026-06-19 | Leonardo Gallego (AI-assisted) | Initial decision |
-| 2026-06-19 | Leonardo Gallego (AI-assisted) | Updated: resolution logic moved to resolution.py (PR #66) |
-| 2026-06-26 | Leonardo Gallego (AI-assisted) | Added Implementation Notes, Related Decisions, Revision History |
+| 2026-06-19 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Initial decision |
+| 2026-06-19 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Updated: resolution logic moved to resolution.py (PR #66) |
+| 2026-06-26 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Added Implementation Notes, Related Decisions, Revision History |

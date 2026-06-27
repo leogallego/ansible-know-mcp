@@ -205,7 +205,9 @@ For changes that add or modify module-level or session-level state:
 - [ ] **Collection state**: must go through `CollectionManager` (per-session,
   created by `SessionManager`). Never use module-level collection state.
 - [ ] **Thread safety**: any state accessed from `run_in_executor()` threads
-  MUST use `threading.Lock`. Async-only state within a session is safe.
+  MUST use `threading.Lock`. Async-only state SHOULD use `asyncio.Lock`
+  if multiple coroutines may mutate it concurrently (e.g., `set.add()`,
+  `dict[key] = val`).
 
 ### Step 6: Check Public API Surface
 
@@ -275,9 +277,9 @@ For changes that affect architecture or project direction:
 - [ ] **ADR consistency**: if a PR contradicts an existing ADR, it must
   either update the ADR or document why the deviation is necessary.
 - [ ] **Tools to keep vs drop**: changes to tools marked for upstream
-  deprecation (search_modules, search_plugins, ensure_collection,
-  get_module_doc, get_plugin_doc, get_role_doc, clear_cache) should
-  not add new features — maintain only.
+  deprecation (search_modules, search_plugins, search_collections,
+  ensure_collection, get_module_doc, get_plugin_doc, get_role_doc,
+  clear_cache) should not add new features — maintain only.
 
 ---
 
