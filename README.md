@@ -1,6 +1,6 @@
 # Ansible Know MCP Server
 
-Module discovery, documentation search, and skill generation for AI agents via the Model Context Protocol.
+Give AI agents Ansible expertise — discover collections, understand modules, and generate reusable skills via MCP.
 
 ## What It Does
 
@@ -14,35 +14,35 @@ Ansible Know is the **learn** layer for AI agents working with Ansible:
 - **Skill generation** — create ready-to-use skill packages that teach agents how to use specific modules, roles, and plugins
 - **Resources and prompts** — browse skills, doc sources, and Galaxy servers; pre-built templates for playbook review, module explanation, and role generation
 
-Together with [Ansible Devtools MCP](https://github.com/ansible/ansible-dev-tools) (build) and [AAP MCP](https://github.com/ansible/aap-mcp-server) (deploy), this enables the full autonomous cycle: **learn -> build -> deploy**.
+Together with [Ansible Devtools MCP](https://github.com/ansible/ansible-dev-tools) (create + test) and [AAP MCP](https://github.com/ansible/aap-mcp-server) (deploy), this enables the full autonomous cycle: **learn -> create -> test -> deploy**.
 
 ```
  Agent's MCP servers:
 
- +----------------------------+  +-------------------+  +--------------+
- | Ansible Know               |  | Ansible Devtools  |  | AAP MCP      |
- | (this project)             |  |                   |  |              |
- |                            |  |                   |  |              |
- | search_collections         |  | ansible_lint      |  | controller.* |
- | search_modules             |  | ansible_navigator |  | eda.*        |
- | search_plugins             |  | ansible_create_*  |  | gateway.*    |
- | get_module_doc             |  | build_ee          |  | galaxy.*     |
- | get_plugin_doc             |  | zen_of_ansible    |  |              |
- | get_role_doc               |  | setup_environment |  |              |
- | get_collection_docs        |  | environment_info  |  |              |
- | get_collection_manifest    |  |                   |  |              |
- | search_docs                |  |                   |  |              |
- | fetch_doc                  |  |                   |  |              |
- | ensure_collection          |  |                   |  |              |
- | generate_skill             |  |                   |  |              |
- | generate_role_skill        |  |                   |  |              |
- | generate_plugin_skill      |  |                   |  |              |
- | generate_collection_skills |  |                   |  |              |
- | list_skills / get_skill    |  |                   |  |              |
- | clear_cache                |  |                   |  |              |
- |                            |  |                   |  |              |
- | LEARN                      |  | BUILD             |  | DEPLOY       |
- +----------------------------+  +-------------------+  +--------------+
+ +----------------------------+  +--------------------------+  +--------------+
+ | Ansible Know               |  | Ansible Devtools         |  | AAP MCP      |
+ | (this project)             |  |                          |  |              |
+ |                            |  | CREATE                   |  |              |
+ | search_collections         |  | ansible_create_*         |  | controller.* |
+ | search_modules             |  | build_ee                 |  | eda.*        |
+ | search_plugins             |  | setup_environment        |  | gateway.*    |
+ | get_module_doc             |  | environment_info         |  | galaxy.*     |
+ | get_plugin_doc             |  |                          |  |              |
+ | get_role_doc               |  | TEST                     |  |              |
+ | get_collection_docs        |  | ansible_lint             |  |              |
+ | get_collection_manifest    |  | ansible_navigator        |  |              |
+ | search_docs                |  |                          |  |              |
+ | fetch_doc                  |  | REFERENCE                |  |              |
+ | ensure_collection          |  | zen_of_ansible           |  |              |
+ | generate_skill             |  |                          |  |              |
+ | generate_role_skill        |  |                          |  |              |
+ | generate_plugin_skill      |  |                          |  |              |
+ | generate_collection_skills |  |                          |  |              |
+ | list_skills / get_skill    |  |                          |  |              |
+ | clear_cache                |  |                          |  |              |
+ |                            |  |                          |  |              |
+ | LEARN                      |  | CREATE + TEST            |  | DEPLOY       |
+ +----------------------------+  +--------------------------+  +--------------+
 ```
 
 ## Installation
