@@ -4,6 +4,33 @@ The Ansible knowledge engine for AI agents — discover collections, understand 
 
 A community proof of concept built with spec-driven AI-assisted development.
 
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  >_  ansible-know-mcp                                          [x]  │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  > I need to create an AWS EC2 instance with Ansible                 │
+│                                                                      │
+│    Let me find the right collection and module.                      │
+│                                                                      │
+│      * search_collections("aws ec2")                                 │
+│        amazon.aws                          12.3M downloads           │
+│                                                                      │
+│      * get_module_doc("amazon.aws.ec2_instance")                     │
+│        name, image_id, instance_type, state, key_name, tags...       │
+│                                                                      │
+│      → generate_skill("amazon.aws.ec2_instance")                     │
+│        Loaded skill: ec2_instance (12 params, 3 examples)            │
+│                                                                      │
+│    I have everything I need. Instance type, AMI, and name?           │
+│                                                                      │
+├──────────────────────────────────────────────────────────────────────┤
+│  > t3.micro, Fedora Linux 44, web-server █                           │
+└──────────────────────────────────────────────────────────────────────┘
+
+              DISCOVER ──→ LEARN ──→ SKILL ──→ BUILD
+```
+
 ## What It Does
 
 Ansible Know is the **learn** layer for AI agents working with Ansible:
