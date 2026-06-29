@@ -1,6 +1,6 @@
 # Ansible Know MCP Server
 
-Give AI agents Ansible expertise — discover collections, understand modules, and generate reusable skills via MCP.
+The Ansible knowledge engine for AI agents — discover collections, understand modules, and generate reusable skills via MCP.
 
 ## What It Does
 
