@@ -8,10 +8,10 @@ Ansible Know is the **learn** layer for AI agents working with Ansible:
 
 - **Galaxy collection discovery** — search 2000+ collections by keyword, ranked by download count
 - **Multi-server Galaxy support** — query public Galaxy, private Automation Hub, and AAP Gateway in parallel
-- **Module and role documentation** — structured parameter specs, examples, and metadata with Galaxy fallback
-- **Documentation search** — find conceptual guides from Ansible's AI-friendly docs
+- **Module, role, and plugin documentation** — structured parameter specs, examples, and metadata with Galaxy fallback
+- **Documentation search** — find conceptual guides from Ansible's AI-friendly docs, fetch full pages as Markdown
 - **Collection management** — auto-install collections and get collection-level overviews
-- **Skill generation** — create ready-to-use skill packages that teach agents how to use specific modules and roles
+- **Skill generation** — create ready-to-use skill packages that teach agents how to use specific modules, roles, and plugins
 - **Resources and prompts** — browse skills, doc sources, and Galaxy servers; pre-built templates for playbook review, module explanation, and role generation
 
 Together with [Ansible Devtools MCP](https://github.com/ansible/ansible-dev-tools) (build) and [AAP MCP](https://github.com/ansible/aap-mcp-server) (deploy), this enables the full autonomous cycle: **learn -> build -> deploy**.
@@ -25,16 +25,21 @@ Together with [Ansible Devtools MCP](https://github.com/ansible/ansible-dev-tool
  |                            |  |                   |  |              |
  | search_collections         |  | ansible_lint      |  | controller.* |
  | search_modules             |  | ansible_navigator |  | eda.*        |
- | get_module_doc             |  | ansible_create_*  |  | gateway.*    |
- | get_role_doc               |  | build_ee          |  | galaxy.*     |
- | get_collection_manifest    |  | zen_of_ansible    |  |              |
- | search_docs                |  | setup_environment |  |              |
- | ensure_collection          |  | environment_info  |  |              |
+ | search_plugins             |  | ansible_create_*  |  | gateway.*    |
+ | get_module_doc             |  | build_ee          |  | galaxy.*     |
+ | get_plugin_doc             |  | zen_of_ansible    |  |              |
+ | get_role_doc               |  | setup_environment |  |              |
+ | get_collection_docs        |  | environment_info  |  |              |
+ | get_collection_manifest    |  |                   |  |              |
+ | search_docs                |  |                   |  |              |
+ | fetch_doc                  |  |                   |  |              |
+ | ensure_collection          |  |                   |  |              |
  | generate_skill             |  |                   |  |              |
  | generate_role_skill        |  |                   |  |              |
+ | generate_plugin_skill      |  |                   |  |              |
  | generate_collection_skills |  |                   |  |              |
- | list_skills                |  |                   |  |              |
- | get_skill                  |  |                   |  |              |
+ | list_skills / get_skill    |  |                   |  |              |
+ | clear_cache                |  |                   |  |              |
  |                            |  |                   |  |              |
  | LEARN                      |  | BUILD             |  | DEPLOY       |
  +----------------------------+  +-------------------+  +--------------+
@@ -169,10 +174,14 @@ claude mcp add ansible-know --transport http https://know.ansible.ar/mcp
 |------|-------------|
 | `search_collections(query, tags?)` | Search Ansible Galaxy for collections by keyword, ranked by download count |
 | `search_modules(keyword, namespace?)` | Find modules by keyword in name or description (up to 50 matches) |
+| `search_plugins(keyword, namespace?, plugin_type?)` | Find plugins by keyword (lookup, filter, inventory, callback, etc.) |
 | `get_module_doc(module_name)` | Full structured docs: params, examples, API detection. Falls back to Galaxy if not installed locally |
+| `get_plugin_doc(plugin_name, plugin_type)` | Full structured plugin documentation with Galaxy fallback |
 | `get_role_doc(role_name)` | Role documentation with three-tier resolution: local ansible-doc, Galaxy README, or graceful degradation |
-| `search_docs(query, source?, topic?, audience?, core_only?)` | Search documentation manifests for conceptual guides (up to 20 matches) |
+| `get_collection_docs(collection_namespace, version?)` | Get all module docs for a collection from Galaxy in a single call |
 | `get_collection_manifest(collection_namespace)` | Collection-level manifest with per-module and per-role summaries |
+| `search_docs(query, source?, topic?, audience?, core_only?)` | Search documentation manifests for conceptual guides (up to 20 matches) |
+| `fetch_doc(url, max_tokens?)` | Fetch a docs.ansible.com page as clean Markdown |
 
 ### Collection management
 
@@ -188,7 +197,14 @@ claude mcp add ansible-know --transport http https://know.ansible.ar/mcp
 | `get_skill(skill_name)` | Read a skill's SKILL.md content |
 | `generate_skill(module_name, install_to?)` | Generate a skill package for one module |
 | `generate_role_skill(role_name, install_to?)` | Generate a skill package for one role |
+| `generate_plugin_skill(plugin_name, plugin_type, install_to?)` | Generate a skill package for one plugin |
 | `generate_collection_skills(collection_namespace, install_to?)` | Batch generate skills for an entire collection |
+
+### Maintenance
+
+| Tool | Description |
+|------|-------------|
+| `clear_cache(scope?)` | Clear Galaxy and/or doc manifest caches |
 
 ## Resources
 
@@ -207,6 +223,7 @@ claude mcp add ansible-know --transport http https://know.ansible.ar/mcp
 |--------|-------------|
 | `review_playbook(playbook_yaml)` | Review a playbook against module docs and best practices |
 | `explain_module(module_name)` | Detailed module explanation with usage examples |
+| `explain_plugin(plugin_name, plugin_type)` | Detailed plugin explanation with usage examples |
 | `generate_role(role_purpose, modules)` | Generate a role skeleton using specified modules |
 | `find_collection(platform_or_use_case)` | Guide through search, install, and explore workflow |
 
