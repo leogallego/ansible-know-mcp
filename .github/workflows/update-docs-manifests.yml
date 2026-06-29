@@ -36,14 +36,27 @@ jobs:
 
       - name: Create PR
         if: steps.changes.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@271a8d0340265f705b3c46b010e3d2bc09f20a1d # v7.0.8
-        with:
-          branch: auto/update-docs-manifests
-          title: 'chore: update docs manifests'
-          body: |
-            Automated weekly rebuild of documentation manifests from
-            docs.ansible.com (objects.inv + sitemap + markdown endpoint).
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          branch="auto/update-docs-manifests"
+          git checkout -B "$branch"
+          git add src/ansible_know/data/
+          git commit -m "chore: update docs manifests"
+          git push --force-with-lease origin "$branch"
+          if gh pr list --head "$branch" --state open --json number --jq '.[0].number' | grep -q .; then
+            echo "PR already exists, force-pushed update."
+          else
+            gh pr create \
+              --head "$branch" \
+              --title "chore: update docs manifests" \
+              --body "$(cat <<'EOF'
+          Automated weekly rebuild of documentation manifests from
+          docs.ansible.com (objects.inv + sitemap + markdown endpoint).
 
-            Review the diff to verify no unexpected changes from upstream.
-          commit-message: 'chore: update docs manifests'
-          delete-branch: true
+          Review the diff to verify no unexpected changes from upstream.
+          EOF
+          )"
+          fi
