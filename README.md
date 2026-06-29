@@ -2,6 +2,8 @@
 
 The Ansible knowledge engine for AI agents — discover collections, understand modules, and generate reusable skills via MCP.
 
+A community proof of concept built with spec-driven AI-assisted development.
+
 ## What It Does
 
 Ansible Know is the **learn** layer for AI agents working with Ansible:
