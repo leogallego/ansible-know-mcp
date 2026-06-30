@@ -222,7 +222,7 @@ async def _search_rtd_api(
                 "audience": [],
                 "lines": 0,
                 "source": f"rtd-search:{source_name}",
-                "url": f"{hit.get('domain', RTD_DOCS_DOMAIN)}{path}",
+                "url": f"{RTD_DOCS_DOMAIN}{path}",
             })
         return hits
 
