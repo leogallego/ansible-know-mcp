@@ -1,5 +1,6 @@
 """Tests for ansible_know.galaxy."""
 
+import asyncio
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 from unittest.mock import patch as stdlib_patch
@@ -1807,6 +1808,120 @@ class TestApiRootDiscovery:
         )
         with pytest.raises(GalaxyError, match="authentication failed"):
             await gc._discover_api_root()
+
+    @pytest.mark.asyncio
+    async def test_negative_cache_skips_retry(self):
+        """After discovery fails, subsequent calls raise immediately without HTTP."""
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "404", request=MagicMock(), response=MagicMock(status_code=404),
+        )
+        mock_resp.content = b""
+
+        call_count = 0
+        mock_client = AsyncMock()
+
+        async def mock_get(url, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return mock_resp
+        mock_client.get = mock_get
+
+        gc = GalaxyClient(
+            base_url="https://broken.example.com",
+            http_client=mock_client,
+        )
+
+        with pytest.raises(GalaxyError):
+            await gc._discover_api_root()
+
+        http_calls_after_first = call_count
+
+        with pytest.raises(GalaxyError):
+            await gc._discover_api_root()
+
+        assert call_count == http_calls_after_first
+
+    @pytest.mark.asyncio
+    async def test_negative_cache_message_mentions_restart(self):
+        """Cached failure message tells user to check config and restart."""
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "404", request=MagicMock(), response=MagicMock(status_code=404),
+        )
+        mock_resp.content = b""
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        gc = GalaxyClient(
+            base_url="https://broken.example.com",
+            http_client=mock_client,
+            server_name="my_hub",
+        )
+
+        with pytest.raises(GalaxyError):
+            await gc._discover_api_root()
+
+        with pytest.raises(GalaxyError, match="restart") as exc_info:
+            await gc._discover_api_root()
+
+        assert "my_hub" in str(exc_info.value)
+        assert "ansible.cfg" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_negative_cache_not_set_on_success(self):
+        """Successful discovery does not set the failure flag."""
+        discovery_response = {"available_versions": {"v3": "v3/"}}
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = discovery_response
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.content = b"{}"
+        mock_resp.headers = {}
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        gc = GalaxyClient(
+            base_url="https://galaxy.example.com",
+            http_client=mock_client,
+        )
+        await gc._discover_api_root()
+
+        assert gc._discovery_failed is False
+        assert gc._api_root is not None
+
+    @pytest.mark.asyncio
+    async def test_negative_cache_concurrent_double_check(self):
+        """Concurrent coroutines don't bypass the negative cache inside the lock."""
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "404", request=MagicMock(), response=MagicMock(status_code=404),
+        )
+        mock_resp.content = b""
+
+        call_count = 0
+        mock_client = AsyncMock()
+
+        async def mock_get(url, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return mock_resp
+        mock_client.get = mock_get
+
+        gc = GalaxyClient(
+            base_url="https://broken.example.com",
+            http_client=mock_client,
+        )
+
+        results = await asyncio.gather(
+            gc._discover_api_root(),
+            gc._discover_api_root(),
+            return_exceptions=True,
+        )
+
+        assert all(isinstance(r, GalaxyError) for r in results)
+        assert call_count == 2
 
 
 class TestBuildV3Url:
