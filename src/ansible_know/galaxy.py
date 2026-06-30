@@ -164,11 +164,19 @@ class GalaxyClient:
                 timeout=TIMEOUT_FAST,
             )
             resp.raise_for_status()
-            self._access_token = resp.json()["access_token"]
+            token = resp.json().get("access_token")
+            if not isinstance(token, str) or not token:
+                raise GalaxyError(
+                    f"SSO token exchange for server "
+                    f"'{self.server_name or 'default'}' returned "
+                    f"invalid access_token"
+                )
+            self._access_token = token
             return self._access_token
         except (httpx.HTTPStatusError, httpx.RequestError, KeyError, ValueError) as exc:
             raise GalaxyError(
-                f"SSO token exchange failed at {self._auth_url}"
+                f"SSO token exchange failed for server "
+                f"'{self.server_name or 'default'}'"
             ) from exc
 
     async def _resolve_auth_headers(self) -> dict[str, str]:
