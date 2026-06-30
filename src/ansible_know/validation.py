@@ -12,6 +12,7 @@ from ansible_know.errors import ValidationError
 __all__ = [
     "extract_collection_fqcn",
     "extract_namespace",
+    "split_collection_fqcn",
     "sanitize_error",
     "truncate_response",
     "validate_doc_url",
@@ -131,6 +132,18 @@ def extract_collection_fqcn(fqcn: str) -> str | None:
     or None if the name has no dots.
     """
     return ".".join(fqcn.split(".")[:2]) if "." in fqcn else None
+
+
+def split_collection_fqcn(fqcn: str) -> tuple[str, str]:
+    """Split a FQCN into (namespace, collection_name).
+
+    Returns ('namespace', 'collection') from 'namespace.collection.name'.
+    For dotless input, returns (fqcn, fqcn) as a safe fallback.
+    """
+    parts = fqcn.split(".")
+    if len(parts) >= 2:
+        return parts[0], parts[1]
+    return fqcn, fqcn
 
 
 def extract_namespace(fqcn: str) -> str | None:

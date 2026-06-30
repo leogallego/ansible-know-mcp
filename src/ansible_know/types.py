@@ -162,7 +162,7 @@ class CollectionSkillContext(TypedDict):
     module_count: int
     plugins_by_type: dict[str, list[dict[str, str]]]
     namespace: str
-    collection: str
+    collection_name: str
     plugin_type: str
 
 

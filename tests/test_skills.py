@@ -353,7 +353,7 @@ class TestRoleTemplateContext:
         ctx = _role_template_context(metadata)
         assert ctx["fqcn"] == "fedora.linux_system_roles.timesync"
         assert ctx["namespace"] == "fedora"
-        assert ctx["collection"] == "linux_system_roles"
+        assert ctx["collection_name"] == "linux_system_roles"
         assert ctx["short_description"] == "Configure time synchronization"
         assert len(ctx["entry_points"]) == 1
         assert ctx["dependencies"] == []
@@ -434,7 +434,7 @@ class TestCollectionTemplateContext:
 
         assert ctx["fqcn"] == "netbox.netbox"
         assert ctx["namespace"] == "netbox"
-        assert ctx["collection"] == "netbox"
+        assert ctx["collection_name"] == "netbox"
         assert ctx["module_count"] == 1
         assert isinstance(ctx["modules_by_tag"], dict)
         found = False

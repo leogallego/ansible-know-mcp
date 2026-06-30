@@ -3,10 +3,10 @@ name: {{ spec_name }}
 description: >-
   {{ short_description }}
   Use when configuring {{ skill_name | replace('_', ' ') }} via Ansible role.
-compatibility: Requires ansible-core and the {{ namespace }}.{{ collection }} collection
+compatibility: Requires ansible-core and the {{ namespace }}.{{ collection_name }} collection
 metadata:
   fqcn: {{ fqcn }}
-  collection: {{ namespace }}.{{ collection }}
+  collection: {{ namespace }}.{{ collection_name }}
   plugin-type: {{ plugin_type }}
 {% if doc_version %}
   version: "{{ doc_version }}"

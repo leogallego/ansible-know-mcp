@@ -7,10 +7,10 @@ description: >-
 {% else %}
   Use when managing {{ skill_name | replace('_', ' ') }} resources on remote hosts via Ansible.
 {% endif %}
-compatibility: Requires ansible-core and the {{ namespace }}.{{ collection }} collection
+compatibility: Requires ansible-core and the {{ namespace }}.{{ collection_name }} collection
 metadata:
   fqcn: {{ fqcn }}
-  collection: {{ namespace }}.{{ collection }}
+  collection: {{ namespace }}.{{ collection_name }}
   plugin-type: {{ plugin_type }}
 {% if doc_version %}
   version: "{{ doc_version }}"

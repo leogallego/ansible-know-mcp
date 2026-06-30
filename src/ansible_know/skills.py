@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 from ansible_know.config import TEMPLATE_DIR
 from ansible_know.tagging import derive_tags
 from ansible_know.validation import (
-    extract_collection_fqcn,
+    split_collection_fqcn,
     truncate_response,
     validate_path_containment,
 )
@@ -137,9 +137,7 @@ def _module_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
     fqcn = metadata["module_name"]
     params = metadata["params"]
     example_args = _build_example_args(params, metadata.get("examples", ""))
-    collection_fqcn = extract_collection_fqcn(fqcn) or fqcn
-    parts = collection_fqcn.split(".", 1)
-    ns, coll = parts[0], parts[1] if len(parts) > 1 else parts[0]
+    ns, coll = split_collection_fqcn(fqcn)
     return {
         "spec_name": fqcn_to_skill_name(fqcn),
         "skill_name": fqcn.rsplit(".", 1)[-1],
@@ -151,7 +149,7 @@ def _module_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
         "examples_contain_play": _examples_contain_play(metadata.get("examples", "")),
         "fqcn": fqcn,
         "namespace": ns,
-        "collection": coll,
+        "collection_name": coll,
         "plugin_type": "module",
         "doc_version": metadata.get("doc_version"),
     }
@@ -379,9 +377,7 @@ def _extract_example_values(examples_yaml: str) -> dict[str, str]:
 def _role_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
     """Build template context from role metadata."""
     fqcn = metadata["role_name"]
-    collection_fqcn = extract_collection_fqcn(fqcn) or fqcn
-    parts = collection_fqcn.split(".", 1)
-    ns, coll = parts[0], parts[1] if len(parts) > 1 else parts[0]
+    ns, coll = split_collection_fqcn(fqcn)
     return {
         "spec_name": role_skill_name(fqcn),
         "skill_name": fqcn.rsplit(".", 1)[-1],
@@ -392,7 +388,7 @@ def _role_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
         "doc_source": metadata.get("doc_source", ""),
         "fqcn": fqcn,
         "namespace": ns,
-        "collection": coll,
+        "collection_name": coll,
         "plugin_type": "role",
         "doc_version": metadata.get("doc_version"),
     }
@@ -431,9 +427,7 @@ def _plugin_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
     """Build template context from plugin metadata."""
     fqcn = metadata["plugin_name"]
     ptype = metadata["plugin_type"]
-    collection_fqcn = extract_collection_fqcn(fqcn) or fqcn
-    parts = collection_fqcn.split(".", 1)
-    ns, coll = parts[0], parts[1] if len(parts) > 1 else parts[0]
+    ns, coll = split_collection_fqcn(fqcn)
     return {
         "plugin_type": ptype,
         "spec_name": plugin_skill_name(fqcn, ptype),
@@ -443,7 +437,7 @@ def _plugin_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
         "examples": metadata.get("examples", "").strip(),
         "fqcn": fqcn,
         "namespace": ns,
-        "collection": coll,
+        "collection_name": coll,
         "doc_version": metadata.get("doc_version"),
     }
 
@@ -478,8 +472,7 @@ def _collection_template_context(
     plugins_metadata: list[PluginManifestInput] | None = None,
 ) -> CollectionSkillContext:
     """Build template context for a collection-level skill."""
-    parts = collection_fqcn.split(".", 1)
-    ns, coll = parts[0], parts[1] if len(parts) > 1 else parts[0]
+    ns, coll = split_collection_fqcn(collection_fqcn)
 
     modules_by_tag: dict[str, list[ModuleTagEntry]] = {}
     for meta in metadata_list:
@@ -527,7 +520,7 @@ def _collection_template_context(
         "module_count": len(metadata_list),
         "plugins_by_type": plugins_by_type,
         "namespace": ns,
-        "collection": coll,
+        "collection_name": coll,
         "plugin_type": "collection",
     }
 
