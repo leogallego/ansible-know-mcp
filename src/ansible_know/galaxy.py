@@ -271,7 +271,7 @@ class GalaxyClient:
         params: dict[str, str] | None = None,
         timeout: httpx.Timeout = TIMEOUT_DEFAULT,
     ) -> dict[str, Any]:
-        url = f"{self._base}{path}"
+        url = path if path.startswith("http") else f"{self._base}{path}"
         client = self._get_client()
         kwargs: dict[str, Any] = {
             "params": params,
@@ -340,12 +340,10 @@ class GalaxyClient:
         cached = _version_cache.get(cache_key)
         if cached is not None:
             return cached
-        path = (
-            f"/api/v3/plugin/ansible/content/published/collections/index/"
-            f"{namespace}/{name}/versions/"
-        )
+        await self._discover_api_root()
+        url = self._build_v3_url("collections", namespace, name, "versions")
         params = {"limit": "1", "ordering": "-version", "format": "json"}
-        data = await self._safe_api_get(path, params=params, timeout=TIMEOUT_FAST)
+        data = await self._safe_api_get(url, params=params, timeout=TIMEOUT_FAST)
         versions = data.get("data", [])
         if not versions:
             raise GalaxyError(
@@ -358,16 +356,15 @@ class GalaxyClient:
     async def _get_collection_detail(
         self, namespace: str, name: str,
     ) -> dict[str, Any]:
-        path = (
-            f"/api/v3/plugin/ansible/content/published/collections/index/"
-            f"{namespace}/{name}/"
-        )
-        return await self._safe_api_get(path, timeout=TIMEOUT_FAST)
+        await self._discover_api_root()
+        url = self._build_v3_url("collections", namespace, name)
+        return await self._safe_api_get(url, timeout=TIMEOUT_FAST)
 
     async def search_collections(
         self, query: str, tags: str | None = None,
     ) -> dict[str, Any]:
-        search_path = "/api/v3/plugin/ansible/search/collection-versions/"
+        await self._discover_api_root()
+        search_url = self._build_v3_url("plugin", "ansible", "search", "collection-versions")
         search_params: dict[str, str] = {
             "keywords": query,
             "is_highest": "true",
@@ -377,7 +374,7 @@ class GalaxyClient:
             search_params["tags"] = tags
 
         data = await self._safe_api_get(
-            search_path, params=search_params,
+            search_url, params=search_params,
         )
 
         candidates = []
@@ -449,12 +446,12 @@ class GalaxyClient:
         cached = _blob_cache.get(cache_key)
         if cached is not None:
             return cached
-        path = (
-            f"/api/v3/plugin/ansible/content/published/collections/index/"
-            f"{namespace}/{name}/versions/{version}/docs-blob/"
+        await self._discover_api_root()
+        url = self._build_v3_url(
+            "collections", namespace, name, "versions", version, "docs-blob",
         )
         params = {"format": "json"}
-        data = await self._safe_api_get(path, params=params, timeout=TIMEOUT_SLOW)
+        data = await self._safe_api_get(url, params=params, timeout=TIMEOUT_SLOW)
         blob = data.get("docs_blob", data)
         _blob_cache.put(cache_key, blob)
         return blob

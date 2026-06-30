@@ -30,6 +30,13 @@ def reset_galaxy_cache():
     clear_cache()
 
 
+def _skip_discovery(gc: GalaxyClient, base: str = "https://galaxy.ansible.com/api") -> GalaxyClient:
+    """Pre-set discovery state so tests skip the discovery handshake."""
+    gc._api_root = base
+    gc._v3_path = "v3/"
+    return gc
+
+
 SAMPLE_VERSIONS_RESPONSE = {
     "meta": {"count": 42},
     "links": {"first": None, "previous": None, "next": None, "last": None},
@@ -65,7 +72,7 @@ class TestLatestVersion:
     async def test_returns_latest_version(self):
         mock_client = _mock_client_get(SAMPLE_VERSIONS_RESPONSE)
         with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
-            client = GalaxyClient()
+            client = _skip_discovery(GalaxyClient())
             version = await client.latest_version("netbox", "netbox")
         assert version == "3.23.0"
         call_url = mock_client.get.call_args[0][0]
@@ -78,7 +85,7 @@ class TestLatestVersion:
         empty_response = {"meta": {"count": 0}, "links": {}, "data": []}
         mock_client = _mock_client_get(empty_response)
         with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
-            client = GalaxyClient()
+            client = _skip_discovery(GalaxyClient())
             with pytest.raises(GalaxyError, match="No versions found"):
                 await client.latest_version("nonexistent", "collection")
 
@@ -95,7 +102,7 @@ class TestLatestVersion:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
-            client = GalaxyClient()
+            client = _skip_discovery(GalaxyClient())
             with pytest.raises(GalaxyError, match="Galaxy API error"):
                 await client.latest_version("bad", "collection")
 
@@ -188,12 +195,12 @@ class TestSearchCollections:
             call_count += 1
             if "search/collection-versions" in path:
                 return SAMPLE_SEARCH_RESPONSE
-            if "index/netbox/netbox/" in path:
+            if "netbox/netbox/" in path:
                 return SAMPLE_DETAIL_RESPONSE
             return {"download_count": 0, "highest_version": {"version": "1.0.0"}, "deprecated": True}
 
         with _mock_search_context(mock_api_get):
-            client = GalaxyClient()
+            client = _skip_discovery(GalaxyClient())
             result = await client.search_collections("netbox")
 
         assert result["query"] == "netbox"
@@ -722,7 +729,7 @@ class TestResponseSizeLimit:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
-            client = GalaxyClient()
+            client = _skip_discovery(GalaxyClient())
             with pytest.raises(GalaxyError, match="too large"):
                 await client.latest_version("netbox", "netbox")
 
@@ -739,7 +746,7 @@ class TestResponseSizeLimit:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
-            client = GalaxyClient()
+            client = _skip_discovery(GalaxyClient())
             with pytest.raises(GalaxyError, match="too large"):
                 await client.latest_version("netbox", "netbox")
 
@@ -757,7 +764,7 @@ class TestResponseSizeLimit:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
-            client = GalaxyClient()
+            client = _skip_discovery(GalaxyClient())
             version = await client.latest_version("netbox", "netbox")
         assert version == "3.23.0"
 
@@ -775,7 +782,7 @@ class TestResponseSizeLimit:
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
-            client = GalaxyClient()
+            client = _skip_discovery(GalaxyClient())
             version = await client.latest_version("netbox", "netbox")
         assert version == "3.23.0"
 
@@ -812,7 +819,7 @@ class TestNetworkErrors:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
-            client = GalaxyClient()
+            client = _skip_discovery(GalaxyClient())
             with pytest.raises(GalaxyError, match="Galaxy connection"):
                 await client.latest_version("netbox", "netbox")
 
@@ -823,7 +830,7 @@ class TestNetworkErrors:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
-            client = GalaxyClient()
+            client = _skip_discovery(GalaxyClient())
             with pytest.raises(GalaxyError, match="timed out"):
                 await client.latest_version("netbox", "netbox")
 
@@ -834,7 +841,7 @@ class TestNetworkErrors:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
-            client = GalaxyClient()
+            client = _skip_discovery(GalaxyClient())
             with pytest.raises(GalaxyError, match="connection error"):
                 await client.latest_version("netbox", "netbox")
 
@@ -845,7 +852,7 @@ class TestNetworkErrors:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
         with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
-            client = GalaxyClient()
+            client = _skip_discovery(GalaxyClient())
             with pytest.raises(GalaxyError, match="connection error"):
                 await client.latest_version("netbox", "netbox")
 
@@ -1103,7 +1110,7 @@ class TestTimeoutPassthrough:
     async def test_latest_version_uses_fast_timeout(self):
         mock_client = _mock_client_get(SAMPLE_VERSIONS_RESPONSE)
         with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
-            client = GalaxyClient()
+            client = _skip_discovery(GalaxyClient())
             await client.latest_version("netbox", "netbox")
         call_kwargs = mock_client.get.call_args[1]
         assert call_kwargs["timeout"] == TIMEOUT_FAST
@@ -1113,7 +1120,7 @@ class TestTimeoutPassthrough:
         _version_cache.put(("netbox", "netbox"), "3.23.0")
         mock_client = _mock_client_get(SAMPLE_DOCS_BLOB)
         with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
-            client = GalaxyClient()
+            client = _skip_discovery(GalaxyClient())
             await client._fetch_docs_blob("netbox", "netbox", "3.23.0")
         call_kwargs = mock_client.get.call_args[1]
         assert call_kwargs["timeout"] == TIMEOUT_SLOW
@@ -1123,7 +1130,7 @@ class TestHttpClientInjection:
     @pytest.mark.asyncio
     async def test_uses_injected_client(self):
         mock_client = _mock_client_get(SAMPLE_VERSIONS_RESPONSE)
-        gc = GalaxyClient(http_client=mock_client)
+        gc = _skip_discovery(GalaxyClient(http_client=mock_client))
         version = await gc.latest_version("netbox", "netbox")
         assert version == "3.23.0"
         mock_client.get.assert_called_once()
@@ -1132,7 +1139,7 @@ class TestHttpClientInjection:
     async def test_creates_own_client_when_none(self):
         mock_client = _mock_client_get(SAMPLE_VERSIONS_RESPONSE)
         with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
-            gc = GalaxyClient()
+            gc = _skip_discovery(GalaxyClient())
             version = await gc.latest_version("netbox", "netbox")
         assert version == "3.23.0"
 
@@ -1140,7 +1147,7 @@ class TestHttpClientInjection:
     async def test_reuses_owned_client(self):
         mock_client = _mock_client_get(SAMPLE_VERSIONS_RESPONSE)
         with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client) as mock_ctor:
-            gc = GalaxyClient()
+            gc = _skip_discovery(GalaxyClient())
             await gc.latest_version("ns1", "col1")
             await gc.latest_version("ns2", "col2")
         assert mock_ctor.call_count == 1
@@ -1227,6 +1234,7 @@ class TestGalaxyClientCleanup:
         mock_client = _mock_client_get(SAMPLE_VERSIONS_RESPONSE)
         with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client):
             async with GalaxyClient() as gc:
+                _skip_discovery(gc)
                 await gc.latest_version("netbox", "netbox")
         mock_client.aclose.assert_called_once()
 
@@ -1234,6 +1242,7 @@ class TestGalaxyClientCleanup:
     async def test_async_context_manager_noop_with_injected(self):
         injected = _mock_client_get(SAMPLE_VERSIONS_RESPONSE)
         async with GalaxyClient(http_client=injected) as gc:
+            _skip_discovery(gc)
             await gc.latest_version("netbox", "netbox")
         injected.aclose.assert_not_called()
 
@@ -1412,7 +1421,7 @@ class TestGalaxyClientAuth:
     @pytest.mark.asyncio
     async def test_token_sent_in_request(self):
         mock_client = _mock_client_get(SAMPLE_VERSIONS_RESPONSE)
-        gc = GalaxyClient(http_client=mock_client, token="test_token")
+        gc = _skip_discovery(GalaxyClient(http_client=mock_client, token="test_token"))
         await gc.latest_version("netbox", "netbox")
         call_kwargs = mock_client.get.call_args[1]
         assert call_kwargs["headers"]["Authorization"] == "Token test_token"
@@ -1420,7 +1429,7 @@ class TestGalaxyClientAuth:
     @pytest.mark.asyncio
     async def test_basic_auth_sent_in_request(self):
         mock_client = _mock_client_get(SAMPLE_VERSIONS_RESPONSE)
-        gc = GalaxyClient(http_client=mock_client, username="admin", password="secret")
+        gc = _skip_discovery(GalaxyClient(http_client=mock_client, username="admin", password="secret"))
         await gc.latest_version("netbox", "netbox")
         call_kwargs = mock_client.get.call_args[1]
         auth = call_kwargs.get("auth")
@@ -1442,12 +1451,12 @@ class TestGalaxyClientAuth:
     @pytest.mark.asyncio
     async def test_token_takes_precedence_over_basic_auth(self):
         mock_client = _mock_client_get(SAMPLE_VERSIONS_RESPONSE)
-        gc = GalaxyClient(
+        gc = _skip_discovery(GalaxyClient(
             http_client=mock_client,
             token="my_token",
             username="admin",
             password="secret",
-        )
+        ))
         await gc.latest_version("netbox", "netbox")
         call_kwargs = mock_client.get.call_args[1]
         assert call_kwargs["headers"]["Authorization"] == "Token my_token"
@@ -1839,6 +1848,67 @@ class TestBuildV3Url:
         gc = GalaxyClient(base_url="https://galaxy.ansible.com")
         url = gc._build_v3_url("collections", "ns", "col")
         assert url == "https://galaxy.ansible.com/collections/ns/col/"
+
+
+class TestDynamicUrlConstruction:
+    @pytest.mark.asyncio
+    async def test_latest_version_uses_discovered_root(self):
+        """URL is built from discovered root, not hardcoded."""
+        call_urls = []
+
+        async def tracking_api_get(self_client, path, params=None, timeout=None):
+            call_urls.append(path)
+            return SAMPLE_VERSIONS_RESPONSE
+
+        gc = GalaxyClient(base_url="https://hub.example.com/api/galaxy/content/published")
+        gc._api_root = "https://hub.example.com/api/galaxy/content/published"
+        gc._v3_path = "v3/"
+
+        with patch.object(GalaxyClient, "_api_get", tracking_api_get):
+            await gc.latest_version("netbox", "netbox")
+
+        url = call_urls[0]
+        assert "/api/v3/plugin/ansible/content/published/" not in url
+        assert "hub.example.com" in url
+        assert "v3/collections/netbox/netbox/versions/" in url
+
+    @pytest.mark.asyncio
+    async def test_search_uses_pulp_specific_path(self):
+        """Search endpoint uses Pulp-specific path (no redirect exists for it)."""
+        call_urls = []
+
+        async def tracking_api_get(self_client, path, params=None, timeout=None):
+            call_urls.append(path)
+            return {"meta": {"count": 0}, "links": {}, "data": []}
+
+        gc = GalaxyClient(base_url="https://hub.example.com")
+        gc._api_root = "https://hub.example.com"
+        gc._v3_path = "v3/"
+
+        with patch.object(GalaxyClient, "_api_get", tracking_api_get):
+            await gc.search_collections("test")
+
+        url = call_urls[0]
+        assert "plugin/ansible/search/collection-versions" in url
+
+    @pytest.mark.asyncio
+    async def test_public_galaxy_url_construction(self):
+        """Public Galaxy with discovered /api/ root builds correct URLs."""
+        call_urls = []
+
+        async def tracking_api_get(self_client, path, params=None, timeout=None):
+            call_urls.append(path)
+            return SAMPLE_VERSIONS_RESPONSE
+
+        gc = GalaxyClient(base_url="https://galaxy.ansible.com")
+        gc._api_root = "https://galaxy.ansible.com/api"
+        gc._v3_path = "v3/"
+
+        with patch.object(GalaxyClient, "_api_get", tracking_api_get):
+            await gc.latest_version("ansible", "utils")
+
+        url = call_urls[0]
+        assert url.startswith("https://galaxy.ansible.com/api/v3/collections/ansible/utils/versions/")
 
 
 class TestRedirectFollowing:
