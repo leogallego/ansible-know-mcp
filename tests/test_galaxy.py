@@ -1468,6 +1468,16 @@ class TestGalaxyClientAuth:
         assert gc.server_name == "test_hub"
 
 
+class TestRedirectFollowing:
+    def test_owned_client_follows_redirects(self):
+        mock_client = AsyncMock()
+        with patch("ansible_know.galaxy.httpx.AsyncClient", return_value=mock_client) as mock_ctor:
+            gc = GalaxyClient()
+            gc._get_client()
+        mock_ctor.assert_called_once()
+        assert mock_ctor.call_args[1]["follow_redirects"] is True
+
+
 class TestFindPlugin:
     def test_finds_lookup_plugin(self, sample_docs_blob_with_plugins):
         blob = sample_docs_blob_with_plugins["docs_blob"]

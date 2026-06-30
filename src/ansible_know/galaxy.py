@@ -126,6 +126,7 @@ class GalaxyClient:
             self._owned_client = httpx.AsyncClient(
                 timeout=httpx.Timeout(10.0, read=120.0),
                 verify=self._verify,
+                follow_redirects=True,
             )
         return self._owned_client
 
