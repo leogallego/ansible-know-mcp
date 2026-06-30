@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "generated": "2026-06-23T21:18:36.814578+00:00",
+  "generated": "2026-06-30T21:26:45.825900+00:00",
   "base_url": "https://docs.ansible.com/projects/lint",
   "files": [
     {
@@ -61,7 +61,7 @@
       "core": true,
       "summary": "## Using commands\n\nAfter you install Ansible-lint, run `ansible-lint --help` to display available commands and their options.\n\n`` [](#%5F%5Fcodelineno-0-1)$ ansible-lint --help\n[](#%5F%5Fcodelineno-0-2)usage: ansible-lint [-h] [-P | -L | -T]\n[](#%5F%5Fcodelineno-0-3)                    [-f {brief,full,md,json,codeclimate,quiet,pep8,sarif}]\n[](#%5F%5Fcodelineno-0-4)                    [--sarif-file SARIF_FILE] [-q]\n[](#%5F%5Fcodelineno-0-5)                    [--profile {min,basic,moderate,safety,shared,production}]\n[](#%5F%5Fcodelineno-0-6)                    [--project-dir PROJECT_DIR] [-r RULESDIR] [-R] [-s]\n[](#%5F%5Fcodelineno-0-7)                    [--fix [WRITE_LIST]] [--show-relpath] [-t TAGS] [-v]\n[](#%5F%5Fcodelineno-0-8)                    [-x SKIP_LIST] [--generate-ignore] [-w WARN_LIST]\n[](#%5F%5Fcodelineno-0-9)                    [--enable-list ENABLE_LIST] [--nocolor] [--force-color]\n[](#%5F%5Fcodelineno-0-10)                    [--exclude EXCLUDE_PATHS [EXCLUDE_PATHS ...]]\n[](#%5F%5Fcodelineno-0-11)                    [-c CONFIG_FILE] [-i IGNORE_FILE]\n[](#%5F%5Fcodelineno-0-12)                    [--yamllint-file YAMLLINT_FILE] [--offline | --no-offline]\n[](#%5F%5Fcodelineno-0-13)                    [--version]\n[](#%5F%5Fcodelineno-0-14)                    [lintables ...]\n[](#%5F%5Fcodelineno-0-15)\n[](#%5F%5Fcodelineno-0-16)positional arguments:\n[](#%5F%5Fcodelineno-0-17)  lintables             One or more files or paths.",
       "lines": 446,
-      "tokens": 8763
+      "tokens": 8693
     },
     {
       "path": "index.html",
@@ -239,9 +239,9 @@
       "title": "inline-env-var",
       "audience": "author",
       "core": false,
-      "summary": "This rule checks that playbooks do not set environment variables in the `ansible.builtin.command` module.\n\nYou should set environment variables with the `ansible.builtin.shell` module or the `environm",
-      "lines": 37,
-      "tokens": 1201
+      "summary": "This rule checks that playbooks do not set environment variables in the `ansible.builtin.command` module.\n\nYou should use the `environment` keyword to set environment variables.",
+      "lines": 41,
+      "tokens": 1286
     },
     {
       "path": "rules/internal-error/",
