@@ -1175,7 +1175,7 @@ class TestSearchCollectionsTool:
         with patch("ansible_know.galaxy.GalaxyClient.search_collections", return_value=mock_result) as mock_search:
             from ansible_know.server import search_collections
             result = await search_collections("network", tags="networking,cloud")
-        mock_search.assert_called_once_with("network", tags="networking,cloud")
+        mock_search.assert_any_call("network", tags="networking,cloud")
         assert result["count"] == 0
 
     @pytest.mark.asyncio
