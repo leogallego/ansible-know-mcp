@@ -28,7 +28,7 @@ CACHE_TTL_SECONDS = 3600
 
 TIMEOUT_FAST = httpx.Timeout(10.0)
 TIMEOUT_DEFAULT = httpx.Timeout(10.0, read=30.0)
-TIMEOUT_SLOW = httpx.Timeout(10.0, read=60.0)
+TIMEOUT_SLOW = httpx.Timeout(10.0, read=120.0)
 
 ENRICHMENT_CONCURRENCY = 5
 MAX_DISCOVERY_RESPONSE_SIZE = 100_000  # 100KB — discovery payloads are tiny
@@ -155,7 +155,7 @@ class GalaxyClient:
             return self._http_client
         if self._owned_client is None:
             self._owned_client = httpx.AsyncClient(
-                timeout=httpx.Timeout(10.0, read=120.0),
+                timeout=TIMEOUT_SLOW,
                 verify=self._verify,
                 follow_redirects=True,
             )

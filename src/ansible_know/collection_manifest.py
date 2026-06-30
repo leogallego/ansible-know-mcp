@@ -170,11 +170,16 @@ def load_cached_manifest(
     if skills_dir is None:
         skills_dir = SKILLS_DIR
 
-    manifest_path = skills_dir / collection_skill_name(collection_namespace) / "MANIFEST.json"
+    collection_dir = (skills_dir / collection_skill_name(collection_namespace)).resolve()
+    validate_path_containment(collection_dir, skills_dir)
+    manifest_path = collection_dir / "MANIFEST.json"
     if not manifest_path.exists():
         return None
 
-    manifest = json.loads(manifest_path.read_text())
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
     if installed_version and manifest.get("collection_version") != installed_version:
         return None
 
