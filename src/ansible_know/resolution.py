@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     import httpx
 
     from ansible_know.galaxy_config import GalaxyServerConfig
-    from ansible_know.types import DocProvenance, GalaxyClientFactory
+    from ansible_know.types import DocProvenance, GalaxyClientFactory, GetRoleDocResult
 
 from ansible_know.async_utils import run_in_executor
 from ansible_know.errors import AnsibleDocError
@@ -142,7 +142,7 @@ async def resolve_role_doc(
     client_factory: GalaxyClientFactory | None = None,
     missing_collections: set[str] | None = None,
     collections_path: str | None = None,
-) -> dict[str, Any]:
+) -> GetRoleDocResult:
     """Try local ansible-doc -t role, fall back to Galaxy readme_html.
 
     Returns the complete tool response dict including doc_source and content_type.

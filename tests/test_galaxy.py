@@ -972,7 +972,7 @@ class TestTimeoutConstants:
 
     def test_timeout_slow_values(self):
         assert TIMEOUT_SLOW.connect == 10.0
-        assert TIMEOUT_SLOW.read == 60.0
+        assert TIMEOUT_SLOW.read == 120.0
         assert TIMEOUT_SLOW.write == 10.0
         assert TIMEOUT_SLOW.pool == 10.0
 
