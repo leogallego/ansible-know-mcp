@@ -123,6 +123,7 @@ async def app_lifespan(server):
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(10.0, read=120.0),
         verify=True,
+        follow_redirects=True,
     ) as client:
         shared.version_info = await _check_pypi_version(client)
         check_task = asyncio.create_task(
