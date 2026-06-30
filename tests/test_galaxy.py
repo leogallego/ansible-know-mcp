@@ -223,7 +223,7 @@ class TestSearchCollections:
             return {"download_count": 50, "highest_version": {"version": "1.0.0"}, "deprecated": True}
 
         with _mock_search_context(mock_api_get):
-            client = GalaxyClient()
+            client = _skip_discovery(GalaxyClient())
             result = await client.search_collections("netbox")
 
         namespaces = [c["namespace"] for c in result["collections"]]
@@ -272,7 +272,7 @@ class TestSearchCollections:
             return {"download_count": 100, "highest_version": {"version": "1.0.0"}, "deprecated": False}
 
         with _mock_search_context(mock_api_get):
-            client = GalaxyClient()
+            client = _skip_discovery(GalaxyClient())
             result = await client.search_collections("col")
 
         assert result["collections"][0]["namespace"] == "high_downloads.col"
@@ -289,7 +289,7 @@ class TestSearchCollections:
             return {}
 
         with _mock_search_context(mock_api_get):
-            client = GalaxyClient()
+            client = _skip_discovery(GalaxyClient())
             result = await client.search_collections("network", tags="networking")
 
         search_call = [c for c in call_args if "search/collection-versions" in c["path"]][0]
@@ -326,7 +326,7 @@ class TestDetailEnrichmentFailure:
             raise GalaxyError("detail request failed")
 
         with _mock_search_context(mock_api_get):
-            client = GalaxyClient()
+            client = _skip_discovery(GalaxyClient())
             result = await client.search_collections("test")
 
         assert result["collections"][0]["download_count"] == 0
@@ -372,7 +372,7 @@ class TestDetailEnrichmentFailure:
             raise GalaxyError("all detail requests fail")
 
         with _mock_search_context(mock_api_get):
-            client = GalaxyClient()
+            client = _skip_discovery(GalaxyClient())
             result = await client.search_collections("test")
 
         assert result["count"] == 2

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -30,6 +31,9 @@ TIMEOUT_DEFAULT = httpx.Timeout(10.0, read=30.0)
 TIMEOUT_SLOW = httpx.Timeout(10.0, read=60.0)
 
 ENRICHMENT_CONCURRENCY = 5
+MAX_DISCOVERY_RESPONSE_SIZE = 100_000  # 100KB — discovery payloads are tiny
+
+_SAFE_V3_PATH_RE = re.compile(r"^[a-zA-Z0-9/_-]+/?$")
 
 # Module-level caches shared across all GalaxyClient instances.
 # Keys include enough context (namespace, name, version) to avoid
@@ -149,6 +153,12 @@ class GalaxyClient:
             raise GalaxyError(
                 "Cannot exchange SSO token without auth_url"
             )
+        if not self._auth_url.startswith("https://"):
+            logger.warning(
+                "auth_url for server '%s' is not HTTPS — "
+                "credentials may be sent in cleartext",
+                self.server_name or "default",
+            )
 
         async with self._token_lock:
             if self._access_token is not None:
@@ -216,6 +226,8 @@ class GalaxyClient:
             try:
                 resp = await client.get(n_url, **kwargs)
                 resp.raise_for_status()
+                if len(resp.content) > MAX_DISCOVERY_RESPONSE_SIZE:
+                    raise GalaxyError("Discovery response too large")
                 data = resp.json()
             except httpx.HTTPStatusError as exc:
                 logger.debug("Discovery probe %s returned HTTP %s", n_url, exc.response.status_code)
@@ -230,6 +242,8 @@ class GalaxyClient:
                     try:
                         resp = await client.get(n_url, **kwargs)
                         resp.raise_for_status()
+                        if len(resp.content) > MAX_DISCOVERY_RESPONSE_SIZE:
+                            raise GalaxyError("Discovery response too large")
                         data = resp.json()
                     except httpx.HTTPStatusError as exc:
                         logger.debug("Discovery probe %s returned HTTP %s", n_url, exc.response.status_code)
@@ -264,8 +278,15 @@ class GalaxyClient:
                     f"Only v3 servers are supported."
                 )
 
+            v3_path = versions["v3"]
+            if ".." in v3_path or not _SAFE_V3_PATH_RE.match(v3_path):
+                raise GalaxyError(
+                    f"Galaxy server '{server_label}' returned "
+                    f"unsafe v3 path. Verify the server URL in ansible.cfg."
+                )
+
             self._api_root = n_url.rstrip("/")
-            self._v3_path = versions["v3"]
+            self._v3_path = v3_path
             logger.info(
                 "Discovered Galaxy API root: %s (v3 path: %s)",
                 self._api_root, self._v3_path,
@@ -273,6 +294,8 @@ class GalaxyClient:
 
     def _build_v3_url(self, *segments: str) -> str:
         """Build a v3 API URL from path segments using the discovered root."""
+        if self._api_root is None:
+            logger.warning("_build_v3_url called before _discover_api_root")
         parts = [self._api_root or self._base, self._v3_path or ""]
         parts.extend(segments)
         return "/".join(

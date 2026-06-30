@@ -9,7 +9,7 @@ import pytest
 
 from ansible_know.galaxy_config import (
     GalaxyServerConfig,
-    _sanitize_credential,
+    _sanitize_config_value,
     find_ansible_cfg,
     load_galaxy_servers,
 )
@@ -311,27 +311,27 @@ class TestLoadGalaxyServers:
         assert servers[0].username == "admin"
 
 
-class TestSanitizeCredential:
+class TestSanitizeConfigValue:
     def test_none_returns_none(self):
-        assert _sanitize_credential(None) is None
+        assert _sanitize_config_value(None) is None
 
     def test_clean_value_unchanged(self):
-        assert _sanitize_credential("my_token_123") == "my_token_123"
+        assert _sanitize_config_value("my_token_123") == "my_token_123"
 
     def test_strips_crlf(self):
-        assert _sanitize_credential("secret\r\nX-Evil: true") == "secretX-Evil: true"
+        assert _sanitize_config_value("secret\r\nX-Evil: true") == "secretX-Evil: true"
 
     def test_strips_lone_cr(self):
-        assert _sanitize_credential("secret\rvalue") == "secretvalue"
+        assert _sanitize_config_value("secret\rvalue") == "secretvalue"
 
     def test_strips_lone_lf(self):
-        assert _sanitize_credential("secret\nvalue") == "secretvalue"
+        assert _sanitize_config_value("secret\nvalue") == "secretvalue"
 
     def test_empty_after_strip_returns_none(self):
-        assert _sanitize_credential("\r\n") is None
+        assert _sanitize_config_value("\r\n") is None
 
     def test_whitespace_stripped(self):
-        assert _sanitize_credential("  token  ") == "token"
+        assert _sanitize_config_value("  token  ") == "token"
 
 
 class TestGalaxyServerConfig:

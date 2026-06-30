@@ -113,7 +113,10 @@ their installed version.
 - `resolution.py` — `resolve_module_doc()`, `resolve_role_doc()`:
   local → Galaxy → graceful degradation
 - `galaxy.py` — Galaxy v3 API client: version lookup, docs-blob fetch,
-  collection search, format conversion
+  collection search, format conversion, SSO token exchange
+  (`_ensure_access_token()`), lazy API root discovery
+  (`_discover_api_root()`, matching ansible-galaxy's `g_connect`),
+  dynamic URL construction (`_build_v3_url()`)
 - `readme_parser.py` — Galaxy role README HTML parsing (4 variable
   documentation patterns)
 - `galaxy_config.py` — Galaxy server configuration parsed from `ansible.cfg`

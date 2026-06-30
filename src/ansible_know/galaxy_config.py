@@ -61,8 +61,8 @@ def _env_override(server_name: str, key: str) -> str | None:
     return os.environ.get(env_key)
 
 
-def _sanitize_credential(value: str | None) -> str | None:
-    """Strip control characters that could enable header injection."""
+def _sanitize_config_value(value: str | None) -> str | None:
+    """Strip control characters from config values (credentials, URLs, IDs)."""
     if value is None:
         return None
     sanitized = value.replace("\r", "").replace("\n", "").strip()
@@ -97,11 +97,11 @@ def _read_server(
     return GalaxyServerConfig(
         name=name,
         url=url.rstrip("/"),
-        token=_sanitize_credential(_get("token")),
-        username=_sanitize_credential(_get("username")),
-        password=_sanitize_credential(_get("password")),
-        auth_url=_sanitize_credential(_get("auth_url")),
-        client_id=_sanitize_credential(_get("client_id")),
+        token=_sanitize_config_value(_get("token")),
+        username=_sanitize_config_value(_get("username")),
+        password=_sanitize_config_value(_get("password")),
+        auth_url=_sanitize_config_value(_get("auth_url")),
+        client_id=_sanitize_config_value(_get("client_id")),
         validate_certs=validate_certs,
         timeout=timeout,
     )
