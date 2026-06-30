@@ -1641,6 +1641,206 @@ class TestSsoTokenExchange:
         assert mock_client.get.call_count == 1
 
 
+class TestApiRootDiscovery:
+    @pytest.mark.asyncio
+    async def test_discovers_v3_from_base_url(self):
+        """Base URL returns available_versions directly (AH pattern)."""
+        discovery_response = {
+            "available_versions": {"v3": "v3/", "pulp-v3": "pulp/api/v3/"},
+        }
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = discovery_response
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.content = b"{}"
+        mock_resp.headers = {}
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        gc = GalaxyClient(
+            base_url="https://console.redhat.com/api/automation-hub/content/published",
+            http_client=mock_client,
+        )
+        await gc._discover_api_root()
+
+        assert gc._api_root == "https://console.redhat.com/api/automation-hub/content/published"
+        assert gc._v3_path == "v3/"
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_api_suffix(self):
+        """When base URL fails, tries appending /api/ (public Galaxy pattern)."""
+        not_api_resp = MagicMock()
+        not_api_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "404", request=MagicMock(), response=MagicMock(status_code=404),
+        )
+        not_api_resp.content = b""
+
+        api_resp = MagicMock()
+        api_resp.json.return_value = {"available_versions": {"v3": "v3/"}}
+        api_resp.raise_for_status.return_value = None
+        api_resp.content = b"{}"
+        api_resp.headers = {}
+
+        call_urls = []
+        mock_client = AsyncMock()
+
+        async def mock_get(url, **kwargs):
+            call_urls.append(url)
+            if url.endswith("/api"):
+                return api_resp
+            return not_api_resp
+        mock_client.get = mock_get
+
+        gc = GalaxyClient(
+            base_url="https://galaxy.ansible.com",
+            http_client=mock_client,
+        )
+        await gc._discover_api_root()
+
+        assert gc._api_root == "https://galaxy.ansible.com/api"
+        assert gc._v3_path == "v3/"
+
+    @pytest.mark.asyncio
+    async def test_discovery_runs_only_once(self):
+        """Concurrent calls don't trigger multiple discoveries."""
+        discovery_response = {"available_versions": {"v3": "v3/"}}
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = discovery_response
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.content = b"{}"
+        mock_resp.headers = {}
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        gc = GalaxyClient(
+            base_url="https://hub.example.com",
+            http_client=mock_client,
+        )
+        await gc._discover_api_root()
+        await gc._discover_api_root()
+
+        assert mock_client.get.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_raises_when_no_v3(self):
+        """Error if server only supports v1."""
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"available_versions": {"v1": "v1/"}}
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.content = b"{}"
+        mock_resp.headers = {}
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        gc = GalaxyClient(
+            base_url="https://old-galaxy.example.com",
+            http_client=mock_client,
+        )
+        with pytest.raises(GalaxyError, match="v3"):
+            await gc._discover_api_root()
+
+    @pytest.mark.asyncio
+    async def test_raises_when_no_available_versions(self):
+        """Error when neither base URL nor /api/ returns available_versions."""
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"some_other_key": "value"}
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.content = b"{}"
+        mock_resp.headers = {}
+
+        fail_resp = MagicMock()
+        fail_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "404", request=MagicMock(), response=MagicMock(status_code=404),
+        )
+        fail_resp.content = b""
+
+        call_count = 0
+        mock_client = AsyncMock()
+
+        async def mock_get(url, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return mock_resp
+            return fail_resp
+        mock_client.get = mock_get
+
+        gc = GalaxyClient(
+            base_url="https://not-galaxy.example.com",
+            http_client=mock_client,
+        )
+        with pytest.raises(GalaxyError, match="available_versions"):
+            await gc._discover_api_root()
+
+    @pytest.mark.asyncio
+    async def test_raises_auth_error_on_401(self):
+        """Error message mentions authentication when server returns 401."""
+        resp_401 = MagicMock()
+        resp_401.status_code = 401
+        resp_401.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "401", request=MagicMock(), response=MagicMock(status_code=401),
+        )
+        resp_401.content = b""
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=resp_401)
+
+        gc = GalaxyClient(
+            base_url="https://hub.example.com",
+            http_client=mock_client,
+            token="bad_token",
+        )
+        with pytest.raises(GalaxyError, match="authentication failed"):
+            await gc._discover_api_root()
+
+
+class TestBuildV3Url:
+    def test_standard_collection_url(self):
+        gc = GalaxyClient(base_url="https://galaxy.ansible.com")
+        gc._api_root = "https://galaxy.ansible.com/api"
+        gc._v3_path = "v3/"
+        url = gc._build_v3_url("collections", "netbox", "netbox", "versions")
+        assert url == "https://galaxy.ansible.com/api/v3/collections/netbox/netbox/versions/"
+
+    def test_ah_url_with_long_base(self):
+        gc = GalaxyClient(base_url="https://console.redhat.com/api/automation-hub/content/published")
+        gc._api_root = "https://console.redhat.com/api/automation-hub/content/published"
+        gc._v3_path = "v3/"
+        url = gc._build_v3_url("collections", "redhat", "insights")
+        assert url == "https://console.redhat.com/api/automation-hub/content/published/v3/collections/redhat/insights/"
+
+    def test_always_trailing_slash(self):
+        gc = GalaxyClient(base_url="https://hub.example.com")
+        gc._api_root = "https://hub.example.com"
+        gc._v3_path = "v3/"
+        url = gc._build_v3_url("collections", "ns", "col")
+        assert url.endswith("/")
+
+    def test_strips_extra_slashes(self):
+        gc = GalaxyClient(base_url="https://hub.example.com/")
+        gc._api_root = "https://hub.example.com/"
+        gc._v3_path = "v3/"
+        url = gc._build_v3_url("collections", "ns", "col")
+        assert "///" not in url
+        assert url == "https://hub.example.com/v3/collections/ns/col/"
+
+    def test_search_pulp_specific_path(self):
+        gc = GalaxyClient(base_url="https://galaxy.ansible.com")
+        gc._api_root = "https://galaxy.ansible.com/api"
+        gc._v3_path = "v3/"
+        url = gc._build_v3_url("plugin", "ansible", "search", "collection-versions")
+        assert url == "https://galaxy.ansible.com/api/v3/plugin/ansible/search/collection-versions/"
+
+    def test_fallback_to_base_without_discovery(self):
+        gc = GalaxyClient(base_url="https://galaxy.ansible.com")
+        url = gc._build_v3_url("collections", "ns", "col")
+        assert url == "https://galaxy.ansible.com/collections/ns/col/"
+
+
 class TestRedirectFollowing:
     def test_owned_client_follows_redirects(self):
         mock_client = AsyncMock()

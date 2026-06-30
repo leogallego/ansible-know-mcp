@@ -91,6 +91,9 @@ class GalaxyClient:
         self._auth_url = auth_url
         self._client_id = client_id
         self._access_token: str | None = None
+        self._api_root: str | None = None
+        self._v3_path: str | None = None
+        self._discovery_lock = asyncio.Lock()
 
     @classmethod
     def from_config(
@@ -177,6 +180,90 @@ class GalaxyClient:
         elif self._token:
             headers["Authorization"] = f"Token {self._token}"
         return headers
+
+    async def _discover_api_root(self) -> None:
+        """Discover API root and v3 path, matching ansible-galaxy's g_connect."""
+        if self._api_root is not None:
+            return
+
+        async with self._discovery_lock:
+            if self._api_root is not None:
+                return
+
+            client = self._get_client()
+            headers = await self._resolve_auth_headers()
+            kwargs: dict[str, Any] = {
+                "headers": headers,
+                "timeout": TIMEOUT_FAST,
+            }
+            if not self._token and self._username and self._password:
+                kwargs["auth"] = httpx.BasicAuth(self._username, self._password)
+
+            n_url = self._base
+            data: dict[str, Any] | None = None
+            got_auth_error = False
+
+            try:
+                resp = await client.get(n_url, **kwargs)
+                resp.raise_for_status()
+                data = resp.json()
+            except httpx.HTTPStatusError as exc:
+                logger.debug("Discovery probe %s returned HTTP %s", n_url, exc.response.status_code)
+                if exc.response.status_code in (401, 403):
+                    got_auth_error = True
+            except (httpx.RequestError, ValueError):
+                pass
+
+            if data is None or "available_versions" not in data:
+                if not n_url.rstrip("/").endswith("/api"):
+                    n_url = n_url.rstrip("/") + "/api"
+                    try:
+                        resp = await client.get(n_url, **kwargs)
+                        resp.raise_for_status()
+                        data = resp.json()
+                    except httpx.HTTPStatusError as exc:
+                        logger.debug("Discovery probe %s returned HTTP %s", n_url, exc.response.status_code)
+                        if exc.response.status_code in (401, 403):
+                            got_auth_error = True
+                        data = None
+                    except (httpx.RequestError, ValueError):
+                        data = None
+
+            if data is None or "available_versions" not in data:
+                if got_auth_error:
+                    raise GalaxyError(
+                        f"Galaxy API root discovery failed at {self._base} — "
+                        f"authentication failed (HTTP 401/403). "
+                        f"Check token/credentials in ansible.cfg."
+                    )
+                raise GalaxyError(
+                    f"Could not discover Galaxy API root at {self._base} — "
+                    f"no 'available_versions' found. "
+                    f"Verify the server URL in ansible.cfg."
+                )
+
+            versions = data["available_versions"]
+            if "v3" not in versions:
+                raise GalaxyError(
+                    f"Galaxy server {self.server_name or self._base} does not "
+                    f"support API v3 (available: {', '.join(versions.keys())}). "
+                    f"Only v3 servers are supported."
+                )
+
+            self._api_root = n_url.rstrip("/")
+            self._v3_path = versions["v3"]
+            logger.info(
+                "Discovered Galaxy API root: %s (v3 path: %s)",
+                self._api_root, self._v3_path,
+            )
+
+    def _build_v3_url(self, *segments: str) -> str:
+        """Build a v3 API URL from path segments using the discovered root."""
+        parts = [self._api_root or self._base, self._v3_path or ""]
+        parts.extend(segments)
+        return "/".join(
+            p.strip("/") for p in parts if p and p.strip("/")
+        ) + "/"
 
     async def _api_get(
         self,
