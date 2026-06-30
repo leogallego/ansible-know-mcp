@@ -91,13 +91,13 @@ class GalaxyClient:
         self,
         resolved_version: str,
         is_latest: bool,
-        warning: str | None = None,
+        warning: str,
     ) -> DocProvenance:
         meta: DocProvenance = {
             "doc_source": "galaxy",
             "doc_version": resolved_version,
         }
-        if is_latest and warning:
+        if is_latest:
             meta["doc_warning"] = warning
         if self.server_name:
             meta["doc_source_server"] = self.server_name

@@ -823,8 +823,8 @@ async def ensure_collection(
 async def list_skills(
     collection: Annotated[
         str | None,
-        "Optional collection namespace to list skills within (e.g. 'netbox.netbox'). "
-        "Without this, returns collection-level skill entries and standalone skills only.",
+        "Optional collection namespace to filter skills (e.g. 'netbox.netbox'). "
+        "Without this, returns all skills.",
     ] = None,
 ) -> list[SkillEntry] | ErrorResponse:
     """List all available generated skills. Returns name, description, path for each.
