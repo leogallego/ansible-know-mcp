@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import warnings
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -134,6 +135,11 @@ def extract_collection_fqcn(fqcn: str) -> str | None:
 
 def extract_namespace(fqcn: str) -> str | None:
     """Deprecated: use extract_collection_fqcn() instead."""
+    warnings.warn(
+        "extract_namespace() is deprecated, use extract_collection_fqcn()",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return extract_collection_fqcn(fqcn)
 
 

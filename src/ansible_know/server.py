@@ -925,7 +925,7 @@ async def generate_skill(
 
         fqcn = metadata["module_name"]
         base_dir = validate_install_path(install_to) if install_to else SKILLS_DIR
-        collection_dir = skills.collection_skill_name(extract_collection_fqcn(fqcn))
+        collection_dir = skills.collection_skill_name(extract_collection_fqcn(fqcn) or fqcn)
         output_dir = base_dir / collection_dir / skills.fqcn_to_skill_name(fqcn)
 
         await run_in_executor(skills.write_module_skill_package, output_dir, metadata)
@@ -986,7 +986,7 @@ async def generate_role_skill(
             await ctx.report_progress(progress=50, total=100)
 
         base_dir = validate_install_path(install_to) if install_to else SKILLS_DIR
-        collection_dir = skills.collection_skill_name(extract_collection_fqcn(role_name))
+        collection_dir = skills.collection_skill_name(extract_collection_fqcn(role_name) or role_name)
         output_dir = base_dir / collection_dir / skills.role_skill_name(role_name)
 
         await run_in_executor(skills.write_role_skill_package, output_dir, metadata)
@@ -1055,7 +1055,7 @@ async def generate_plugin_skill(
             await ctx.report_progress(progress=50, total=100)
 
         base_dir = validate_install_path(install_to) if install_to else SKILLS_DIR
-        collection_dir = skills.collection_skill_name(extract_collection_fqcn(plugin_name))
+        collection_dir = skills.collection_skill_name(extract_collection_fqcn(plugin_name) or plugin_name)
         output_dir = base_dir / collection_dir / skills.plugin_skill_name(plugin_name, plugin_type)
 
         await run_in_executor(skills.write_plugin_skill_package, output_dir, metadata)

@@ -413,7 +413,11 @@ class TestExtractCollectionFqcn:
         assert extract_collection_fqcn("a.b.c.d") == "a.b"
 
     def test_deprecated_alias_returns_same(self):
-        assert extract_namespace("ansible.builtin.copy") == extract_collection_fqcn("ansible.builtin.copy")
+        with pytest.warns(DeprecationWarning, match="extract_namespace"):
+            result = extract_namespace("ansible.builtin.copy")
+        assert result == extract_collection_fqcn("ansible.builtin.copy")
 
     def test_deprecated_alias_none_case(self):
-        assert extract_namespace("copy") is None
+        with pytest.warns(DeprecationWarning, match="extract_namespace"):
+            result = extract_namespace("copy")
+        assert result is None
