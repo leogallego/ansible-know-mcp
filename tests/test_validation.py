@@ -13,6 +13,9 @@ from ansible_know.validation import (
     MAX_SKILL_NAME_LENGTH,
     MAX_TAGS_LENGTH,
     MAX_VERSION_LENGTH,
+    extract_collection_fqcn,
+    extract_namespace,
+    split_collection_fqcn,
     sanitize_error,
     truncate_response,
     validate_doc_url,
@@ -395,3 +398,41 @@ class TestValidateDocUrl:
     def test_rejects_too_long(self):
         with pytest.raises(ValidationError):
             validate_doc_url("https://docs.ansible.com/" + "a" * 2024)
+
+
+class TestExtractCollectionFqcn:
+    def test_three_part_fqcn(self):
+        assert extract_collection_fqcn("ansible.builtin.copy") == "ansible.builtin"
+
+    def test_two_part_fqcn(self):
+        assert extract_collection_fqcn("netbox.netbox") == "netbox.netbox"
+
+    def test_no_dots_returns_none(self):
+        assert extract_collection_fqcn("copy") is None
+
+    def test_four_part_fqcn(self):
+        assert extract_collection_fqcn("a.b.c.d") == "a.b"
+
+    def test_deprecated_alias_returns_same(self):
+        with pytest.warns(DeprecationWarning, match="extract_namespace"):
+            result = extract_namespace("ansible.builtin.copy")
+        assert result == extract_collection_fqcn("ansible.builtin.copy")
+
+    def test_deprecated_alias_none_case(self):
+        with pytest.warns(DeprecationWarning, match="extract_namespace"):
+            result = extract_namespace("copy")
+        assert result is None
+
+
+class TestSplitCollectionFqcn:
+    def test_three_part_fqcn(self):
+        assert split_collection_fqcn("ansible.builtin.copy") == ("ansible", "builtin")
+
+    def test_two_part_fqcn(self):
+        assert split_collection_fqcn("netbox.netbox") == ("netbox", "netbox")
+
+    def test_dotless_returns_same_for_both(self):
+        assert split_collection_fqcn("copy") == ("copy", "copy")
+
+    def test_four_part_fqcn(self):
+        assert split_collection_fqcn("a.b.c.d") == ("a", "b")

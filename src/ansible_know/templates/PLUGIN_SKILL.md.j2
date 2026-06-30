@@ -4,44 +4,44 @@ name: {{ spec_name }}
 description: >-
   {{ short_description }}
   Use when you need the {{ skill_name | replace('_', ' ') }} {{ plugin_type }} plugin in Ansible.
-compatibility: Requires ansible-core and the {{ collection }} collection
+compatibility: Requires ansible-core and the {{ namespace }}.{{ collection_name }} collection
 metadata:
   fqcn: {{ fqcn }}
-  collection: {{ collection }}
+  collection: {{ namespace }}.{{ collection_name }}
   plugin-type: {{ plugin_type }}
 {% if doc_version %}
   version: "{{ doc_version }}"
 {% endif %}
 ---
 
-# {{ plugin_name }} ({{ plugin_type }} plugin)
+# {{ fqcn }} ({{ plugin_type }} plugin)
 
 {{ short_description }}
 
 ## When to Use This Skill
 
 {% if plugin_type == "lookup" %}
-Use the `{{ plugin_name }}` lookup plugin to **retrieve data** from external sources during playbook execution. Lookup plugins run on the **control node** and return data that can be used in variables, templates, and task arguments.
+Use the `{{ fqcn }}` lookup plugin to **retrieve data** from external sources during playbook execution. Lookup plugins run on the **control node** and return data that can be used in variables, templates, and task arguments.
 
 Prefer this over `ansible.builtin.uri` + `register` + JSON parsing when a dedicated lookup exists — it's more concise, handles pagination and auth, and integrates with Jinja2 naturally.
 {% elif plugin_type == "filter" %}
-Use the `{{ plugin_name }}` filter plugin to **transform data** inline within Jinja2 expressions. Filters are chainable and run on the control node during template rendering.
+Use the `{{ fqcn }}` filter plugin to **transform data** inline within Jinja2 expressions. Filters are chainable and run on the control node during template rendering.
 {% elif plugin_type == "test" %}
-Use the `{{ plugin_name }}` test plugin in Jinja2 `{% raw %}{% if %}{% endraw %}` and `when:` conditionals. Tests return boolean values and are used with `is` syntax.
+Use the `{{ fqcn }}` test plugin in Jinja2 `{% raw %}{% if %}{% endraw %}` and `when:` conditionals. Tests return boolean values and are used with `is` syntax.
 {% elif plugin_type == "connection" %}
-Use the `{{ plugin_name }}` connection plugin to define **how Ansible connects** to managed hosts. Set it at play level or in inventory.
+Use the `{{ fqcn }}` connection plugin to define **how Ansible connects** to managed hosts. Set it at play level or in inventory.
 {% elif plugin_type == "become" %}
-Use the `{{ plugin_name }}` become plugin to define **how Ansible escalates privileges** on managed hosts.
+Use the `{{ fqcn }}` become plugin to define **how Ansible escalates privileges** on managed hosts.
 {% elif plugin_type == "strategy" %}
-Use the `{{ plugin_name }}` strategy plugin to control **how Ansible executes tasks** across hosts (linear, free, etc.).
+Use the `{{ fqcn }}` strategy plugin to control **how Ansible executes tasks** across hosts (linear, free, etc.).
 {% elif plugin_type == "callback" %}
-Use the `{{ plugin_name }}` callback plugin to **customize output** or trigger actions on playbook events. Configure in `ansible.cfg`.
+Use the `{{ fqcn }}` callback plugin to **customize output** or trigger actions on playbook events. Configure in `ansible.cfg`.
 {% elif plugin_type == "inventory" %}
-Use the `{{ plugin_name }}` inventory plugin to **dynamically discover hosts** from an external source. Configure as a YAML inventory source file.
+Use the `{{ fqcn }}` inventory plugin to **dynamically discover hosts** from an external source. Configure as a YAML inventory source file.
 {% elif plugin_type == "cache" %}
-Use the `{{ plugin_name }}` cache plugin to **persist gathered facts** between playbook runs. Configure in `ansible.cfg`.
+Use the `{{ fqcn }}` cache plugin to **persist gathered facts** between playbook runs. Configure in `ansible.cfg`.
 {% else %}
-Use the `{{ plugin_name }}` {{ plugin_type }} plugin when the standard Ansible behavior needs to be extended or customized for your environment.
+Use the `{{ fqcn }}` {{ plugin_type }} plugin when the standard Ansible behavior needs to be extended or customized for your environment.
 {% endif %}
 
 {% if params %}
@@ -69,14 +69,14 @@ Use the `{{ plugin_name }}` {{ plugin_type }} plugin when the standard Ansible b
 ```yaml
 - name: Get data via {{ skill_name }}
   ansible.builtin.debug:
-    msg: "{{ '{{' }} query('{{ plugin_name }}'{% if params %}, {% for p in params %}{% if p.required %}{{ p.name }}='<{{ p.name }}>'{% if not loop.last %}, {% endif %}{% endif %}{% endfor %}{% endif %}) {{ '}}' }}"
+    msg: "{{ '{{' }} query('{{ fqcn }}'{% if params %}, {% for p in params %}{% if p.required %}{{ p.name }}='<{{ p.name }}>'{% if not loop.last %}, {% endif %}{% endif %}{% endfor %}{% endif %}) {{ '}}' }}"
 ```
 
 ### In a variable definition
 
 ```yaml
 vars:
-  my_data: "{{ '{{' }} lookup('{{ plugin_name }}'{% if params %}, {% for p in params %}{% if p.required %}{{ p.name }}='<{{ p.name }}>'{% if not loop.last %}, {% endif %}{% endif %}{% endfor %}{% endif %}) {{ '}}' }}"
+  my_data: "{{ '{{' }} lookup('{{ fqcn }}'{% if params %}, {% for p in params %}{% if p.required %}{{ p.name }}='<{{ p.name }}>'{% if not loop.last %}, {% endif %}{% endif %}{% endfor %}{% endif %}) {{ '}}' }}"
 ```
 
 ### In a loop
@@ -85,7 +85,7 @@ vars:
 - name: Process each item from {{ skill_name }}
   ansible.builtin.debug:
     msg: "{{ '{{' }} item {{ '}}' }}"
-  loop: "{{ '{{' }} query('{{ plugin_name }}'{% if params %}, {% for p in params %}{% if p.required %}{{ p.name }}='<{{ p.name }}>'{% if not loop.last %}, {% endif %}{% endif %}{% endfor %}{% endif %}) {{ '}}' }}"
+  loop: "{{ '{{' }} query('{{ fqcn }}'{% if params %}, {% for p in params %}{% if p.required %}{{ p.name }}='<{{ p.name }}>'{% if not loop.last %}, {% endif %}{% endif %}{% endfor %}{% endif %}) {{ '}}' }}"
 ```
 {% elif plugin_type == "filter" %}
 ### Inline in Jinja2
@@ -93,7 +93,7 @@ vars:
 ```yaml
 - name: Transform data with {{ skill_name }}
   ansible.builtin.debug:
-    msg: "{{ '{{' }} my_data | {{ plugin_name }}({% for p in params %}{% if p.required %}<{{ p.name }}>{% if not loop.last %}, {% endif %}{% endif %}{% endfor %}) {{ '}}' }}"
+    msg: "{{ '{{' }} my_data | {{ fqcn }}({% for p in params %}{% if p.required %}<{{ p.name }}>{% if not loop.last %}, {% endif %}{% endif %}{% endfor %}) {{ '}}' }}"
 ```
 {% elif plugin_type == "test" %}
 ### In a when conditional
@@ -102,14 +102,14 @@ vars:
 - name: Check condition with {{ skill_name }}
   ansible.builtin.debug:
     msg: "Condition met"
-  when: my_value is {{ plugin_name }}({% for p in params %}{% if p.required %}<{{ p.name }}>{% if not loop.last %}, {% endif %}{% endif %}{% endfor %})
+  when: my_value is {{ fqcn }}({% for p in params %}{% if p.required %}<{{ p.name }}>{% if not loop.last %}, {% endif %}{% endif %}{% endfor %})
 ```
 {% elif plugin_type == "connection" %}
 ### In a play
 
 ```yaml
 - hosts: target_hosts
-  connection: {{ plugin_name }}
+  connection: {{ fqcn }}
   tasks:
     - name: Run task via {{ skill_name }}
       ansible.builtin.command: hostname
@@ -120,7 +120,7 @@ vars:
 ```yaml
 - hosts: target_hosts
   become: true
-  become_method: {{ plugin_name }}
+  become_method: {{ fqcn }}
   tasks:
     - name: Run privileged task
       ansible.builtin.command: whoami
@@ -131,9 +131,9 @@ vars:
 ```ini
 [defaults]
 {% if "stdout" in skill_name %}
-stdout_callback = {{ plugin_name }}
+stdout_callback = {{ fqcn }}
 {% else %}
-callbacks_enabled = {{ plugin_name }}
+callbacks_enabled = {{ fqcn }}
 {% endif %}
 ```
 
@@ -141,16 +141,16 @@ callbacks_enabled = {{ plugin_name }}
 
 ```bash
 {% if "stdout" in skill_name %}
-ANSIBLE_STDOUT_CALLBACK={{ plugin_name }} ansible-playbook playbook.yml
+ANSIBLE_STDOUT_CALLBACK={{ fqcn }} ansible-playbook playbook.yml
 {% else %}
-ANSIBLE_CALLBACKS_ENABLED={{ plugin_name }} ansible-playbook playbook.yml
+ANSIBLE_CALLBACKS_ENABLED={{ fqcn }} ansible-playbook playbook.yml
 {% endif %}
 ```
 {% elif plugin_type == "inventory" %}
 ### Inventory source file (e.g. `my_inventory.{{ skill_name }}.yml`)
 
 ```yaml
-plugin: {{ plugin_name }}
+plugin: {{ fqcn }}
 {% for p in params %}{% if p.required %}
 {{ p.name }}: <{{ p.name }}>
 {% endif %}{% endfor %}
@@ -166,7 +166,7 @@ ansible-playbook -i my_inventory.{{ skill_name }}.yml playbook.yml
 
 ```yaml
 - hosts: all
-  strategy: {{ plugin_name }}
+  strategy: {{ fqcn }}
   tasks:
     - name: Run with {{ skill_name }} strategy
       ansible.builtin.debug:
@@ -178,7 +178,7 @@ ansible-playbook -i my_inventory.{{ skill_name }}.yml playbook.yml
 ```ini
 [defaults]
 gathering = smart
-fact_caching = {{ plugin_name }}
+fact_caching = {{ fqcn }}
 fact_caching_timeout = 3600
 ```
 {% else %}
@@ -199,4 +199,4 @@ Refer to Ansible documentation for configuration details for this {{ plugin_type
 - **Credentials**: This plugin communicates with an external service. Keep tokens and URLs out of version control — use environment variables or Ansible vault.
 {% endif %}
 - **Check mode**: Plugin behavior during `--check` depends on the specific plugin implementation
-- **FQCN**: Always use the fully qualified name `{{ plugin_name }}` to avoid ambiguity
+- **FQCN**: Always use the fully qualified name `{{ fqcn }}` to avoid ambiguity

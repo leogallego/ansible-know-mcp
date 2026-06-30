@@ -3,23 +3,23 @@ name: {{ spec_name }}
 description: >-
   {{ short_description }}
   Use when configuring {{ skill_name | replace('_', ' ') }} via Ansible role.
-compatibility: Requires ansible-core and the {{ collection }} collection
+compatibility: Requires ansible-core and the {{ namespace }}.{{ collection_name }} collection
 metadata:
   fqcn: {{ fqcn }}
-  collection: {{ collection }}
+  collection: {{ namespace }}.{{ collection_name }}
   plugin-type: {{ plugin_type }}
 {% if doc_version %}
   version: "{{ doc_version }}"
 {% endif %}
 ---
 
-# {{ role_name }}
+# {{ fqcn }}
 
 {{ short_description }}
 
 ## When to Use This Skill
 
-Use the `{{ role_name }}` Ansible role when you need to configure {{ skill_name | replace('_', ' ') }} on remote hosts. Roles provide a higher-level abstraction than individual modules:
+Use the `{{ fqcn }}` Ansible role when you need to configure {{ skill_name | replace('_', ' ') }} on remote hosts. Roles provide a higher-level abstraction than individual modules:
 
 - Handles multiple tasks (install, configure, start) in one invocation
 - Manages all related files, services, and dependencies
@@ -62,7 +62,7 @@ Include the role in a playbook:
 ---
 - hosts: all
   roles:
-    - role: {{ role_name }}
+    - role: {{ fqcn }}
 {% if entry_points.get("main", {}).get("options", []) %}
 {% for o in entry_points["main"]["options"][:3] %}
 {% if o.default is not none %}
