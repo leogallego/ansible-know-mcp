@@ -74,6 +74,8 @@ class GalaxyClient:
         verify: bool = True,
         server_name: str | None = None,
         enrichment_semaphore: asyncio.Semaphore | None = None,
+        auth_url: str | None = None,
+        client_id: str | None = None,
     ):
         self._base = (base_url or GALAXY_BASE_URL).rstrip("/")
         self._http_client = http_client
@@ -86,6 +88,9 @@ class GalaxyClient:
         self._enrichment_semaphore = enrichment_semaphore or asyncio.Semaphore(
             ENRICHMENT_CONCURRENCY,
         )
+        self._auth_url = auth_url
+        self._client_id = client_id
+        self._access_token: str | None = None
 
     @classmethod
     def from_config(
@@ -104,6 +109,8 @@ class GalaxyClient:
             verify=config.validate_certs,
             server_name=config.name,
             enrichment_semaphore=enrichment_semaphore,
+            auth_url=config.auth_url,
+            client_id=config.client_id,
         )
 
     async def __aenter__(self) -> GalaxyClient:
@@ -137,6 +144,40 @@ class GalaxyClient:
             headers["Authorization"] = f"Token {self._token}"
         return headers
 
+    async def _ensure_access_token(self) -> str:
+        """Exchange offline token for access token via SSO, with caching."""
+        if self._access_token is not None:
+            return self._access_token
+
+        client = self._get_client()
+        try:
+            resp = await client.post(
+                self._auth_url,
+                data={
+                    "grant_type": "refresh_token",
+                    "client_id": self._client_id or "cloud-services",
+                    "refresh_token": self._token,
+                },
+                timeout=TIMEOUT_FAST,
+            )
+            resp.raise_for_status()
+            self._access_token = resp.json()["access_token"]
+            return self._access_token
+        except (httpx.HTTPStatusError, httpx.RequestError, KeyError, ValueError) as exc:
+            raise GalaxyError(
+                f"SSO token exchange failed at {self._auth_url}"
+            ) from exc
+
+    async def _resolve_auth_headers(self) -> dict[str, str]:
+        """Build authentication headers, exchanging SSO token if needed."""
+        headers: dict[str, str] = {"Accept": "application/json"}
+        if self._token and self._auth_url:
+            access_token = await self._ensure_access_token()
+            headers["Authorization"] = f"Bearer {access_token}"
+        elif self._token:
+            headers["Authorization"] = f"Token {self._token}"
+        return headers
+
     async def _api_get(
         self,
         path: str,
@@ -147,7 +188,7 @@ class GalaxyClient:
         client = self._get_client()
         kwargs: dict[str, Any] = {
             "params": params,
-            "headers": self._auth_headers(),
+            "headers": await self._resolve_auth_headers(),
             "timeout": timeout,
         }
         if not self._token and self._username and self._password:
@@ -156,9 +197,20 @@ class GalaxyClient:
         try:
             resp.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            raise GalaxyError(
-                f"Galaxy API error (HTTP {exc.response.status_code})"
-            ) from exc
+            if exc.response.status_code == 401 and self._auth_url:
+                self._access_token = None
+                kwargs["headers"] = await self._resolve_auth_headers()
+                resp = await client.get(url, **kwargs)
+                try:
+                    resp.raise_for_status()
+                except httpx.HTTPStatusError as retry_exc:
+                    raise GalaxyError(
+                        f"Galaxy API error (HTTP {retry_exc.response.status_code})"
+                    ) from retry_exc
+            else:
+                raise GalaxyError(
+                    f"Galaxy API error (HTTP {exc.response.status_code})"
+                ) from exc
         content_length = resp.headers.get("content-length")
         if content_length:
             try:

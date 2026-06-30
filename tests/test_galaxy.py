@@ -1468,6 +1468,179 @@ class TestGalaxyClientAuth:
         assert gc.server_name == "test_hub"
 
 
+class TestSsoTokenExchange:
+    @pytest.mark.asyncio
+    async def test_exchanges_offline_token_for_bearer(self):
+        """When auth_url is set, token is exchanged via SSO."""
+        sso_response = MagicMock()
+        sso_response.json.return_value = {"access_token": "sso_access_123"}
+        sso_response.raise_for_status.return_value = None
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = SAMPLE_VERSIONS_RESPONSE
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.content = b"{}"
+        mock_resp.headers = {}
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=sso_response)
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        gc = GalaxyClient(
+            base_url="https://hub.example.com",
+            http_client=mock_client,
+            token="offline_refresh_token",
+            auth_url="https://sso.example.com/token",
+        )
+        gc._api_root = "https://hub.example.com"
+        gc._v3_path = "v3/"
+
+        await gc.latest_version("redhat", "insights")
+
+        mock_client.post.assert_called_once()
+        post_call = mock_client.post.call_args
+        assert "sso.example.com" in post_call[0][0]
+
+        get_call = mock_client.get.call_args
+        headers = get_call[1]["headers"]
+        assert headers["Authorization"] == "Bearer sso_access_123"
+
+    @pytest.mark.asyncio
+    async def test_no_exchange_without_auth_url(self):
+        """Without auth_url, uses Token auth as before."""
+        mock_client = _mock_client_get(SAMPLE_VERSIONS_RESPONSE)
+        gc = GalaxyClient(
+            http_client=mock_client,
+            token="plain_token",
+        )
+        gc._api_root = "https://galaxy.ansible.com/api"
+        gc._v3_path = "v3/"
+
+        await gc.latest_version("netbox", "netbox")
+        headers = mock_client.get.call_args[1]["headers"]
+        assert headers["Authorization"] == "Token plain_token"
+
+    @pytest.mark.asyncio
+    async def test_caches_access_token(self):
+        """SSO exchange only happens once, cached token reused."""
+        sso_response = MagicMock()
+        sso_response.json.return_value = {"access_token": "cached_token"}
+        sso_response.raise_for_status.return_value = None
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = SAMPLE_VERSIONS_RESPONSE
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.content = b"{}"
+        mock_resp.headers = {}
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=sso_response)
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        gc = GalaxyClient(
+            base_url="https://hub.example.com",
+            http_client=mock_client,
+            token="offline_token",
+            auth_url="https://sso.example.com/token",
+        )
+        gc._api_root = "https://hub.example.com"
+        gc._v3_path = "v3/"
+
+        await gc.latest_version("ns1", "col1")
+        await gc.latest_version("ns2", "col2")
+
+        assert mock_client.post.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_sso_failure_raises_galaxy_error(self):
+        """SSO exchange failure surfaces as GalaxyError."""
+        sso_response = MagicMock()
+        sso_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "401", request=MagicMock(), response=MagicMock(status_code=401),
+        )
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=sso_response)
+
+        gc = GalaxyClient(
+            base_url="https://hub.example.com",
+            http_client=mock_client,
+            token="bad_token",
+            auth_url="https://sso.example.com/token",
+        )
+        gc._api_root = "https://hub.example.com"
+        gc._v3_path = "v3/"
+
+        with pytest.raises(GalaxyError, match="SSO.*token"):
+            await gc.latest_version("redhat", "insights")
+
+    @pytest.mark.asyncio
+    async def test_retries_on_401_with_fresh_token(self):
+        """When API returns 401 with auth_url, re-exchanges and retries once."""
+        sso_response = MagicMock()
+        sso_response.raise_for_status.return_value = None
+        sso_response.json.return_value = {"access_token": "fresh_token_v2"}
+
+        resp_401 = MagicMock()
+        resp_401.status_code = 401
+        resp_401.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "401", request=MagicMock(), response=resp_401,
+        )
+        resp_401.content = b""
+
+        resp_200 = MagicMock()
+        resp_200.json.return_value = SAMPLE_VERSIONS_RESPONSE
+        resp_200.raise_for_status.return_value = None
+        resp_200.content = b"{}"
+        resp_200.headers = {}
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=sso_response)
+        mock_client.get = AsyncMock(side_effect=[resp_401, resp_200])
+
+        gc = GalaxyClient(
+            base_url="https://hub.example.com",
+            http_client=mock_client,
+            token="offline_token",
+            auth_url="https://sso.example.com/token",
+        )
+        gc._api_root = "https://hub.example.com"
+        gc._v3_path = "v3/"
+        gc._access_token = "expired_token_v1"
+
+        version = await gc.latest_version("redhat", "insights")
+        assert version == "3.23.0"
+        assert mock_client.post.call_count == 1
+        assert mock_client.get.call_count == 2
+
+        retry_headers = mock_client.get.call_args_list[1][1]["headers"]
+        assert retry_headers["Authorization"] == "Bearer fresh_token_v2"
+
+    @pytest.mark.asyncio
+    async def test_no_retry_on_401_without_auth_url(self):
+        """Without auth_url, 401 raises immediately (no SSO to retry)."""
+        resp_401 = MagicMock()
+        resp_401.status_code = 401
+        resp_401.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "401", request=MagicMock(), response=resp_401,
+        )
+        resp_401.content = b""
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=resp_401)
+
+        gc = GalaxyClient(
+            http_client=mock_client,
+            token="plain_token",
+        )
+        gc._api_root = "https://galaxy.ansible.com/api"
+        gc._v3_path = "v3/"
+
+        with pytest.raises(GalaxyError, match="Galaxy API error"):
+            await gc.latest_version("netbox", "netbox")
+        assert mock_client.get.call_count == 1
+
+
 class TestRedirectFollowing:
     def test_owned_client_follows_redirects(self):
         mock_client = AsyncMock()
