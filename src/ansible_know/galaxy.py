@@ -99,6 +99,7 @@ class GalaxyClient:
         self._api_root: str | None = None
         self._v3_path: str | None = None
         self._discovery_lock = asyncio.Lock()
+        self._discovery_failed: bool = False
 
     def _build_provenance(
         self,
@@ -222,6 +223,15 @@ class GalaxyClient:
         if self._api_root is not None:
             return
 
+        if self._discovery_failed:
+            server_label = self.server_name or "default"
+            raise GalaxyError(
+                f"Galaxy API discovery previously failed for server "
+                f"'{server_label}'. Check the server URL and credentials "
+                f"in ansible.cfg, then restart the MCP server session "
+                f"to retry."
+            )
+
         async with self._discovery_lock:
             if self._api_root is not None:
                 return
@@ -272,6 +282,7 @@ class GalaxyClient:
 
             server_label = self.server_name or "default"
             if data is None or "available_versions" not in data:
+                self._discovery_failed = True
                 if got_auth_error:
                     raise GalaxyError(
                         f"Galaxy API root discovery failed for server "
@@ -288,6 +299,7 @@ class GalaxyClient:
 
             versions = data["available_versions"]
             if "v3" not in versions:
+                self._discovery_failed = True
                 raise GalaxyError(
                     f"Galaxy server '{server_label}' does not "
                     f"support API v3 (available: {', '.join(versions.keys())}). "
@@ -296,6 +308,7 @@ class GalaxyClient:
 
             v3_path = versions["v3"]
             if ".." in v3_path or not _SAFE_V3_PATH_RE.match(v3_path):
+                self._discovery_failed = True
                 raise GalaxyError(
                     f"Galaxy server '{server_label}' returned "
                     f"unsafe v3 path. Verify the server URL in ansible.cfg."
