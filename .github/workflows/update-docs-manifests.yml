@@ -42,6 +42,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           branch="auto/update-docs-manifests"
+          git fetch origin "$branch" 2>/dev/null || true
           git checkout -B "$branch"
           git add src/ansible_know/data/
           git commit -m "chore: update docs manifests"
