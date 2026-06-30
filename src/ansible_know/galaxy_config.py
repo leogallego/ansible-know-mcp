@@ -100,8 +100,8 @@ def _read_server(
         token=_sanitize_credential(_get("token")),
         username=_sanitize_credential(_get("username")),
         password=_sanitize_credential(_get("password")),
-        auth_url=_get("auth_url"),
-        client_id=_get("client_id"),
+        auth_url=_sanitize_credential(_get("auth_url")),
+        client_id=_sanitize_credential(_get("client_id")),
         validate_certs=validate_certs,
         timeout=timeout,
     )

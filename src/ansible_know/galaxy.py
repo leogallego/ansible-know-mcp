@@ -91,6 +91,7 @@ class GalaxyClient:
         self._auth_url = auth_url
         self._client_id = client_id
         self._access_token: str | None = None
+        self._token_lock = asyncio.Lock()
         self._api_root: str | None = None
         self._v3_path: str | None = None
         self._discovery_lock = asyncio.Lock()
@@ -152,32 +153,36 @@ class GalaxyClient:
         if self._access_token is not None:
             return self._access_token
 
-        client = self._get_client()
-        try:
-            resp = await client.post(
-                self._auth_url,
-                data={
-                    "grant_type": "refresh_token",
-                    "client_id": self._client_id or "cloud-services",
-                    "refresh_token": self._token,
-                },
-                timeout=TIMEOUT_FAST,
-            )
-            resp.raise_for_status()
-            token = resp.json().get("access_token")
-            if not isinstance(token, str) or not token:
-                raise GalaxyError(
-                    f"SSO token exchange for server "
-                    f"'{self.server_name or 'default'}' returned "
-                    f"invalid access_token"
+        async with self._token_lock:
+            if self._access_token is not None:
+                return self._access_token
+
+            client = self._get_client()
+            try:
+                resp = await client.post(
+                    self._auth_url,
+                    data={
+                        "grant_type": "refresh_token",
+                        "client_id": self._client_id or "cloud-services",
+                        "refresh_token": self._token,
+                    },
+                    timeout=TIMEOUT_FAST,
                 )
-            self._access_token = token
-            return self._access_token
-        except (httpx.HTTPStatusError, httpx.RequestError, KeyError, ValueError) as exc:
-            raise GalaxyError(
-                f"SSO token exchange failed for server "
-                f"'{self.server_name or 'default'}'"
-            ) from exc
+                resp.raise_for_status()
+                token = resp.json().get("access_token")
+                if not isinstance(token, str) or not token:
+                    raise GalaxyError(
+                        f"SSO token exchange for server "
+                        f"'{self.server_name or 'default'}' returned "
+                        f"invalid access_token"
+                    )
+                self._access_token = token
+                return self._access_token
+            except (httpx.HTTPStatusError, httpx.RequestError, KeyError, ValueError) as exc:
+                raise GalaxyError(
+                    f"SSO token exchange failed for server "
+                    f"'{self.server_name or 'default'}'"
+                ) from exc
 
     async def _resolve_auth_headers(self) -> dict[str, str]:
         """Build authentication headers, exchanging SSO token if needed."""
@@ -237,15 +242,18 @@ class GalaxyClient:
                     except (httpx.RequestError, ValueError):
                         data = None
 
+            server_label = self.server_name or "default"
             if data is None or "available_versions" not in data:
                 if got_auth_error:
                     raise GalaxyError(
-                        f"Galaxy API root discovery failed at {self._base} — "
-                        f"authentication failed (HTTP 401/403). "
+                        f"Galaxy API root discovery failed for server "
+                        f"'{server_label}' — authentication failed "
+                        f"(HTTP 401/403). "
                         f"Check token/credentials in ansible.cfg."
                     )
                 raise GalaxyError(
-                    f"Could not discover Galaxy API root at {self._base} — "
+                    f"Could not discover Galaxy API root for server "
+                    f"'{server_label}' — "
                     f"no 'available_versions' found. "
                     f"Verify the server URL in ansible.cfg."
                 )
@@ -253,7 +261,7 @@ class GalaxyClient:
             versions = data["available_versions"]
             if "v3" not in versions:
                 raise GalaxyError(
-                    f"Galaxy server {self.server_name or self._base} does not "
+                    f"Galaxy server '{server_label}' does not "
                     f"support API v3 (available: {', '.join(versions.keys())}). "
                     f"Only v3 servers are supported."
                 )
@@ -293,7 +301,10 @@ class GalaxyClient:
             resp.raise_for_status()
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 401 and self._auth_url:
-                self._access_token = None
+                stale = kwargs["headers"].get("Authorization", "")
+                cur = f"Bearer {self._access_token}" if self._access_token else ""
+                if stale == cur:
+                    self._access_token = None
                 kwargs["headers"] = await self._resolve_auth_headers()
                 resp = await client.get(url, **kwargs)
                 try:
