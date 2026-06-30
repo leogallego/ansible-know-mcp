@@ -34,7 +34,7 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create PR
+      - name: Create or update PR
         if: steps.changes.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -46,17 +46,20 @@ jobs:
           git add src/ansible_know/data/
           git commit -m "chore: update docs manifests"
           git push --force-with-lease origin "$branch"
-          if gh pr list --head "$branch" --state open --json number --jq '.[0].number' | grep -q .; then
-            echo "PR already exists, force-pushed update."
+          pr_number=$(gh pr list --head "$branch" --state open --json number --jq '.[0].number')
+          if [ -n "$pr_number" ]; then
+            echo "PR #$pr_number already exists, force-pushed update."
           else
-            gh pr create \
+            pr_number=$(gh pr create \
               --head "$branch" \
               --title "chore: update docs manifests" \
               --body "$(cat <<'EOF'
           Automated weekly rebuild of documentation manifests from
           docs.ansible.com (objects.inv + sitemap + markdown endpoint).
 
-          Review the diff to verify no unexpected changes from upstream.
+          Auto-merges when CI passes.
           EOF
-          )"
+          )" | grep -oE '[0-9]+$')
+            echo "Created PR #$pr_number."
           fi
+          gh pr merge "$pr_number" --squash --auto
