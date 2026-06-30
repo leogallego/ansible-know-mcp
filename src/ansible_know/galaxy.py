@@ -87,6 +87,22 @@ class GalaxyClient:
             ENRICHMENT_CONCURRENCY,
         )
 
+    def _build_provenance(
+        self,
+        resolved_version: str,
+        is_latest: bool,
+        warning: str | None = None,
+    ) -> DocProvenance:
+        meta: DocProvenance = {
+            "doc_source": "galaxy",
+            "doc_version": resolved_version,
+        }
+        if is_latest and warning:
+            meta["doc_warning"] = warning
+        if self.server_name:
+            meta["doc_source_server"] = self.server_name
+        return meta
+
     @classmethod
     def from_config(
         cls,
@@ -378,18 +394,12 @@ class GalaxyClient:
         from ansible_know.parser import transform_galaxy_to_ansible_doc_format
         doc = transform_galaxy_to_ansible_doc_format(module_name, module_entry)
 
-        meta: DocProvenance = {
-            "doc_source": "galaxy",
-            "doc_version": resolved_version,
-        }
-        if is_latest:
-            meta["doc_warning"] = (
-                f"Documentation sourced from Galaxy "
-                f"({namespace}.{name} {resolved_version}). "
-                f"Your installed version may differ."
-            )
-        if self.server_name:
-            meta["doc_source_server"] = self.server_name
+        meta = self._build_provenance(
+            resolved_version, is_latest,
+            f"Documentation sourced from Galaxy "
+            f"({namespace}.{name} {resolved_version}). "
+            f"Your installed version may differ.",
+        )
         return doc, meta
 
     async def fetch_role_doc(
@@ -443,16 +453,10 @@ class GalaxyClient:
             "examples": parsed.get("examples", ""),
         }
 
-        meta: DocProvenance = {
-            "doc_source": "galaxy",
-            "doc_version": resolved_version,
-        }
-        if is_latest:
-            meta["doc_warning"] = (
-                "Documentation parsed from Galaxy README (best-effort)."
-            )
-        if self.server_name:
-            meta["doc_source_server"] = self.server_name
+        meta = self._build_provenance(
+            resolved_version, is_latest,
+            "Documentation parsed from Galaxy README (best-effort).",
+        )
         return role_metadata, meta
 
     async def fetch_plugin_doc(
@@ -478,18 +482,12 @@ class GalaxyClient:
         from ansible_know.parser import transform_galaxy_to_ansible_doc_format
         doc = transform_galaxy_to_ansible_doc_format(plugin_name, plugin_entry)
 
-        meta: DocProvenance = {
-            "doc_source": "galaxy",
-            "doc_version": resolved_version,
-        }
-        if is_latest:
-            meta["doc_warning"] = (
-                f"Documentation sourced from Galaxy "
-                f"({namespace}.{name} {resolved_version}). "
-                f"Your installed version may differ."
-            )
-        if self.server_name:
-            meta["doc_source_server"] = self.server_name
+        meta = self._build_provenance(
+            resolved_version, is_latest,
+            f"Documentation sourced from Galaxy "
+            f"({namespace}.{name} {resolved_version}). "
+            f"Your installed version may differ.",
+        )
         return doc, meta
 
     async def fetch_collection_docs(
@@ -545,18 +543,12 @@ class GalaxyClient:
             except Exception:
                 logger.warning("Skipping module %s: metadata extraction failed", fqcn, exc_info=True)
 
-        meta: DocProvenance = {
-            "doc_source": "galaxy",
-            "doc_version": resolved_version,
-        }
-        if is_latest:
-            meta["doc_warning"] = (
-                f"Documentation sourced from Galaxy "
-                f"({namespace}.{name} {resolved_version}). "
-                f"Your installed version may differ."
-            )
-        if self.server_name:
-            meta["doc_source_server"] = self.server_name
+        meta = self._build_provenance(
+            resolved_version, is_latest,
+            f"Documentation sourced from Galaxy "
+            f"({namespace}.{name} {resolved_version}). "
+            f"Your installed version may differ.",
+        )
         return result, meta
 
     async def list_collection_modules(
