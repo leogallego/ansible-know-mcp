@@ -4,6 +4,10 @@
 
 Accepted (with known technical debt)
 
+## Date
+
+2026-06-19
+
 ## Context
 
 The server needs to maintain several pieces of mutable state across tool
@@ -116,3 +120,30 @@ to use module-level state remains unchanged.
   This would require moving to session-scoped state management.
 - Consider a `ServerState` dataclass that holds all caches and runtime state,
   initialized in the lifespan and stored in `ctx.lifespan_context`.
+
+## Implementation Notes
+
+- `galaxy.py` — `BoundedCache` instances for `_version_cache`, `_blob_cache`
+- `docs.py` — `BoundedCache` for `_manifest_cache`
+- `collections.py` — `CollectionManager` class (per-session via
+  `SessionManager`): `self._installed`, per-collection locks,
+  `self._install_gate`
+- `state.py` — `SharedState` (process-wide), `ServerState` (per-session
+  including `missing_collections` set), `SessionManager` factory
+- `cache.py` — `BoundedCache[K, V]` with `threading.Lock`, LRU eviction,
+  TTL, optional disk persistence
+
+## Related Decisions
+
+- [ADR-0001](0001-fastmcp-framework.md) — FastMCP's lifespan context handles
+  startup-initialized state; module-level handles runtime-accumulated state
+- [ADR-0004](0004-galaxy-fallback-chain.md) — Galaxy caches are primary
+  consumers of `BoundedCache`
+
+## Revision History
+
+| Date | Author | Change |
+|------|--------|--------|
+| 2026-06-19 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Initial decision |
+| 2026-06-19 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Updated with BoundedCache mitigation (PR #60) |
+| 2026-06-26 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Added Implementation Notes, Related Decisions, Revision History |

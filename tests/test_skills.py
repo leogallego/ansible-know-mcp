@@ -1,6 +1,5 @@
 """Tests for ansible_know.skills."""
 
-
 from ansible_know.parser import extract_module_metadata
 from ansible_know.skills import (
     _build_example_args,
@@ -8,12 +7,16 @@ from ansible_know.skills import (
     _extract_example_values,
     _find_common_params,
     _role_template_context,
+    collection_skill_name,
+    fqcn_to_skill_name,
     module_to_skill_name,
+    plugin_skill_name,
     render_collection_skill,
     render_module_skill,
     render_plugin_skill,
     render_role_skill,
     render_skill,
+    role_skill_name,
     write_collection_skill_package,
     write_module_skill_package,
     write_plugin_skill_package,
@@ -22,12 +25,215 @@ from ansible_know.skills import (
 )
 
 
-class TestModuleToSkillName:
-    def test_uses_fqcn(self):
-        assert module_to_skill_name("ansible.builtin.package") == "ansible.builtin.package"
+class TestFqcnToSkillName:
+    """Test the core FQCN-to-kebab-case conversion."""
 
-    def test_preserves_collection_prefix(self):
-        assert module_to_skill_name("netbox.netbox.netbox_device") == "netbox.netbox.netbox_device"
+    def test_module_short_name_underscores_to_hyphens(self):
+        assert fqcn_to_skill_name("netbox.netbox.netbox_device") == "netbox-device"
+
+    def test_module_no_underscores(self):
+        assert fqcn_to_skill_name("ansible.builtin.package") == "package"
+
+    def test_module_multiple_underscores(self):
+        assert fqcn_to_skill_name("ansible.builtin.apt_key") == "apt-key"
+
+    def test_three_part_fqcn(self):
+        assert fqcn_to_skill_name("community.general.redis_info") == "redis-info"
+
+
+class TestPluginSkillName:
+    """Test plugin skill naming: type-prefix + short name."""
+
+    def test_lookup_plugin(self):
+        assert plugin_skill_name("netbox.netbox.nb_lookup", "lookup") == "lookup-nb-lookup"
+
+    def test_filter_plugin(self):
+        assert plugin_skill_name("ansible.builtin.to_yaml", "filter") == "filter-to-yaml"
+
+    def test_inventory_plugin(self):
+        assert plugin_skill_name("netbox.netbox.nb_inventory", "inventory") == "inventory-nb-inventory"
+
+    def test_connection_plugin(self):
+        assert plugin_skill_name("ansible.netcommon.network_cli", "connection") == "connection-network-cli"
+
+    def test_callback_plugin(self):
+        assert plugin_skill_name("ansible.builtin.default", "callback") == "callback-default"
+
+
+class TestRoleSkillName:
+    """Test role skill naming: short name only, kebab-case."""
+
+    def test_simple_role(self):
+        assert role_skill_name("fedora.linux_system_roles.timesync") == "timesync"
+
+    def test_role_with_underscores(self):
+        assert role_skill_name("namespace.collection.my_role_name") == "my-role-name"
+
+
+class TestCollectionSkillName:
+    """Test collection-level skill naming: namespace kebab-case."""
+
+    def test_dotted_namespace(self):
+        assert collection_skill_name("netbox.netbox") == "netbox-netbox"
+
+    def test_namespace_with_underscores(self):
+        assert collection_skill_name("community.general") == "community-general"
+
+    def test_namespace_mixed(self):
+        assert collection_skill_name("fedora.linux_system_roles") == "fedora-linux-system-roles"
+
+
+class TestModuleToSkillName:
+    def test_returns_kebab_short_name(self):
+        assert module_to_skill_name("ansible.builtin.package") == "package"
+
+    def test_underscores_to_hyphens(self):
+        assert module_to_skill_name("netbox.netbox.netbox_device") == "netbox-device"
+
+
+class TestSpecCompliantFrontmatter:
+    """Verify rendered skills contain agentskills.io-compliant frontmatter."""
+
+    def test_module_skill_has_kebab_name(self, sample_module_doc):
+        metadata = extract_module_metadata(sample_module_doc)
+        content = render_module_skill(metadata)
+        assert "\nname: package\n" in content
+
+    def test_module_skill_has_metadata_fqcn(self, sample_module_doc):
+        metadata = extract_module_metadata(sample_module_doc)
+        content = render_module_skill(metadata)
+        assert "fqcn: ansible.builtin.package" in content
+
+    def test_module_skill_has_metadata_collection(self, sample_module_doc):
+        metadata = extract_module_metadata(sample_module_doc)
+        content = render_module_skill(metadata)
+        assert "collection: ansible.builtin" in content
+
+    def test_module_skill_has_metadata_plugin_type(self, sample_module_doc):
+        metadata = extract_module_metadata(sample_module_doc)
+        content = render_module_skill(metadata)
+        assert "plugin-type: module" in content
+
+    def test_module_skill_has_compatibility(self, sample_module_doc):
+        metadata = extract_module_metadata(sample_module_doc)
+        content = render_module_skill(metadata)
+        assert "compatibility:" in content
+        assert "ansible-core" in content
+
+    def test_api_module_skill_has_kebab_name(self, sample_api_module_doc):
+        metadata = extract_module_metadata(sample_api_module_doc)
+        content = render_module_skill(metadata)
+        assert "\nname: netbox-device\n" in content
+
+    def test_api_module_skill_has_metadata(self, sample_api_module_doc):
+        metadata = extract_module_metadata(sample_api_module_doc)
+        content = render_module_skill(metadata)
+        assert "fqcn: netbox.netbox.netbox_device" in content
+        assert "collection: netbox.netbox" in content
+        assert "plugin-type: module" in content
+
+    def test_plugin_skill_has_type_prefix_name(self):
+        metadata = {
+            "plugin_name": "netbox.netbox.nb_lookup",
+            "plugin_type": "lookup",
+            "short_description": "Queries NetBox",
+            "params": [],
+            "examples": "",
+        }
+        content = render_plugin_skill(metadata)
+        assert "\nname: lookup-nb-lookup\n" in content
+
+    def test_plugin_skill_has_metadata(self):
+        metadata = {
+            "plugin_name": "netbox.netbox.nb_lookup",
+            "plugin_type": "lookup",
+            "short_description": "Queries NetBox",
+            "params": [],
+            "examples": "",
+        }
+        content = render_plugin_skill(metadata)
+        assert "fqcn: netbox.netbox.nb_lookup" in content
+        assert "collection: netbox.netbox" in content
+        assert "plugin-type: lookup" in content
+
+    def test_plugin_skill_has_compatibility(self):
+        metadata = {
+            "plugin_name": "netbox.netbox.nb_lookup",
+            "plugin_type": "lookup",
+            "short_description": "Queries NetBox",
+            "params": [],
+            "examples": "",
+        }
+        content = render_plugin_skill(metadata)
+        assert "compatibility:" in content
+        assert "netbox.netbox" in content
+
+    def test_role_skill_has_kebab_name(self):
+        metadata = {
+            "role_name": "fedora.linux_system_roles.timesync",
+            "short_description": "Configure time synchronization",
+            "entry_points": {},
+            "dependencies": [],
+            "examples": "",
+            "doc_source": "local",
+        }
+        content = render_role_skill(metadata)
+        assert "\nname: timesync\n" in content
+
+    def test_role_skill_has_metadata(self):
+        metadata = {
+            "role_name": "fedora.linux_system_roles.timesync",
+            "short_description": "Configure time synchronization",
+            "entry_points": {},
+            "dependencies": [],
+            "examples": "",
+            "doc_source": "local",
+        }
+        content = render_role_skill(metadata)
+        assert "fqcn: fedora.linux_system_roles.timesync" in content
+        assert "collection: fedora.linux_system_roles" in content
+        assert "plugin-type: role" in content
+
+    def test_role_skill_has_compatibility(self):
+        metadata = {
+            "role_name": "fedora.linux_system_roles.timesync",
+            "short_description": "Configure time synchronization",
+            "entry_points": {},
+            "dependencies": [],
+            "examples": "",
+            "doc_source": "local",
+        }
+        content = render_role_skill(metadata)
+        assert "compatibility:" in content
+        assert "fedora.linux_system_roles" in content
+
+    def test_collection_skill_has_kebab_name(self, sample_api_module_doc):
+        metadata = extract_module_metadata(sample_api_module_doc)
+        content = render_collection_skill("netbox.netbox", [metadata])
+        assert "\nname: netbox-netbox\n" in content
+
+    def test_collection_skill_has_metadata(self, sample_api_module_doc):
+        metadata = extract_module_metadata(sample_api_module_doc)
+        content = render_collection_skill("netbox.netbox", [metadata])
+        assert "collection: netbox.netbox" in content
+        assert "plugin-type: collection" in content
+
+    def test_collection_skill_has_compatibility(self, sample_api_module_doc):
+        metadata = extract_module_metadata(sample_api_module_doc)
+        content = render_collection_skill("netbox.netbox", [metadata])
+        assert "compatibility:" in content
+        assert "netbox.netbox" in content
+
+    def test_module_skill_version_in_metadata(self, sample_module_doc):
+        metadata = extract_module_metadata(sample_module_doc)
+        metadata["doc_version"] = "2.15.0"
+        content = render_module_skill(metadata)
+        assert 'version: "2.15.0"' in content
+
+    def test_collection_skill_version_in_metadata(self, sample_api_module_doc):
+        metadata = extract_module_metadata(sample_api_module_doc)
+        content = render_collection_skill("netbox.netbox", [metadata], collection_version="4.1.0")
+        assert 'version: "4.1.0"' in content
 
 
 class TestBackwardCompatAliases:

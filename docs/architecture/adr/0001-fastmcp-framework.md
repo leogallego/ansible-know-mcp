@@ -4,6 +4,10 @@
 
 Accepted
 
+## Date
+
+2026-06-19
+
 ## Context
 
 The server needs to expose tools, resources, and prompts via the Model Context
@@ -77,3 +81,26 @@ FastMCP was chosen because:
   shutdown.
 - Consider defining a `LifespanContext` TypedDict to type the lifespan
   dict and prevent key typos.
+
+## Implementation Notes
+
+- `server.py` — all tool/resource/prompt registrations via FastMCP decorators
+- `server.py:lifespan()` — startup/shutdown: httpx client, Galaxy server
+  config, PyPI version check
+- `server.py:Context` — injected into tool handlers for progress/warnings
+- Transport: stdio via `mcp.run()`, HTTP/SSE supported by FastMCP but
+  not yet configured
+
+## Related Decisions
+
+- [ADR-0003](0003-module-level-state.md) — state management choices
+  influenced by FastMCP's lifespan context model
+- [ADR-0008](0008-three-layer-distribution.md) — Layer 3 (remote service)
+  depends on FastMCP's HTTP/SSE transport
+
+## Revision History
+
+| Date | Author | Change |
+|------|--------|--------|
+| 2026-06-19 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Initial decision |
+| 2026-06-26 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Added Implementation Notes, Related Decisions, Revision History |

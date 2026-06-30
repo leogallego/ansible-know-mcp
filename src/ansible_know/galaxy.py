@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -30,6 +31,9 @@ TIMEOUT_DEFAULT = httpx.Timeout(10.0, read=30.0)
 TIMEOUT_SLOW = httpx.Timeout(10.0, read=60.0)
 
 ENRICHMENT_CONCURRENCY = 5
+MAX_DISCOVERY_RESPONSE_SIZE = 100_000  # 100KB — discovery payloads are tiny
+
+_SAFE_V3_PATH_RE = re.compile(r"^[a-zA-Z0-9/_-]+/?$")
 
 # Module-level caches shared across all GalaxyClient instances.
 # Keys include enough context (namespace, name, version) to avoid
@@ -74,6 +78,8 @@ class GalaxyClient:
         verify: bool = True,
         server_name: str | None = None,
         enrichment_semaphore: asyncio.Semaphore | None = None,
+        auth_url: str | None = None,
+        client_id: str | None = None,
     ):
         self._base = (base_url or GALAXY_BASE_URL).rstrip("/")
         self._http_client = http_client
@@ -86,6 +92,13 @@ class GalaxyClient:
         self._enrichment_semaphore = enrichment_semaphore or asyncio.Semaphore(
             ENRICHMENT_CONCURRENCY,
         )
+        self._auth_url = auth_url
+        self._client_id = client_id
+        self._access_token: str | None = None
+        self._token_lock = asyncio.Lock()
+        self._api_root: str | None = None
+        self._v3_path: str | None = None
+        self._discovery_lock = asyncio.Lock()
 
     @classmethod
     def from_config(
@@ -104,6 +117,8 @@ class GalaxyClient:
             verify=config.validate_certs,
             server_name=config.name,
             enrichment_semaphore=enrichment_semaphore,
+            auth_url=config.auth_url,
+            client_id=config.client_id,
         )
 
     async def __aenter__(self) -> GalaxyClient:
@@ -126,15 +141,166 @@ class GalaxyClient:
             self._owned_client = httpx.AsyncClient(
                 timeout=httpx.Timeout(10.0, read=120.0),
                 verify=self._verify,
+                follow_redirects=True,
             )
         return self._owned_client
 
-    def _auth_headers(self) -> dict[str, str]:
-        """Build authentication headers based on configured credentials."""
+    async def _ensure_access_token(self) -> str:
+        """Exchange offline token for access token via SSO, with caching."""
+        if self._access_token is not None:
+            return self._access_token
+        if self._auth_url is None:
+            raise GalaxyError(
+                "Cannot exchange SSO token without auth_url"
+            )
+        if not self._auth_url.startswith("https://"):
+            logger.warning(
+                "auth_url for server '%s' is not HTTPS — "
+                "credentials may be sent in cleartext",
+                self.server_name or "default",
+            )
+
+        async with self._token_lock:
+            if self._access_token is not None:
+                return self._access_token
+
+            client = self._get_client()
+            try:
+                resp = await client.post(
+                    self._auth_url,
+                    data={
+                        "grant_type": "refresh_token",
+                        "client_id": self._client_id or "cloud-services",
+                        "refresh_token": self._token,
+                    },
+                    timeout=TIMEOUT_FAST,
+                )
+                resp.raise_for_status()
+                token = resp.json().get("access_token")
+                if not isinstance(token, str) or not token:
+                    raise GalaxyError(
+                        f"SSO token exchange for server "
+                        f"'{self.server_name or 'default'}' returned "
+                        f"invalid access_token"
+                    )
+                self._access_token = token
+                return self._access_token
+            except (httpx.HTTPStatusError, httpx.RequestError, KeyError, ValueError) as exc:
+                raise GalaxyError(
+                    f"SSO token exchange failed for server "
+                    f"'{self.server_name or 'default'}'"
+                ) from exc
+
+    async def _resolve_auth_headers(self) -> dict[str, str]:
+        """Build authentication headers, exchanging SSO token if needed."""
         headers: dict[str, str] = {"Accept": "application/json"}
-        if self._token:
+        if self._token and self._auth_url:
+            access_token = await self._ensure_access_token()
+            headers["Authorization"] = f"Bearer {access_token}"
+        elif self._token:
             headers["Authorization"] = f"Token {self._token}"
         return headers
+
+    async def _discover_api_root(self) -> None:
+        """Discover API root and v3 path, matching ansible-galaxy's g_connect."""
+        if self._api_root is not None:
+            return
+
+        async with self._discovery_lock:
+            if self._api_root is not None:
+                return
+
+            client = self._get_client()
+            headers = await self._resolve_auth_headers()
+            kwargs: dict[str, Any] = {
+                "headers": headers,
+                "timeout": TIMEOUT_FAST,
+            }
+            if not self._token and self._username and self._password:
+                kwargs["auth"] = httpx.BasicAuth(self._username, self._password)
+
+            n_url = self._base
+            data: dict[str, Any] | None = None
+            got_auth_error = False
+
+            try:
+                resp = await client.get(n_url, **kwargs)
+                resp.raise_for_status()
+                if len(resp.content) > MAX_DISCOVERY_RESPONSE_SIZE:
+                    raise GalaxyError("Discovery response too large")
+                data = resp.json()
+            except httpx.HTTPStatusError as exc:
+                logger.debug("Discovery probe %s returned HTTP %s", n_url, exc.response.status_code)
+                if exc.response.status_code in (401, 403):
+                    got_auth_error = True
+            except (httpx.RequestError, ValueError) as exc:
+                logger.debug("Discovery probe %s failed: %s", n_url, exc)
+
+            if data is None or "available_versions" not in data:
+                if not n_url.rstrip("/").endswith("/api"):
+                    n_url = n_url.rstrip("/") + "/api"
+                    try:
+                        resp = await client.get(n_url, **kwargs)
+                        resp.raise_for_status()
+                        if len(resp.content) > MAX_DISCOVERY_RESPONSE_SIZE:
+                            raise GalaxyError("Discovery response too large")
+                        data = resp.json()
+                    except httpx.HTTPStatusError as exc:
+                        logger.debug("Discovery probe %s returned HTTP %s", n_url, exc.response.status_code)
+                        if exc.response.status_code in (401, 403):
+                            got_auth_error = True
+                        data = None
+                    except (httpx.RequestError, ValueError) as exc:
+                        logger.debug("Discovery probe %s failed: %s", n_url, exc)
+                        data = None
+
+            server_label = self.server_name or "default"
+            if data is None or "available_versions" not in data:
+                if got_auth_error:
+                    raise GalaxyError(
+                        f"Galaxy API root discovery failed for server "
+                        f"'{server_label}' — authentication failed "
+                        f"(HTTP 401/403). "
+                        f"Check token/credentials in ansible.cfg."
+                    )
+                raise GalaxyError(
+                    f"Could not discover Galaxy API root for server "
+                    f"'{server_label}' — "
+                    f"no 'available_versions' found. "
+                    f"Verify the server URL in ansible.cfg."
+                )
+
+            versions = data["available_versions"]
+            if "v3" not in versions:
+                raise GalaxyError(
+                    f"Galaxy server '{server_label}' does not "
+                    f"support API v3 (available: {', '.join(versions.keys())}). "
+                    f"Only v3 servers are supported."
+                )
+
+            v3_path = versions["v3"]
+            if ".." in v3_path or not _SAFE_V3_PATH_RE.match(v3_path):
+                raise GalaxyError(
+                    f"Galaxy server '{server_label}' returned "
+                    f"unsafe v3 path. Verify the server URL in ansible.cfg."
+                )
+
+            self._api_root = n_url.rstrip("/")
+            self._v3_path = v3_path
+            logger.info(
+                "Discovered Galaxy API root: %s (v3 path: %s)",
+                self._api_root, self._v3_path,
+            )
+
+    def _build_v3_url(self, *segments: str) -> str:
+        """Build a v3 API URL from path segments using the discovered root."""
+        if self._api_root is None:
+            logger.warning("_build_v3_url called before _discover_api_root")
+        parts = [self._api_root or self._base, self._v3_path or ""]
+        parts.extend(segments)
+        return "/".join(
+            p.strip("/") for p in parts if p and p.strip("/")
+        ) + "/"
 
     async def _api_get(
         self,
@@ -142,11 +308,11 @@ class GalaxyClient:
         params: dict[str, str] | None = None,
         timeout: httpx.Timeout = TIMEOUT_DEFAULT,
     ) -> dict[str, Any]:
-        url = f"{self._base}{path}"
+        url = path if path.startswith(("http://", "https://")) else f"{self._base}{path}"
         client = self._get_client()
         kwargs: dict[str, Any] = {
             "params": params,
-            "headers": self._auth_headers(),
+            "headers": await self._resolve_auth_headers(),
             "timeout": timeout,
         }
         if not self._token and self._username and self._password:
@@ -155,9 +321,23 @@ class GalaxyClient:
         try:
             resp.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            raise GalaxyError(
-                f"Galaxy API error (HTTP {exc.response.status_code})"
-            ) from exc
+            if exc.response.status_code == 401 and self._auth_url:
+                stale = kwargs["headers"].get("Authorization", "")
+                cur = f"Bearer {self._access_token}" if self._access_token else ""
+                if stale == cur:
+                    self._access_token = None
+                kwargs["headers"] = await self._resolve_auth_headers()
+                resp = await client.get(url, **kwargs)
+                try:
+                    resp.raise_for_status()
+                except httpx.HTTPStatusError as retry_exc:
+                    raise GalaxyError(
+                        f"Galaxy API error (HTTP {retry_exc.response.status_code})"
+                    ) from retry_exc
+            else:
+                raise GalaxyError(
+                    f"Galaxy API error (HTTP {exc.response.status_code})"
+                ) from exc
         content_length = resp.headers.get("content-length")
         if content_length:
             try:
@@ -200,12 +380,10 @@ class GalaxyClient:
         cached = _version_cache.get(cache_key)
         if cached is not None:
             return cached
-        path = (
-            f"/api/v3/plugin/ansible/content/published/collections/index/"
-            f"{namespace}/{name}/versions/"
-        )
+        await self._discover_api_root()
+        url = self._build_v3_url("collections", namespace, name, "versions")
         params = {"limit": "1", "ordering": "-version", "format": "json"}
-        data = await self._safe_api_get(path, params=params, timeout=TIMEOUT_FAST)
+        data = await self._safe_api_get(url, params=params, timeout=TIMEOUT_FAST)
         versions = data.get("data", [])
         if not versions:
             raise GalaxyError(
@@ -218,16 +396,15 @@ class GalaxyClient:
     async def _get_collection_detail(
         self, namespace: str, name: str,
     ) -> dict[str, Any]:
-        path = (
-            f"/api/v3/plugin/ansible/content/published/collections/index/"
-            f"{namespace}/{name}/"
-        )
-        return await self._safe_api_get(path, timeout=TIMEOUT_FAST)
+        await self._discover_api_root()
+        url = self._build_v3_url("collections", namespace, name)
+        return await self._safe_api_get(url, timeout=TIMEOUT_FAST)
 
     async def search_collections(
         self, query: str, tags: str | None = None,
     ) -> dict[str, Any]:
-        search_path = "/api/v3/plugin/ansible/search/collection-versions/"
+        await self._discover_api_root()
+        search_url = self._build_v3_url("plugin", "ansible", "search", "collection-versions")
         search_params: dict[str, str] = {
             "keywords": query,
             "is_highest": "true",
@@ -237,7 +414,7 @@ class GalaxyClient:
             search_params["tags"] = tags
 
         data = await self._safe_api_get(
-            search_path, params=search_params,
+            search_url, params=search_params,
         )
 
         candidates = []
@@ -309,12 +486,12 @@ class GalaxyClient:
         cached = _blob_cache.get(cache_key)
         if cached is not None:
             return cached
-        path = (
-            f"/api/v3/plugin/ansible/content/published/collections/index/"
-            f"{namespace}/{name}/versions/{version}/docs-blob/"
+        await self._discover_api_root()
+        url = self._build_v3_url(
+            "collections", namespace, name, "versions", version, "docs-blob",
         )
         params = {"format": "json"}
-        data = await self._safe_api_get(path, params=params, timeout=TIMEOUT_SLOW)
+        data = await self._safe_api_get(url, params=params, timeout=TIMEOUT_SLOW)
         blob = data.get("docs_blob", data)
         _blob_cache.put(cache_key, blob)
         return blob
