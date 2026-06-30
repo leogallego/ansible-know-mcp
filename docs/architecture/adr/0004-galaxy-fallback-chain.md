@@ -99,11 +99,14 @@ their installed version.
 
 ### Future Considerations
 
-- Move fallback logic to a domain-level `resolution.py` module.
+- ~~Move fallback logic to a domain-level `resolution.py` module.~~
+  **Done (PR #66):** `resolution.py` implements the fallback chain.
 - Add a `_missing_collections` TTL or manual invalidation mechanism.
 - Consider making Galaxy-first the default (cheaper than spawning
   `ansible-doc` subprocesses) with local as fallback for custom modules.
-- Support `auth_url` + `client_id` for SSO token refresh (AAP Gateway).
+- ~~Support `auth_url` + `client_id` for SSO token refresh (AAP Gateway).~~
+  **Done (PR #155):** `galaxy.py` exchanges offline tokens via SSO
+  `auth_url`, with `client_id` support and retry-on-401 for token expiry.
 
 ## Implementation Notes
 
@@ -132,3 +135,4 @@ their installed version.
 | 2026-06-19 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Initial decision |
 | 2026-06-19 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Updated: resolution logic moved to resolution.py (PR #66) |
 | 2026-06-26 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Added Implementation Notes, Related Decisions, Revision History |
+| 2026-06-30 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Marked auth_url/client_id SSO support as implemented (PR #155), marked resolution.py move as done (PR #66) |
