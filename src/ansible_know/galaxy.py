@@ -141,17 +141,14 @@ class GalaxyClient:
             )
         return self._owned_client
 
-    def _auth_headers(self) -> dict[str, str]:
-        """Build authentication headers based on configured credentials."""
-        headers: dict[str, str] = {"Accept": "application/json"}
-        if self._token:
-            headers["Authorization"] = f"Token {self._token}"
-        return headers
-
     async def _ensure_access_token(self) -> str:
         """Exchange offline token for access token via SSO, with caching."""
         if self._access_token is not None:
             return self._access_token
+        if self._auth_url is None:
+            raise GalaxyError(
+                "Cannot exchange SSO token without auth_url"
+            )
 
         async with self._token_lock:
             if self._access_token is not None:
@@ -224,8 +221,8 @@ class GalaxyClient:
                 logger.debug("Discovery probe %s returned HTTP %s", n_url, exc.response.status_code)
                 if exc.response.status_code in (401, 403):
                     got_auth_error = True
-            except (httpx.RequestError, ValueError):
-                pass
+            except (httpx.RequestError, ValueError) as exc:
+                logger.debug("Discovery probe %s failed: %s", n_url, exc)
 
             if data is None or "available_versions" not in data:
                 if not n_url.rstrip("/").endswith("/api"):
@@ -239,7 +236,8 @@ class GalaxyClient:
                         if exc.response.status_code in (401, 403):
                             got_auth_error = True
                         data = None
-                    except (httpx.RequestError, ValueError):
+                    except (httpx.RequestError, ValueError) as exc:
+                        logger.debug("Discovery probe %s failed: %s", n_url, exc)
                         data = None
 
             server_label = self.server_name or "default"
@@ -287,7 +285,7 @@ class GalaxyClient:
         params: dict[str, str] | None = None,
         timeout: httpx.Timeout = TIMEOUT_DEFAULT,
     ) -> dict[str, Any]:
-        url = path if path.startswith("http") else f"{self._base}{path}"
+        url = path if path.startswith(("http://", "https://")) else f"{self._base}{path}"
         client = self._get_client()
         kwargs: dict[str, Any] = {
             "params": params,

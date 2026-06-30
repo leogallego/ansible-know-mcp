@@ -1406,15 +1406,17 @@ class TestSearchCollectionsRoleCount:
 
 
 class TestGalaxyClientAuth:
-    def test_token_auth_headers(self):
+    @pytest.mark.asyncio
+    async def test_token_auth_headers(self):
         gc = GalaxyClient(token="my_secret_token")
-        headers = gc._auth_headers()
+        headers = await gc._resolve_auth_headers()
         assert headers["Authorization"] == "Token my_secret_token"
         assert headers["Accept"] == "application/json"
 
-    def test_no_auth_headers(self):
+    @pytest.mark.asyncio
+    async def test_no_auth_headers(self):
         gc = GalaxyClient()
-        headers = gc._auth_headers()
+        headers = await gc._resolve_auth_headers()
         assert "Authorization" not in headers
         assert headers["Accept"] == "application/json"
 
