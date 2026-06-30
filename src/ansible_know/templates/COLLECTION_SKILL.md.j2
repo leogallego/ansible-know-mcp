@@ -1,21 +1,21 @@
 ---
 name: {{ spec_name }}
 description: >-
-  Guided playbook development for the {{ collection_namespace }} collection.
+  Guided playbook development for the {{ fqcn }} collection.
   Covers {{ module_count }} module{{ "s" if module_count != 1 else "" }}{% if collection_version %} (v{{ collection_version }}){% endif %}.
-compatibility: Requires ansible-core and the {{ collection }} collection
+compatibility: Requires ansible-core and the {{ namespace }}.{{ collection }} collection
 metadata:
   fqcn: {{ fqcn }}
-  collection: {{ collection }}
+  collection: {{ namespace }}.{{ collection }}
   plugin-type: {{ plugin_type }}
 {% if collection_version %}
   version: "{{ collection_version }}"
 {% endif %}
 ---
 
-# {{ collection_namespace }} Playbook Guide
+# {{ fqcn }} Playbook Guide
 
-Build playbooks for the **{{ collection_namespace }}** collection{% if collection_version %} (v{{ collection_version }}){% endif %} using verified
+Build playbooks for the **{{ fqcn }}** collection{% if collection_version %} (v{{ collection_version }}){% endif %} using verified
 module documentation. This skill was generated from live module metadata —
 all parameters, defaults, and examples are version-accurate.
 
@@ -120,7 +120,7 @@ Apply these rules while writing YAML:
 
 ### Checklist
 
-1. **FQCN** — always `{{ collection_namespace }}.*`, never short names
+1. **FQCN** — always `{{ fqcn }}.*`, never short names
 2. **Idempotent** — use `state: present`/`absent` for desired-state management
 3. **No shell** — never use `shell`/`command` when a module exists for the task
 {% if all_api %}

@@ -351,7 +351,9 @@ class TestRoleTemplateContext:
             "doc_source": "galaxy_readme",
         }
         ctx = _role_template_context(metadata)
-        assert ctx["role_name"] == "fedora.linux_system_roles.timesync"
+        assert ctx["fqcn"] == "fedora.linux_system_roles.timesync"
+        assert ctx["namespace"] == "fedora"
+        assert ctx["collection"] == "linux_system_roles"
         assert ctx["short_description"] == "Configure time synchronization"
         assert len(ctx["entry_points"]) == 1
         assert ctx["dependencies"] == []
@@ -430,7 +432,9 @@ class TestCollectionTemplateContext:
         metadata = extract_module_metadata(sample_api_module_doc)
         ctx = _collection_template_context("netbox.netbox", [metadata])
 
-        assert ctx["collection_namespace"] == "netbox.netbox"
+        assert ctx["fqcn"] == "netbox.netbox"
+        assert ctx["namespace"] == "netbox"
+        assert ctx["collection"] == "netbox"
         assert ctx["module_count"] == 1
         assert isinstance(ctx["modules_by_tag"], dict)
         found = False

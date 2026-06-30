@@ -7,31 +7,31 @@ description: >-
 {% else %}
   Use when managing {{ skill_name | replace('_', ' ') }} resources on remote hosts via Ansible.
 {% endif %}
-compatibility: Requires ansible-core and the {{ collection }} collection
+compatibility: Requires ansible-core and the {{ namespace }}.{{ collection }} collection
 metadata:
   fqcn: {{ fqcn }}
-  collection: {{ collection }}
+  collection: {{ namespace }}.{{ collection }}
   plugin-type: {{ plugin_type }}
 {% if doc_version %}
   version: "{{ doc_version }}"
 {% endif %}
 ---
 
-# {{ module_name }}
+# {{ fqcn }}
 
 {{ short_description }}
 
 ## When to Use This Skill
 
 {% if is_api_module %}
-Use the `{{ module_name }}` Ansible module when you need to manage {{ skill_name | replace('_', ' ') }} resources via API. This module runs on the **control host** (not over SSH) and communicates with an external API.
+Use the `{{ fqcn }}` Ansible module when you need to manage {{ skill_name | replace('_', ' ') }} resources via API. This module runs on the **control host** (not over SSH) and communicates with an external API.
 
 - Runs with `connection: local` -- no SSH to remote hosts
 - **Does not** require `become`/sudo
 - You need **idempotent** state management (ensure a desired state, not just run a command)
 - You want **audit trails** and **dry-run** capability via `--check`
 {% else %}
-Use the `{{ module_name }}` Ansible module when you need to manage {{ skill_name | replace('_', ' ') }} on remote hosts. This is preferable to local CLI commands when:
+Use the `{{ fqcn }}` Ansible module when you need to manage {{ skill_name | replace('_', ' ') }} on remote hosts. This is preferable to local CLI commands when:
 
 - Targeting one or more **remote** hosts over SSH
 - You need **idempotent** state management (ensure a desired state, not just run a command)
@@ -61,31 +61,31 @@ Run this module using the `ansible` CLI (from `ansible-core`):
 
 {% if is_api_module %}
 ```bash
-ansible localhost -m {{ module_name }} -a "<key=value arguments>" -c local --check --diff
+ansible localhost -m {{ fqcn }} -a "<key=value arguments>" -c local --check --diff
 ```
 
 ### Quick Examples
 
 ```bash
 # Dry-run first (always recommended for destructive operations)
-ansible localhost -m {{ module_name }} -a "{{ example_args }}" -c local --check --diff
+ansible localhost -m {{ fqcn }} -a "{{ example_args }}" -c local --check --diff
 
 # Apply the change
-ansible localhost -m {{ module_name }} -a "{{ example_args }}" -c local --diff
+ansible localhost -m {{ fqcn }} -a "{{ example_args }}" -c local --diff
 ```
 {% else %}
 ```bash
-ansible <host-pattern> -m {{ module_name }} -a "<key=value arguments>" -b --check --diff
+ansible <host-pattern> -m {{ fqcn }} -a "<key=value arguments>" -b --check --diff
 ```
 
 ### Quick Examples
 
 ```bash
 # Dry-run first (always recommended for destructive operations)
-ansible webservers -m {{ module_name }} -a "{{ example_args }}" -b --check --diff
+ansible webservers -m {{ fqcn }} -a "{{ example_args }}" -b --check --diff
 
 # Apply the change
-ansible webservers -m {{ module_name }} -a "{{ example_args }}" -b --diff
+ansible webservers -m {{ fqcn }} -a "{{ example_args }}" -b --diff
 ```
 {% endif %}
 
@@ -118,11 +118,11 @@ To get structured JSON output for programmatic parsing:
 
 {% if is_api_module %}
 ```bash
-ANSIBLE_STDOUT_CALLBACK=json ansible localhost -m {{ module_name }} -a "<args>" -c local
+ANSIBLE_STDOUT_CALLBACK=json ansible localhost -m {{ fqcn }} -a "<args>" -c local
 ```
 {% else %}
 ```bash
-ANSIBLE_STDOUT_CALLBACK=json ansible <hosts> -m {{ module_name }} -a "<args>" -b
+ANSIBLE_STDOUT_CALLBACK=json ansible <hosts> -m {{ fqcn }} -a "<args>" -b
 ```
 {% endif %}
 
@@ -145,4 +145,4 @@ When using this skill, specify an inventory:
 - Specify inventory explicitly: `-i /path/to/inventory.yml`
 - Set environment variable: `export ANSIBLE_INVENTORY=/path/to/inventory.yml`
 - Use Ansible's default: `/etc/ansible/hosts`
-- Target a single host directly: `ansible <hostname>, -m {{ module_name }} -a "..."` (note the trailing comma)
+- Target a single host directly: `ansible <hostname>, -m {{ fqcn }} -a "..."` (note the trailing comma)

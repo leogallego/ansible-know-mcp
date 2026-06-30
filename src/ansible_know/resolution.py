@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
 from ansible_know.async_utils import run_in_executor
 from ansible_know.errors import AnsibleDocError
-from ansible_know.validation import extract_namespace, sanitize_error, validate_plugin_type
+from ansible_know.validation import extract_collection_fqcn, sanitize_error, validate_plugin_type
 
 logger = logging.getLogger("ansible_know")
 
@@ -133,20 +133,20 @@ async def resolve_module_doc(
     from ansible_know.errors import CollectionNotFoundError, GalaxyError
 
     servers = _get_servers(galaxy_servers)
-    namespace = extract_namespace(module_name)
+    collection_fqcn = extract_collection_fqcn(module_name)
     cpath = collections_path
 
     local_doc: dict[str, Any] = {}
     local_error: str | None = None
 
-    if not (namespace and missing_collections is not None and namespace in missing_collections):
+    if not (collection_fqcn and missing_collections is not None and collection_fqcn in missing_collections):
         try:
             local_doc = await run_in_executor(
                 parser.get_module_doc, module_name, collections_path=cpath,
             )
         except CollectionNotFoundError as exc:
-            if namespace and missing_collections is not None:
-                missing_collections.add(namespace)
+            if collection_fqcn and missing_collections is not None:
+                missing_collections.add(collection_fqcn)
             local_error = str(exc)
             local_doc = {}
         except AnsibleDocError as exc:
@@ -166,8 +166,8 @@ async def resolve_module_doc(
             "content_type": "module",
             "doc_source": "unavailable",
             "error": sanitize_error(
-                local_error or f"Collection '{namespace}' not installed locally"
-                if namespace else local_error or "Module not found"
+                local_error or f"Collection '{collection_fqcn}' not installed locally"
+                if collection_fqcn else local_error or "Module not found"
             ),
             "params": [],
         }
@@ -219,20 +219,20 @@ async def resolve_plugin_doc(
     validate_plugin_type(plugin_type)
 
     servers = _get_servers(galaxy_servers)
-    namespace = extract_namespace(plugin_name)
+    collection_fqcn = extract_collection_fqcn(plugin_name)
     cpath = collections_path
 
     local_doc: dict[str, Any] = {}
 
-    if not (namespace and missing_collections is not None and namespace in missing_collections):
+    if not (collection_fqcn and missing_collections is not None and collection_fqcn in missing_collections):
         try:
             local_doc = await run_in_executor(
                 parser.get_plugin_doc, plugin_name, plugin_type,
                 collections_path=cpath,
             )
         except CollectionNotFoundError:
-            if namespace and missing_collections is not None:
-                missing_collections.add(namespace)
+            if collection_fqcn and missing_collections is not None:
+                missing_collections.add(collection_fqcn)
             local_doc = {}
         except AnsibleDocError as exc:
             logger.warning("Local plugin doc failed for %s: %s", plugin_name, exc)
@@ -297,19 +297,19 @@ async def resolve_role_doc(
     from ansible_know.errors import CollectionNotFoundError, GalaxyError
 
     servers = _get_servers(galaxy_servers)
-    namespace = extract_namespace(role_name)
+    collection_fqcn = extract_collection_fqcn(role_name)
     cpath = collections_path
 
     local_doc: dict[str, Any] = {}
 
-    if not (namespace and missing_collections is not None and namespace in missing_collections):
+    if not (collection_fqcn and missing_collections is not None and collection_fqcn in missing_collections):
         try:
             local_doc = await run_in_executor(
                 parser.get_role_doc, role_name, collections_path=cpath,
             )
         except CollectionNotFoundError:
-            if namespace and missing_collections is not None:
-                missing_collections.add(namespace)
+            if collection_fqcn and missing_collections is not None:
+                missing_collections.add(collection_fqcn)
             local_doc = {}
         except AnsibleDocError as exc:
             logger.warning("Local role doc failed for %s: %s", role_name, exc)

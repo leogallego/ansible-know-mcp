@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 from ansible_know.config import TEMPLATE_DIR
 from ansible_know.tagging import derive_tags
 from ansible_know.validation import (
-    extract_namespace,
+    extract_collection_fqcn,
     truncate_response,
     validate_path_containment,
 )
@@ -99,9 +99,9 @@ def role_skill_name(fqcn: str) -> str:
     return fqcn_to_skill_name(fqcn)
 
 
-def collection_skill_name(namespace: str) -> str:
-    """Convert a collection namespace to a spec-compliant kebab-case skill name."""
-    return _to_kebab(namespace)
+def collection_skill_name(collection_fqcn: str) -> str:
+    """Convert a collection FQCN to a spec-compliant kebab-case skill name."""
+    return _to_kebab(collection_fqcn)
 
 
 def skill_dir_to_collection_fqcn(kebab_dir: str) -> str:
@@ -137,9 +137,9 @@ def _module_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
     fqcn = metadata["module_name"]
     params = metadata["params"]
     example_args = _build_example_args(params, metadata.get("examples", ""))
-    namespace = extract_namespace(fqcn) or fqcn
+    collection_fqcn = extract_collection_fqcn(fqcn) or fqcn
+    ns, coll = collection_fqcn.split(".", 1)
     return {
-        "module_name": fqcn,
         "spec_name": fqcn_to_skill_name(fqcn),
         "skill_name": fqcn.rsplit(".", 1)[-1],
         "short_description": metadata["short_description"],
@@ -149,7 +149,8 @@ def _module_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
         "is_api_module": metadata.get("is_api_module", False),
         "examples_contain_play": _examples_contain_play(metadata.get("examples", "")),
         "fqcn": fqcn,
-        "collection": namespace,
+        "namespace": ns,
+        "collection": coll,
         "plugin_type": "module",
         "doc_version": metadata.get("doc_version"),
     }
@@ -377,9 +378,9 @@ def _extract_example_values(examples_yaml: str) -> dict[str, str]:
 def _role_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
     """Build template context from role metadata."""
     fqcn = metadata["role_name"]
-    namespace = extract_namespace(fqcn) or fqcn
+    collection_fqcn = extract_collection_fqcn(fqcn) or fqcn
+    ns, coll = collection_fqcn.split(".", 1)
     return {
-        "role_name": fqcn,
         "spec_name": role_skill_name(fqcn),
         "skill_name": fqcn.rsplit(".", 1)[-1],
         "short_description": metadata.get("short_description", ""),
@@ -388,7 +389,8 @@ def _role_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
         "examples": metadata.get("examples", "").strip(),
         "doc_source": metadata.get("doc_source", ""),
         "fqcn": fqcn,
-        "collection": namespace,
+        "namespace": ns,
+        "collection": coll,
         "plugin_type": "role",
         "doc_version": metadata.get("doc_version"),
     }
@@ -427,9 +429,9 @@ def _plugin_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
     """Build template context from plugin metadata."""
     fqcn = metadata["plugin_name"]
     ptype = metadata["plugin_type"]
-    namespace = extract_namespace(fqcn) or fqcn
+    collection_fqcn = extract_collection_fqcn(fqcn) or fqcn
+    ns, coll = collection_fqcn.split(".", 1)
     return {
-        "plugin_name": fqcn,
         "plugin_type": ptype,
         "spec_name": plugin_skill_name(fqcn, ptype),
         "skill_name": fqcn.rsplit(".", 1)[-1],
@@ -437,7 +439,8 @@ def _plugin_template_context(metadata: dict[str, Any]) -> dict[str, Any]:
         "params": metadata.get("params", []),
         "examples": metadata.get("examples", "").strip(),
         "fqcn": fqcn,
-        "collection": namespace,
+        "namespace": ns,
+        "collection": coll,
         "doc_version": metadata.get("doc_version"),
     }
 
@@ -466,12 +469,14 @@ def write_plugin_skill_package(output_dir: Path, metadata: dict[str, Any]) -> No
 
 
 def _collection_template_context(
-    namespace: str,
+    collection_fqcn: str,
     metadata_list: list[ModuleMetadata],
     collection_version: str | None = None,
     plugins_metadata: list[PluginManifestInput] | None = None,
 ) -> CollectionSkillContext:
     """Build template context for a collection-level skill."""
+    ns, coll = collection_fqcn.split(".", 1)
+
     modules_by_tag: dict[str, list[ModuleTagEntry]] = {}
     for meta in metadata_list:
         fqcn = meta["module_name"]
@@ -509,16 +514,16 @@ def _collection_template_context(
         })
 
     return {
-        "collection_namespace": namespace,
-        "fqcn": namespace,
-        "spec_name": collection_skill_name(namespace),
+        "fqcn": collection_fqcn,
+        "spec_name": collection_skill_name(collection_fqcn),
         "collection_version": collection_version,
         "modules_by_tag": modules_by_tag,
         "all_api": all_api,
         "common_params": common_params,
         "module_count": len(metadata_list),
         "plugins_by_type": plugins_by_type,
-        "collection": namespace,
+        "namespace": ns,
+        "collection": coll,
         "plugin_type": "collection",
     }
 
@@ -547,33 +552,33 @@ def _find_common_params(metadata_list: list[ModuleMetadata]) -> list[ParamDict]:
 
 
 def render_collection_skill(
-    namespace: str,
+    collection_fqcn: str,
     metadata_list: list[ModuleMetadata],
     collection_version: str | None = None,
     plugins_metadata: list[PluginManifestInput] | None = None,
 ) -> str:
     """Render the COLLECTION_SKILL.md.j2 template for a collection-level skill."""
-    logger.debug("Rendering collection skill for %s", namespace)
+    logger.debug("Rendering collection skill for %s", collection_fqcn)
     env = _get_template_env()
     template = env.get_template("COLLECTION_SKILL.md.j2")
     ctx = _collection_template_context(
-        namespace, metadata_list, collection_version, plugins_metadata,
+        collection_fqcn, metadata_list, collection_version, plugins_metadata,
     )
     return template.render(**ctx)
 
 
 def write_collection_skill_package(
     output_dir: Path,
-    namespace: str,
+    collection_fqcn: str,
     metadata_list: list[ModuleMetadata],
     collection_version: str | None = None,
     plugins_metadata: list[PluginManifestInput] | None = None,
 ) -> None:
     """Write the collection-level skill package: SKILL.md only (no scripts/assets)."""
-    logger.debug("Writing collection skill package to %s for %s", output_dir, namespace)
+    logger.debug("Writing collection skill package to %s for %s", output_dir, collection_fqcn)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     content = render_collection_skill(
-        namespace, metadata_list, collection_version, plugins_metadata,
+        collection_fqcn, metadata_list, collection_version, plugins_metadata,
     )
     (output_dir / "SKILL.md").write_text(content)

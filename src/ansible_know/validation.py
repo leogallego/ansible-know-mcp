@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 from ansible_know.errors import ValidationError
 
 __all__ = [
+    "extract_collection_fqcn",
     "extract_namespace",
     "sanitize_error",
     "truncate_response",
@@ -122,13 +123,18 @@ def validate_path_containment(child: Path, parent: Path) -> None:
         raise ValidationError("Path escapes the allowed directory.") from exc
 
 
-def extract_namespace(fqcn: str) -> str | None:
-    """Extract the collection namespace from a fully-qualified name.
+def extract_collection_fqcn(fqcn: str) -> str | None:
+    """Extract the 2-part collection FQCN from a fully-qualified name.
 
     Returns 'namespace.collection' from 'namespace.collection.name',
     or None if the name has no dots.
     """
     return ".".join(fqcn.split(".")[:2]) if "." in fqcn else None
+
+
+def extract_namespace(fqcn: str) -> str | None:
+    """Deprecated: use extract_collection_fqcn() instead."""
+    return extract_collection_fqcn(fqcn)
 
 
 def sanitize_error(msg: str) -> str:
