@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "generated": "2026-06-23T21:18:33.129685+00:00",
+  "generated": "2026-06-30T20:48:55.509413+00:00",
   "base_url": "https://docs.ansible.com/projects/ansible/latest",
   "files": [
     {
@@ -2722,6 +2722,206 @@
       "summary": "With Ansible you can retrieve or discover certain variables containing information about your remote systems or about Ansible itself.",
       "lines": 658,
       "tokens": 6960
+    },
+    {
+      "path": "plugins/action.html",
+      "topic": "plugins",
+      "title": "Action plugins",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "plugins/become.html",
+      "topic": "plugins",
+      "title": "Become plugins",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "plugins/cache.html",
+      "topic": "plugins",
+      "title": "Cache plugins",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "plugins/callback.html",
+      "topic": "plugins",
+      "title": "Callback plugins",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "plugins/cliconf.html",
+      "topic": "plugins",
+      "title": "Cliconf plugins",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "plugins/connection.html",
+      "topic": "plugins",
+      "title": "Connection plugins",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "plugins/docs_fragment.html",
+      "topic": "plugins",
+      "title": "Docs fragments",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "plugins/filter.html",
+      "topic": "plugins",
+      "title": "Filter plugins",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "plugins/httpapi.html",
+      "topic": "plugins",
+      "title": "Httpapi plugins",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "plugins/inventory.html",
+      "topic": "plugins",
+      "title": "Inventory plugins",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "plugins/lookup.html",
+      "topic": "plugins",
+      "title": "Lookup plugins",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "plugins/module.html",
+      "topic": "plugins",
+      "title": "Modules",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "plugins/module_util.html",
+      "topic": "plugins",
+      "title": "Module utilities",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "plugins/netconf.html",
+      "topic": "plugins",
+      "title": "Netconf plugins",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "plugins/plugins.html",
+      "topic": "plugins",
+      "title": "Working with plugins",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "plugins/shell.html",
+      "topic": "plugins",
+      "title": "Shell plugins",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "plugins/strategy.html",
+      "topic": "plugins",
+      "title": "Strategy plugins",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "plugins/terminal.html",
+      "topic": "plugins",
+      "title": "Terminal plugins",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "plugins/test.html",
+      "topic": "plugins",
+      "title": "Test plugins",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "plugins/vars.html",
+      "topic": "plugins",
+      "title": "Vars plugins",
+      "audience": "both",
+      "core": false,
+      "summary": "",
+      "lines": 0,
+      "tokens": 0
     },
     {
       "path": "porting_guides/core_porting_guides.html",
