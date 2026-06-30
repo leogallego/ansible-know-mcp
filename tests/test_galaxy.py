@@ -1,5 +1,6 @@
 """Tests for ansible_know.galaxy."""
 
+import asyncio
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 from unittest.mock import patch as stdlib_patch
@@ -1889,6 +1890,38 @@ class TestApiRootDiscovery:
 
         assert gc._discovery_failed is False
         assert gc._api_root is not None
+
+    @pytest.mark.asyncio
+    async def test_negative_cache_concurrent_double_check(self):
+        """Concurrent coroutines don't bypass the negative cache inside the lock."""
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "404", request=MagicMock(), response=MagicMock(status_code=404),
+        )
+        mock_resp.content = b""
+
+        call_count = 0
+        mock_client = AsyncMock()
+
+        async def mock_get(url, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return mock_resp
+        mock_client.get = mock_get
+
+        gc = GalaxyClient(
+            base_url="https://broken.example.com",
+            http_client=mock_client,
+        )
+
+        results = await asyncio.gather(
+            gc._discover_api_root(),
+            gc._discover_api_root(),
+            return_exceptions=True,
+        )
+
+        assert all(isinstance(r, GalaxyError) for r in results)
+        assert call_count == 2
 
 
 class TestBuildV3Url:

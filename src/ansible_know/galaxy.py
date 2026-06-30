@@ -235,6 +235,14 @@ class GalaxyClient:
         async with self._discovery_lock:
             if self._api_root is not None:
                 return
+            if self._discovery_failed:
+                server_label = self.server_name or "default"
+                raise GalaxyError(
+                    f"Galaxy API discovery previously failed for server "
+                    f"'{server_label}'. Check the server URL and credentials "
+                    f"in ansible.cfg, then restart the MCP server session "
+                    f"to retry."
+                )
 
             client = self._get_client()
             headers = await self._resolve_auth_headers()
