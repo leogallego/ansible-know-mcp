@@ -824,8 +824,8 @@ async def ensure_collection(
 async def list_skills(
     collection: Annotated[
         str | None,
-        "Optional collection namespace to list skills within (e.g. 'netbox.netbox'). "
-        "Without this, returns collection-level skill entries and standalone skills only.",
+        "Optional collection namespace to filter skills (e.g. 'netbox.netbox'). "
+        "Without this, returns all skills.",
     ] = None,
 ) -> list[SkillEntry] | ErrorResponse:
     """List all available generated skills. Returns name, description, path for each.
@@ -1335,31 +1335,11 @@ async def clear_cache(
 def resource_skills_list() -> str:
     import json
 
-    from ansible_know.config import PLUGIN_TYPES, SKILLS_DIR
-    from ansible_know.skills import (
-        PLUGIN_SKILL_DIR_RE,
-        skill_dir_to_collection_fqcn,
-        skill_dir_to_short_fqcn,
-    )
+    from ansible_know.config import SKILLS_DIR
+    from ansible_know.skills import list_skills_sync
 
-    skills_list: list[str] = []
-    if SKILLS_DIR.exists():
-        for skill_dir in sorted(SKILLS_DIR.iterdir()):
-            if not skill_dir.is_dir() or skill_dir.is_symlink():
-                continue
-            collection_fqcn = skill_dir_to_collection_fqcn(skill_dir.name)
-            skill_md = skill_dir / "SKILL.md"
-            if skill_md.exists():
-                skills_list.append(collection_fqcn)
-            for sub_dir in sorted(skill_dir.iterdir()):
-                if sub_dir.is_dir() and not sub_dir.is_symlink() and (sub_dir / "SKILL.md").exists():
-                    dir_name = sub_dir.name
-                    match = PLUGIN_SKILL_DIR_RE.match(dir_name)
-                    if match and match.group(1) in PLUGIN_TYPES:
-                        skills_list.append(f"{collection_fqcn}.{skill_dir_to_short_fqcn(match.group(2))}")
-                    else:
-                        skills_list.append(f"{collection_fqcn}.{skill_dir_to_short_fqcn(dir_name)}")
-    return json.dumps(skills_list, indent=2)
+    entries = list_skills_sync(SKILLS_DIR, collection=None)
+    return json.dumps([e["name"] for e in entries], indent=2)
 
 
 @mcp.resource(

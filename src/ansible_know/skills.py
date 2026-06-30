@@ -215,16 +215,45 @@ def extract_skill_description(skill_md: Path) -> str:
     return ""
 
 
+def _list_nested_skills(
+    collection_dir: Path,
+    collection_fqcn: str,
+) -> list[SkillEntry]:
+    """List module/role/plugin skills within a collection directory."""
+    from ansible_know.config import PLUGIN_TYPES
+
+    results: list[SkillEntry] = []
+    for sub_dir in sorted(collection_dir.iterdir()):
+        try:
+            skill_md = sub_dir / "SKILL.md"
+            if sub_dir.is_dir() and not sub_dir.is_symlink() and skill_md.exists():
+                dir_name = sub_dir.name
+                match = PLUGIN_SKILL_DIR_RE.match(dir_name)
+                if match and match.group(1) in PLUGIN_TYPES:
+                    display_name = f"{collection_fqcn}.{skill_dir_to_short_fqcn(match.group(2))}"
+                else:
+                    display_name = f"{collection_fqcn}.{skill_dir_to_short_fqcn(dir_name)}"
+                results.append({
+                    "name": display_name,
+                    "description": extract_skill_description(skill_md),
+                    "path": str(sub_dir),
+                })
+        except OSError:
+            logger.warning("Skipping unreadable skill: %s", sub_dir.name)
+            continue
+    return results
+
+
 def list_skills_sync(
     skills_dir: Path, collection: str | None,
 ) -> list[SkillEntry]:
     """List generated skills from *skills_dir*.
 
     When *collection* is given, returns module/role/plugin skills within that
-    collection directory.  Otherwise returns top-level (collection-level and
-    standalone) skill entries.
+    collection directory.  Otherwise returns all skills: collection-level
+    entries followed by their nested module/role/plugin skills.
     """
-    results: list[dict[str, str]] = []
+    results: list[SkillEntry] = []
     if not skills_dir.exists():
         return results
 
@@ -234,40 +263,24 @@ def list_skills_sync(
         validate_path_containment(collection_dir, skills_dir)
         if not collection_dir.is_dir():
             return results
-        for sub_dir in sorted(collection_dir.iterdir()):
-            try:
-                skill_md = sub_dir / "SKILL.md"
-                if sub_dir.is_dir() and not sub_dir.is_symlink() and skill_md.exists():
-                    dir_name = sub_dir.name
-                    from ansible_know.config import PLUGIN_TYPES
-                    match = PLUGIN_SKILL_DIR_RE.match(dir_name)
-                    if match and match.group(1) in PLUGIN_TYPES:
-                        display_name = f"{collection}.{skill_dir_to_short_fqcn(match.group(2))}"
-                    else:
-                        display_name = f"{collection}.{skill_dir_to_short_fqcn(dir_name)}"
-                    results.append({
-                        "name": display_name,
-                        "description": extract_skill_description(skill_md),
-                        "path": str(sub_dir),
-                    })
-            except OSError:
-                logger.warning("Skipping unreadable skill: %s", sub_dir.name)
+        return _list_nested_skills(collection_dir, collection)
+
+    for skill_dir in sorted(skills_dir.iterdir()):
+        try:
+            if not skill_dir.is_dir() or skill_dir.is_symlink():
                 continue
-    else:
-        for skill_dir in sorted(skills_dir.iterdir()):
-            try:
-                if not skill_dir.is_dir() or skill_dir.is_symlink():
-                    continue
-                skill_md = skill_dir / "SKILL.md"
-                if skill_md.exists():
-                    results.append({
-                        "name": skill_dir.name,
-                        "description": extract_skill_description(skill_md),
-                        "path": str(skill_dir),
-                    })
-            except OSError:
-                logger.warning("Skipping unreadable skill: %s", skill_dir.name)
-                continue
+            collection_fqcn = skill_dir_to_collection_fqcn(skill_dir.name)
+            skill_md = skill_dir / "SKILL.md"
+            if skill_md.exists():
+                results.append({
+                    "name": collection_fqcn,
+                    "description": extract_skill_description(skill_md),
+                    "path": str(skill_dir),
+                })
+            results.extend(_list_nested_skills(skill_dir, collection_fqcn))
+        except OSError:
+            logger.warning("Skipping unreadable skill: %s", skill_dir.name)
+            continue
     return results
 
 
