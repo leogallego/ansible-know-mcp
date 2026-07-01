@@ -12,6 +12,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -66,9 +67,9 @@ def _run_ansible_doc(
     cmd = [ansible_doc, *args]
 
     logger.debug("Running: %s (collections_path=%s)", " ".join(cmd), collections_path)
-    env = None
+    env = os.environ.copy()
+    env.setdefault("ANSIBLE_LOCAL_TMP", tempfile.gettempdir())
     if collections_path:
-        env = os.environ.copy()
         existing = env.get("ANSIBLE_COLLECTIONS_PATH", "")
         env["ANSIBLE_COLLECTIONS_PATH"] = (
             f"{collections_path}{os.pathsep}{existing}" if existing else collections_path

@@ -71,6 +71,14 @@ class TestEnsureCollectionInstalls:
         assert "install" in args
         assert "netbox.netbox" in args
 
+    def test_install_sets_ansible_local_tmp(self, mgr):
+        galaxy_stdout = "Installing 'netbox.netbox:4.1.0' to '<path>'\nnetbox.netbox:4.1.0 was installed successfully"
+        with patch("ansible_know.collections._find_ansible_galaxy", return_value="/usr/bin/ansible-galaxy"):
+            with patch("subprocess.run", return_value=_make_subprocess_result(stdout=galaxy_stdout)) as mock_run:
+                mgr.ensure_collection("netbox.netbox")
+        env = mock_run.call_args[1]["env"]
+        assert "ANSIBLE_LOCAL_TMP" in env
+
     def test_installs_with_version_pin(self, mgr):
         galaxy_stdout = "Installing 'netbox.netbox:3.9.0' to '<path>'\nnetbox.netbox:3.9.0 was installed successfully"
         with patch("ansible_know.collections._find_ansible_galaxy", return_value="/usr/bin/ansible-galaxy"):

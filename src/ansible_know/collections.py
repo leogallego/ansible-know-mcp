@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -121,6 +122,9 @@ class CollectionManager:
             collection_spec = f"{collection_fqcn}:=={version}" if version else collection_fqcn
             cmd = [galaxy, "collection", "install", collection_spec, "-p", tmpdir, "--force", "--no-cache"]
 
+            env = os.environ.copy()
+            env.setdefault("ANSIBLE_LOCAL_TMP", tempfile.gettempdir())
+
             with self._install_gate:
                 try:
                     result = subprocess.run(
@@ -128,6 +132,7 @@ class CollectionManager:
                         capture_output=True,
                         text=True,
                         timeout=120,
+                        env=env,
                     )
                 except subprocess.TimeoutExpired as exc:
                     raise CollectionInstallError(
