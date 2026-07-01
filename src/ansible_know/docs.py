@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from itertools import zip_longest
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,13 @@ from typing import Any
 import httpx
 
 from ansible_know.cache import BoundedCache
-from ansible_know.config import CACHE_DIR, RTD_PROJECT_SLUGS, SEARCH_DOCS_LIMIT, get_doc_sources
+from ansible_know.config import (
+    CACHE_DIR,
+    RTD_PROJECT_SLUGS,
+    SEARCH_DOCS_LIMIT,
+    USER_AGENT,
+    get_doc_sources,
+)
 from ansible_know.errors import AnsibleKnowError
 from ansible_know.text_utils import clean_rtd_markdown
 from ansible_know.types import FetchDocResult, SearchDocsEntry
@@ -42,6 +49,48 @@ _manifest_cache: BoundedCache[str, list[dict[str, Any]]] = BoundedCache(
     path=CACHE_DIR / "doc-manifests.json",
 )
 
+PAGE_CACHE_TTL = 86400
+PAGE_CACHE_MAX = 100
+DOC_RATE_LIMIT_INTERVAL = 1.0
+MAX_RETRY_ATTEMPTS = 3
+RETRY_BACKOFF_BASE = 2.0
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+
+_page_cache: BoundedCache[str, dict[str, Any]] = BoundedCache(
+    max_size=PAGE_CACHE_MAX, ttl=PAGE_CACHE_TTL,
+    path=CACHE_DIR / "doc-pages.json",
+)
+
+_doc_throttle_lock = asyncio.Lock()
+_doc_last_request: float = 0.0
+
+
+async def _throttle_doc_request() -> None:
+    """Enforce minimum interval between docs.ansible.com requests."""
+    global _doc_last_request
+    async with _doc_throttle_lock:
+        now = time.monotonic()
+        elapsed = now - _doc_last_request
+        if _doc_last_request > 0 and elapsed < DOC_RATE_LIMIT_INTERVAL:
+            await asyncio.sleep(DOC_RATE_LIMIT_INTERVAL - elapsed)
+        _doc_last_request = time.monotonic()
+
+
+def _is_cf_challenge(resp: httpx.Response) -> bool:
+    """Detect Cloudflare managed challenge responses."""
+    return "challenge" in resp.headers.get("cf-mitigated", "").lower()
+
+
+def _parse_retry_after(resp: httpx.Response, attempt: int) -> float:
+    """Extract retry delay from Retry-After header or use exponential backoff."""
+    header = resp.headers.get("retry-after", "")
+    if header:
+        try:
+            delay = float(header)
+            return min(delay, 30.0)
+        except ValueError:
+            pass
+    return min(RETRY_BACKOFF_BASE ** attempt, 30.0)
 
 
 def _postprocess_entries(
@@ -339,8 +388,9 @@ async def search_docs(
 
 
 def clear_cache() -> None:
-    """Clear the manifest cache."""
+    """Clear the manifest and page caches."""
     _manifest_cache.clear()
+    _page_cache.clear()
 
 
 MAX_DOC_FETCH_SIZE = 2_000_000  # 2MB
@@ -352,6 +402,10 @@ async def fetch_doc_content(
 ) -> FetchDocResult:
     """Fetch a docs.ansible.com page as clean markdown.
 
+    Uses a disk-backed page cache (24h TTL), rate limiting (1 req/sec),
+    retry with backoff for transient errors, and Cloudflare challenge
+    detection.
+
     Args:
         url: Full docs.ansible.com URL (caller must validate first).
         max_tokens: If set, raise when page exceeds this token count.
@@ -361,44 +415,49 @@ async def fetch_doc_content(
         FetchDocResult on success.
 
     Raises:
-        httpx.HTTPError: On HTTP request failure.
-        AnsibleKnowError: On content-type mismatch, size/token limit, or redirect to unexpected domain.
+        httpx.HTTPError: On HTTP request failure after retries.
+        AnsibleKnowError: On CF challenge, content-type mismatch,
+            size/token limit, or redirect to unexpected domain.
     """
+    cached = _page_cache.get(url)
+    if cached is not None:
+        if max_tokens is not None and cached.get("tokens", 0) > max_tokens:
+            raise AnsibleKnowError(
+                f"Page has {cached['tokens']} tokens (max_tokens={max_tokens}). "
+                f"Fetch without max_tokens or increase the limit."
+            )
+        return cached  # type: ignore[return-value]
+
     client = http_client
     should_close = False
     if client is None:
-        client = httpx.AsyncClient(timeout=httpx.Timeout(30.0))
+        client = httpx.AsyncClient(
+            timeout=httpx.Timeout(30.0),
+            headers={"User-Agent": USER_AGENT},
+        )
         should_close = True
 
     try:
-        resp = await client.get(
-            url,
-            headers={"Accept": "text/markdown"},
-            follow_redirects=True,
-            timeout=30.0,
-        )
-        resp.raise_for_status()
-
-        if resp.url.host != "docs.ansible.com":
-            raise AnsibleKnowError(f"Redirect to unexpected domain: {resp.url.host}")
-
-        if len(resp.content) > MAX_DOC_FETCH_SIZE:
-            raise AnsibleKnowError(
-                f"Response too large: {len(resp.content)} bytes (max {MAX_DOC_FETCH_SIZE})"
-            )
-
-        resp_text = resp.text
-        resp_headers = resp.headers
-        resp_url = str(resp.url)
+        resp = await _fetch_with_retry(client, url)
     finally:
         if should_close:
             await client.aclose()
 
-    content_type = resp_headers.get("content-type", "")
-    if "text/markdown" not in content_type:
-        raise AnsibleKnowError(f"Expected text/markdown but got {content_type!r} for {url}")
+    if resp.url.host != "docs.ansible.com":
+        raise AnsibleKnowError(f"Redirect to unexpected domain: {resp.url.host}")
 
-    tokens_str = resp_headers.get("x-markdown-tokens", "0")
+    if len(resp.content) > MAX_DOC_FETCH_SIZE:
+        raise AnsibleKnowError(
+            f"Response too large: {len(resp.content)} bytes (max {MAX_DOC_FETCH_SIZE})"
+        )
+
+    content_type = resp.headers.get("content-type", "")
+    if "text/markdown" not in content_type:
+        raise AnsibleKnowError(
+            f"Expected text/markdown but got {content_type!r} for {url}"
+        )
+
+    tokens_str = resp.headers.get("x-markdown-tokens", "0")
     try:
         tokens = int(tokens_str)
     except ValueError:
@@ -410,12 +469,67 @@ async def fetch_doc_content(
             f"Fetch without max_tokens or increase the limit."
         )
 
-    content, title = clean_rtd_markdown(resp_text)
+    content, title = clean_rtd_markdown(resp.text)
     content = truncate_response(content)
 
-    return {
+    result: FetchDocResult = {
         "content": content,
         "title": title,
         "tokens": tokens,
-        "source_url": resp_url,
+        "source_url": str(resp.url),
     }
+    _page_cache.put(url, result)
+    return result
+
+
+async def _fetch_with_retry(
+    client: httpx.AsyncClient, url: str,
+) -> httpx.Response:
+    """Fetch a URL with rate limiting, retry, and CF challenge detection."""
+    last_exc: Exception | None = None
+
+    for attempt in range(MAX_RETRY_ATTEMPTS):
+        await _throttle_doc_request()
+
+        try:
+            resp = await client.get(
+                url,
+                headers={"Accept": "text/markdown", "User-Agent": USER_AGENT},
+                follow_redirects=True,
+                timeout=30.0,
+            )
+        except (httpx.TimeoutException, httpx.ConnectError) as exc:
+            last_exc = exc
+            if attempt < MAX_RETRY_ATTEMPTS - 1:
+                delay = min(RETRY_BACKOFF_BASE ** attempt, 30.0)
+                logger.debug(
+                    "fetch_doc attempt %d/%d failed (%s), retrying in %.1fs",
+                    attempt + 1, MAX_RETRY_ATTEMPTS, type(exc).__name__, delay,
+                )
+                await asyncio.sleep(delay)
+                continue
+            raise
+
+        if _is_cf_challenge(resp):
+            raise AnsibleKnowError(
+                "docs.ansible.com returned a Cloudflare managed challenge "
+                "(bot detection). This is transient — try again later. "
+                "Use search_docs for local results that don't require network access."
+            )
+
+        if resp.status_code in RETRYABLE_STATUS_CODES:
+            if attempt < MAX_RETRY_ATTEMPTS - 1:
+                delay = _parse_retry_after(resp, attempt)
+                logger.debug(
+                    "fetch_doc attempt %d/%d got HTTP %d, retrying in %.1fs",
+                    attempt + 1, MAX_RETRY_ATTEMPTS, resp.status_code, delay,
+                )
+                await asyncio.sleep(delay)
+                continue
+            resp.raise_for_status()
+
+        resp.raise_for_status()
+        return resp
+
+    assert last_exc is not None
+    raise last_exc

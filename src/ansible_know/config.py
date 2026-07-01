@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from importlib.metadata import version as pkg_version
 from pathlib import Path
 
 _PKG_DIR = Path(__file__).resolve().parent
@@ -23,6 +24,15 @@ def _get_cache_dir() -> Path:
 
 
 CACHE_DIR = _get_cache_dir()
+
+try:
+    USER_AGENT = (
+        f"ansible-know-mcp/{pkg_version('ansible-know-mcp')}"
+        " (+https://github.com/leogallego/ansible-know-mcp)"
+    )
+except Exception:
+    USER_AGENT = "ansible-know-mcp/unknown (+https://github.com/leogallego/ansible-know-mcp)"
+
 
 def __getattr__(name: str):
     if name == "SKILLS_DIR":

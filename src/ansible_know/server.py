@@ -120,10 +120,13 @@ async def app_lifespan(server):
         auth_type = "token" if gs.token else ("basic" if gs.username else "none")
         logger.info("Galaxy server: %s (%s, auth=%s)", gs.name, gs.url, auth_type)
 
+    from ansible_know.config import USER_AGENT
+
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(10.0, read=120.0),
         verify=True,
         follow_redirects=True,
+        headers={"User-Agent": USER_AGENT},
     ) as client:
         shared.version_info = await _check_pypi_version(client)
         check_task = asyncio.create_task(
@@ -1306,7 +1309,7 @@ async def clear_cache(
 ) -> ClearCacheResult | ErrorResponse:
     """Clear server caches.
 
-    Clears Galaxy version/docs-blob caches, doc manifest caches, or both.
+    Clears Galaxy version/docs-blob caches, doc manifest/page caches, or both.
     Useful when cached data becomes stale during long-running sessions.
     """
     logger.info("clear_cache scope=%r", scope)
@@ -1323,7 +1326,7 @@ async def clear_cache(
     if scope in (None, "docs"):
         from ansible_know import docs
         docs.clear_cache()
-        cleared.append("doc_manifests")
+        cleared.extend(["doc_manifests", "doc_pages"])
 
     return {"cleared": cleared}
 
