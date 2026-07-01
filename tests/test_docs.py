@@ -771,6 +771,49 @@ class TestFetchDocRetry:
         assert mock_client.get.call_count == 2
 
 
+    @pytest.mark.asyncio
+    async def test_retries_on_connect_error_then_succeeds(self):
+        mock_resp = _make_ok_response()
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(
+            side_effect=[httpx.ConnectError("connection refused"), mock_resp],
+        )
+
+        with patch("ansible_know.docs.asyncio.sleep", new_callable=AsyncMock):
+            result = await fetch_doc_content(
+                "https://docs.ansible.com/projects/ansible/latest/guide.html",
+                http_client=mock_client,
+            )
+
+        assert result["title"] == "Test Page"
+        assert mock_client.get.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_exhausts_retries_on_server_error_and_raises(self):
+        error_resp = MagicMock()
+        error_resp.status_code = 503
+        error_resp.headers = {}
+        error_resp.raise_for_status = MagicMock(
+            side_effect=httpx.HTTPStatusError(
+                "503 Service Unavailable",
+                request=MagicMock(),
+                response=error_resp,
+            )
+        )
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=error_resp)
+
+        with patch("ansible_know.docs.asyncio.sleep", new_callable=AsyncMock):
+            with pytest.raises(httpx.HTTPStatusError):
+                await fetch_doc_content(
+                    "https://docs.ansible.com/projects/ansible/latest/guide.html",
+                    http_client=mock_client,
+                )
+
+        assert mock_client.get.call_count == docs_mod.MAX_RETRY_ATTEMPTS
+
+
 class TestFetchDocCfChallenge:
     @pytest.mark.asyncio
     async def test_cf_challenge_raises_immediately(self):

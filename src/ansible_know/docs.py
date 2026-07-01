@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import time
 from itertools import zip_longest
 from pathlib import Path
@@ -56,7 +57,7 @@ MAX_RETRY_ATTEMPTS = 3
 RETRY_BACKOFF_BASE = 2.0
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
-_page_cache: BoundedCache[str, dict[str, Any]] = BoundedCache(
+_page_cache: BoundedCache[str, FetchDocResult] = BoundedCache(
     max_size=PAGE_CACHE_MAX, ttl=PAGE_CACHE_TTL,
     path=CACHE_DIR / "doc-pages.json",
 )
@@ -87,7 +88,8 @@ def _parse_retry_after(resp: httpx.Response, attempt: int) -> float:
     if header:
         try:
             delay = float(header)
-            return min(delay, 30.0)
+            if math.isfinite(delay):
+                return max(0.0, min(delay, 30.0))
         except ValueError:
             pass
     return min(RETRY_BACKOFF_BASE ** attempt, 30.0)
@@ -426,7 +428,7 @@ async def fetch_doc_content(
                 f"Page has {cached['tokens']} tokens (max_tokens={max_tokens}). "
                 f"Fetch without max_tokens or increase the limit."
             )
-        return cached  # type: ignore[return-value]
+        return cached
 
     client = http_client
     should_close = False
@@ -498,7 +500,7 @@ async def _fetch_with_retry(
                 follow_redirects=True,
                 timeout=30.0,
             )
-        except (httpx.TimeoutException, httpx.ConnectError) as exc:
+        except httpx.TransportError as exc:
             last_exc = exc
             if attempt < MAX_RETRY_ATTEMPTS - 1:
                 delay = min(RETRY_BACKOFF_BASE ** attempt, 30.0)

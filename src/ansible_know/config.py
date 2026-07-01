@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as pkg_version
 from pathlib import Path
 
@@ -30,7 +31,7 @@ try:
         f"ansible-know-mcp/{pkg_version('ansible-know-mcp')}"
         " (+https://github.com/leogallego/ansible-know-mcp)"
     )
-except Exception:
+except PackageNotFoundError:
     USER_AGENT = "ansible-know-mcp/unknown (+https://github.com/leogallego/ansible-know-mcp)"
 
 
