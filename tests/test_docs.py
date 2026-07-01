@@ -604,9 +604,11 @@ def _reset_fetch_doc_state():
     """Reset page cache and throttle between tests."""
     docs_mod._page_cache.clear()
     docs_mod._doc_last_request = 0.0
+    docs_mod._doc_throttle_lock = None
     yield
     docs_mod._page_cache.clear()
     docs_mod._doc_last_request = 0.0
+    docs_mod._doc_throttle_lock = None
 
 
 class TestFetchDocUserAgent:
@@ -692,6 +694,47 @@ class TestFetchDocRateLimit:
             if c.args and c.args[0] > 0
         ]
         assert len(sleep_calls) >= 1
+
+
+class TestParseRetryAfter:
+    """Direct tests for _parse_retry_after edge cases."""
+
+    def _make_resp(self, retry_after: str) -> MagicMock:
+        resp = MagicMock()
+        resp.headers = {"retry-after": retry_after}
+        return resp
+
+    @pytest.mark.parametrize("header,expected", [
+        ("2", 2.0),
+        ("0", 0.0),
+        ("30", 30.0),
+        ("60", 30.0),       # capped at 30
+        ("-5", 0.0),        # negative → clamped to 0
+        ("nan", None),      # NaN → fallback
+        ("inf", None),      # inf → fallback
+        ("-inf", None),     # -inf → fallback
+        ("not-a-number", None),  # non-numeric → fallback
+        ("Wed, 01 Jul 2026 00:00:00 GMT", None),  # HTTP-date → fallback
+    ])
+    def test_edge_cases(self, header, expected):
+        from ansible_know.docs import _parse_retry_after
+
+        resp = self._make_resp(header)
+        result = _parse_retry_after(resp, attempt=1)
+        if expected is not None:
+            assert result == expected
+        else:
+            # Should fall back to exponential backoff: 2.0 ** 1 = 2.0
+            assert result == 2.0
+
+    def test_empty_header_uses_backoff(self):
+        from ansible_know.docs import _parse_retry_after
+
+        resp = MagicMock()
+        resp.headers = {}
+        assert _parse_retry_after(resp, attempt=0) == 1.0   # 2**0
+        assert _parse_retry_after(resp, attempt=1) == 2.0   # 2**1
+        assert _parse_retry_after(resp, attempt=2) == 4.0   # 2**2
 
 
 class TestFetchDocRetry:
