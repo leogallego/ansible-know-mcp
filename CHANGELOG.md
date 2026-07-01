@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-06-30
+
+### Added
+
+- Harden `fetch_doc` against Cloudflare challenges and transient failures — User-Agent header, disk-backed page cache (100 entries, 24h TTL), rate limiting (1 req/sec), retry with exponential backoff and `Retry-After` parsing, Cloudflare managed challenge detection (#170)
+- Negative cache for Galaxy API discovery failures — avoids repeated slow probes against servers that don't support the v3 API (#166)
+- Galaxy API root discovery for Automation Hub and Private Automation Hub support (#155)
+
+### Fixed
+
+- Defense-in-depth hardening from v0.6.0 review — narrowed exception handling, improved input validation (#164)
+- Correct template context variable naming for Ansible terminology (#165)
+- Replace `peter-evans/create-pull-request` with `gh` CLI in docs manifest workflow (#153)
+
+### Changed
+
+- Deduplicate `DocProvenance` and skill listing logic into shared helpers (#162)
+- Update docs manifests (#161)
+- Bump `actions/setup-python` 5.6.0 → 6.3.0, `actions/upload-pages-artifact` 4.0.0 → 5.0.0, `astral-sh/setup-uv` 7.6.0 → 8.2.0
+
 ## [0.6.1] - 2026-06-27
 
 ### Breaking Changes
@@ -183,6 +203,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OWASP security hardening: FQCN input validation, path traversal protection, error sanitization, output size limits, audit logging
 - 77 tests covering tools, parser, skills, docs, collection manifests, and security
 
+[0.7.0]: https://github.com/leogallego/ansible-know-mcp/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/leogallego/ansible-know-mcp/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/leogallego/ansible-know-mcp/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/leogallego/ansible-know-mcp/compare/v0.5.1...v0.5.2
