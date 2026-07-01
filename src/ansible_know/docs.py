@@ -62,13 +62,15 @@ _page_cache: BoundedCache[str, FetchDocResult] = BoundedCache(
     path=CACHE_DIR / "doc-pages.json",
 )
 
-_doc_throttle_lock = asyncio.Lock()
+_doc_throttle_lock: asyncio.Lock | None = None
 _doc_last_request: float = 0.0
 
 
 async def _throttle_doc_request() -> None:
     """Enforce minimum interval between docs.ansible.com requests."""
-    global _doc_last_request
+    global _doc_last_request, _doc_throttle_lock
+    if _doc_throttle_lock is None:
+        _doc_throttle_lock = asyncio.Lock()
     async with _doc_throttle_lock:
         now = time.monotonic()
         elapsed = now - _doc_last_request
@@ -433,10 +435,7 @@ async def fetch_doc_content(
     client = http_client
     should_close = False
     if client is None:
-        client = httpx.AsyncClient(
-            timeout=httpx.Timeout(30.0),
-            headers={"User-Agent": USER_AGENT},
-        )
+        client = httpx.AsyncClient(timeout=httpx.Timeout(30.0))
         should_close = True
 
     try:
@@ -488,8 +487,6 @@ async def _fetch_with_retry(
     client: httpx.AsyncClient, url: str,
 ) -> httpx.Response:
     """Fetch a URL with rate limiting, retry, and CF challenge detection."""
-    last_exc: Exception | None = None
-
     for attempt in range(MAX_RETRY_ATTEMPTS):
         await _throttle_doc_request()
 
@@ -501,7 +498,6 @@ async def _fetch_with_retry(
                 timeout=30.0,
             )
         except httpx.TransportError as exc:
-            last_exc = exc
             if attempt < MAX_RETRY_ATTEMPTS - 1:
                 delay = min(RETRY_BACKOFF_BASE ** attempt, 30.0)
                 logger.debug(
@@ -533,5 +529,4 @@ async def _fetch_with_retry(
         resp.raise_for_status()
         return resp
 
-    assert last_exc is not None
-    raise last_exc
+    raise RuntimeError("unreachable")
