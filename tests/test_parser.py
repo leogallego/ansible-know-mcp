@@ -154,7 +154,7 @@ class TestRunAnsibleDocEnvInjection:
                     assert env["ANSIBLE_COLLECTIONS_PATH"].startswith("/tmp/ansible_know_abc123")
                     assert "/existing/path" in env["ANSIBLE_COLLECTIONS_PATH"]
 
-    def test_no_injection_when_no_collections(self):
+    def test_no_collections_path_still_sets_ansible_local_tmp(self):
         with patch("ansible_know.parser._find_ansible_doc", return_value="/usr/bin/ansible-doc"):
             with patch("subprocess.run", return_value=MagicMock(
                 returncode=0, stdout='{}', stderr='',
@@ -162,7 +162,10 @@ class TestRunAnsibleDocEnvInjection:
                 from ansible_know.parser import _run_ansible_doc
                 _run_ansible_doc("--list", "--json")
                 call_kwargs = mock_run.call_args[1]
-                assert call_kwargs.get("env") is None
+                env = call_kwargs.get("env")
+                assert env is not None
+                assert "ANSIBLE_LOCAL_TMP" in env
+                assert "ANSIBLE_COLLECTIONS_PATH" not in env
 
 
 class TestCollectionNotFoundDetection:
