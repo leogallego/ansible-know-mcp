@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+import ansible_know.docs as docs_mod
 from ansible_know.docs import _search_rtd_api, clear_cache, fetch_doc_content, search_docs
 from ansible_know.text_utils import clean_rtd_markdown
 
@@ -571,3 +572,366 @@ class TestSearchDocsFallback:
             results = await search_docs("ansible", topic="nonexistent_topic_xyz")
         mock_rtd.assert_not_called()
         assert results == []
+
+
+# --- Helpers for fetch_doc hardening tests ---
+
+def _make_ok_response(
+    url_str: str = "https://docs.ansible.com/projects/ansible/latest/guide.html",
+    text: str = "# Test Page\n\nContent here.",
+    tokens: int = 100,
+    extra_headers: dict | None = None,
+) -> MagicMock:
+    """Build a mock httpx.Response that passes all fetch_doc validations."""
+    resp = MagicMock()
+    resp.status_code = 200
+    headers = {
+        "content-type": "text/markdown; charset=utf-8",
+        "x-markdown-tokens": str(tokens),
+    }
+    if extra_headers:
+        headers.update(extra_headers)
+    resp.headers = headers
+    resp.text = text
+    resp.content = text.encode()
+    resp.raise_for_status = MagicMock()
+    resp.url = _mock_url(url_str)
+    return resp
+
+
+@pytest.fixture(autouse=True)
+def _reset_fetch_doc_state():
+    """Reset page cache and throttle between tests."""
+    docs_mod._page_cache.clear()
+    docs_mod._doc_last_request = 0.0
+    docs_mod._doc_throttle_lock = None
+    yield
+    docs_mod._page_cache.clear()
+    docs_mod._doc_last_request = 0.0
+    docs_mod._doc_throttle_lock = None
+
+
+class TestFetchDocUserAgent:
+    @pytest.mark.asyncio
+    async def test_user_agent_sent_on_request(self):
+        from ansible_know.config import USER_AGENT
+
+        mock_resp = _make_ok_response()
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        await fetch_doc_content(
+            "https://docs.ansible.com/projects/ansible/latest/guide.html",
+            http_client=mock_client,
+        )
+
+        call_kwargs = mock_client.get.call_args
+        sent_headers = call_kwargs.kwargs.get("headers", {})
+        assert sent_headers.get("User-Agent") == USER_AGENT
+
+
+class TestFetchDocPageCache:
+    @pytest.mark.asyncio
+    async def test_cache_hit_skips_http(self):
+        mock_resp = _make_ok_response()
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        url = "https://docs.ansible.com/projects/ansible/latest/guide.html"
+        result1 = await fetch_doc_content(url, http_client=mock_client)
+        result2 = await fetch_doc_content(url, http_client=mock_client)
+
+        assert result1 == result2
+        assert mock_client.get.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_max_tokens_checked_on_cached_result(self):
+        from ansible_know.errors import AnsibleKnowError
+
+        mock_resp = _make_ok_response(tokens=5000)
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        url = "https://docs.ansible.com/projects/ansible/latest/big.html"
+        await fetch_doc_content(url, http_client=mock_client)
+
+        with pytest.raises(AnsibleKnowError, match="5000"):
+            await fetch_doc_content(url, max_tokens=1000, http_client=mock_client)
+
+        assert mock_client.get.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_clear_cache_invalidates(self):
+        mock_resp = _make_ok_response()
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        url = "https://docs.ansible.com/projects/ansible/latest/guide.html"
+        await fetch_doc_content(url, http_client=mock_client)
+        clear_cache()
+        await fetch_doc_content(url, http_client=mock_client)
+
+        assert mock_client.get.call_count == 2
+
+
+class TestFetchDocRateLimit:
+    @pytest.mark.asyncio
+    async def test_throttle_delays_rapid_requests(self):
+        mock_resp = _make_ok_response()
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        url1 = "https://docs.ansible.com/projects/ansible/latest/page1.html"
+        url2 = "https://docs.ansible.com/projects/ansible/latest/page2.html"
+
+        with patch("ansible_know.docs.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            await fetch_doc_content(url1, http_client=mock_client)
+            docs_mod._doc_last_request = docs_mod.time.monotonic()
+            await fetch_doc_content(url2, http_client=mock_client)
+
+        sleep_calls = [
+            c for c in mock_sleep.call_args_list
+            if c.args and c.args[0] > 0
+        ]
+        assert len(sleep_calls) >= 1
+
+
+class TestParseRetryAfter:
+    """Direct tests for _parse_retry_after edge cases."""
+
+    def _make_resp(self, retry_after: str) -> MagicMock:
+        resp = MagicMock()
+        resp.headers = {"retry-after": retry_after}
+        return resp
+
+    @pytest.mark.parametrize("header,expected", [
+        ("2", 2.0),
+        ("0", 0.0),
+        ("30", 30.0),
+        ("60", 30.0),       # capped at 30
+        ("-5", 0.0),        # negative → clamped to 0
+        ("nan", None),      # NaN → fallback
+        ("inf", None),      # inf → fallback
+        ("-inf", None),     # -inf → fallback
+        ("not-a-number", None),  # non-numeric → fallback
+        ("Wed, 01 Jul 2026 00:00:00 GMT", None),  # HTTP-date → fallback
+    ])
+    def test_edge_cases(self, header, expected):
+        from ansible_know.docs import _parse_retry_after
+
+        resp = self._make_resp(header)
+        result = _parse_retry_after(resp, attempt=1)
+        if expected is not None:
+            assert result == expected
+        else:
+            # Should fall back to exponential backoff: 2.0 ** 1 = 2.0
+            assert result == 2.0
+
+    def test_empty_header_uses_backoff(self):
+        from ansible_know.docs import _parse_retry_after
+
+        resp = MagicMock()
+        resp.headers = {}
+        assert _parse_retry_after(resp, attempt=0) == 1.0   # 2**0
+        assert _parse_retry_after(resp, attempt=1) == 2.0   # 2**1
+        assert _parse_retry_after(resp, attempt=2) == 4.0   # 2**2
+
+
+class TestFetchDocRetry:
+    @pytest.mark.asyncio
+    async def test_retries_on_timeout_then_succeeds(self):
+        mock_resp = _make_ok_response()
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(
+            side_effect=[httpx.TimeoutException("timeout"), mock_resp],
+        )
+
+        with patch("ansible_know.docs.asyncio.sleep", new_callable=AsyncMock):
+            result = await fetch_doc_content(
+                "https://docs.ansible.com/projects/ansible/latest/guide.html",
+                http_client=mock_client,
+            )
+
+        assert result["title"] == "Test Page"
+        assert mock_client.get.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_retries_on_429_with_retry_after(self):
+        retry_resp = MagicMock()
+        retry_resp.status_code = 429
+        retry_resp.headers = {"retry-after": "2"}
+        retry_resp.raise_for_status = MagicMock()
+
+        ok_resp = _make_ok_response()
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=[retry_resp, ok_resp])
+
+        with patch("ansible_know.docs.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            result = await fetch_doc_content(
+                "https://docs.ansible.com/projects/ansible/latest/guide.html",
+                http_client=mock_client,
+            )
+
+        assert result["title"] == "Test Page"
+        assert mock_client.get.call_count == 2
+        retry_sleep = [c for c in mock_sleep.call_args_list if c.args and c.args[0] >= 2.0]
+        assert len(retry_sleep) >= 1
+
+    @pytest.mark.asyncio
+    async def test_exhausts_retries_and_raises(self):
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(
+            side_effect=httpx.TimeoutException("timeout"),
+        )
+
+        with patch("ansible_know.docs.asyncio.sleep", new_callable=AsyncMock):
+            with pytest.raises(httpx.TimeoutException):
+                await fetch_doc_content(
+                    "https://docs.ansible.com/projects/ansible/latest/guide.html",
+                    http_client=mock_client,
+                )
+
+        assert mock_client.get.call_count == docs_mod.MAX_RETRY_ATTEMPTS
+
+    @pytest.mark.asyncio
+    async def test_retries_on_server_error(self):
+        error_resp = MagicMock()
+        error_resp.status_code = 503
+        error_resp.headers = {}
+        error_resp.raise_for_status = MagicMock()
+
+        ok_resp = _make_ok_response()
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=[error_resp, ok_resp])
+
+        with patch("ansible_know.docs.asyncio.sleep", new_callable=AsyncMock):
+            result = await fetch_doc_content(
+                "https://docs.ansible.com/projects/ansible/latest/guide.html",
+                http_client=mock_client,
+            )
+
+        assert result["title"] == "Test Page"
+        assert mock_client.get.call_count == 2
+
+
+    @pytest.mark.asyncio
+    async def test_retries_on_connect_error_then_succeeds(self):
+        mock_resp = _make_ok_response()
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(
+            side_effect=[httpx.ConnectError("connection refused"), mock_resp],
+        )
+
+        with patch("ansible_know.docs.asyncio.sleep", new_callable=AsyncMock):
+            result = await fetch_doc_content(
+                "https://docs.ansible.com/projects/ansible/latest/guide.html",
+                http_client=mock_client,
+            )
+
+        assert result["title"] == "Test Page"
+        assert mock_client.get.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_exhausts_retries_on_server_error_and_raises(self):
+        error_resp = MagicMock()
+        error_resp.status_code = 503
+        error_resp.headers = {}
+        error_resp.raise_for_status = MagicMock(
+            side_effect=httpx.HTTPStatusError(
+                "503 Service Unavailable",
+                request=MagicMock(),
+                response=error_resp,
+            )
+        )
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=error_resp)
+
+        with patch("ansible_know.docs.asyncio.sleep", new_callable=AsyncMock):
+            with pytest.raises(httpx.HTTPStatusError):
+                await fetch_doc_content(
+                    "https://docs.ansible.com/projects/ansible/latest/guide.html",
+                    http_client=mock_client,
+                )
+
+        assert mock_client.get.call_count == docs_mod.MAX_RETRY_ATTEMPTS
+
+
+class TestFetchDocCfChallenge:
+    @pytest.mark.asyncio
+    async def test_cf_challenge_raises_immediately(self):
+        from ansible_know.errors import AnsibleKnowError
+
+        cf_resp = MagicMock()
+        cf_resp.status_code = 429
+        cf_resp.headers = {"cf-mitigated": "challenge", "content-type": "text/html"}
+        cf_resp.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=cf_resp)
+
+        with pytest.raises(AnsibleKnowError, match="Cloudflare managed challenge"):
+            await fetch_doc_content(
+                "https://docs.ansible.com/projects/ansible/latest/guide.html",
+                http_client=mock_client,
+            )
+
+    @pytest.mark.asyncio
+    async def test_cf_challenge_no_retry(self):
+        from ansible_know.errors import AnsibleKnowError
+
+        cf_resp = MagicMock()
+        cf_resp.status_code = 429
+        cf_resp.headers = {"cf-mitigated": "challenge", "content-type": "text/html"}
+        cf_resp.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=cf_resp)
+
+        with pytest.raises(AnsibleKnowError):
+            await fetch_doc_content(
+                "https://docs.ansible.com/projects/ansible/latest/guide.html",
+                http_client=mock_client,
+            )
+
+        assert mock_client.get.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_regular_429_retries_but_cf_429_does_not(self):
+        from ansible_know.errors import AnsibleKnowError
+
+        cf_resp = MagicMock()
+        cf_resp.status_code = 429
+        cf_resp.headers = {"cf-mitigated": "challenge", "content-type": "text/html"}
+        cf_resp.raise_for_status = MagicMock()
+
+        regular_429 = MagicMock()
+        regular_429.status_code = 429
+        regular_429.headers = {"retry-after": "1"}
+        regular_429.raise_for_status = MagicMock()
+
+        ok_resp = _make_ok_response()
+
+        mock_client_cf = AsyncMock()
+        mock_client_cf.get = AsyncMock(return_value=cf_resp)
+
+        mock_client_regular = AsyncMock()
+        mock_client_regular.get = AsyncMock(side_effect=[regular_429, ok_resp])
+
+        with pytest.raises(AnsibleKnowError, match="Cloudflare"):
+            await fetch_doc_content(
+                "https://docs.ansible.com/projects/ansible/latest/guide.html",
+                http_client=mock_client_cf,
+            )
+        assert mock_client_cf.get.call_count == 1
+
+        docs_mod._page_cache.clear()
+        docs_mod._doc_last_request = 0.0
+
+        with patch("ansible_know.docs.asyncio.sleep", new_callable=AsyncMock):
+            result = await fetch_doc_content(
+                "https://docs.ansible.com/projects/ansible/latest/guide.html",
+                http_client=mock_client_regular,
+            )
+        assert result["title"] == "Test Page"
+        assert mock_client_regular.get.call_count == 2

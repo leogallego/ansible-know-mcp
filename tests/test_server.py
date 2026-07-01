@@ -1768,7 +1768,7 @@ class TestClearCache:
              patch("ansible_know.docs.clear_cache") as mock_docs:
             result = await clear_cache()
 
-        assert result == {"cleared": ["galaxy_versions", "galaxy_blobs", "doc_manifests"]}
+        assert result == {"cleared": ["galaxy_versions", "galaxy_blobs", "doc_manifests", "doc_pages"]}
         mock_galaxy.assert_called_once()
         mock_docs.assert_called_once()
 
@@ -1792,7 +1792,7 @@ class TestClearCache:
              patch("ansible_know.docs.clear_cache") as mock_docs:
             result = await clear_cache(scope="docs")
 
-        assert result == {"cleared": ["doc_manifests"]}
+        assert result == {"cleared": ["doc_manifests", "doc_pages"]}
         mock_galaxy.assert_not_called()
         mock_docs.assert_called_once()
 
