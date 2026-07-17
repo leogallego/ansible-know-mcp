@@ -1,10 +1,10 @@
 {
   "version": "2.0",
-  "generated": "2026-07-17T02:52:40.834893+00:00",
+  "generated": "2026-07-17T04:40:39.487728+00:00",
   "base_url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6",
   "files": [
     {
-      "path": "whats_new-aap_26",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/whats_new-aap_26",
       "topic": "whats_new",
       "title": "Release notes",
       "audience": "admin",
@@ -15,7 +15,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "whats_new-async_updates",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/whats_new-async_updates",
       "topic": "whats_new",
       "title": "Patch releases",
       "audience": "admin",
@@ -26,7 +26,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "whats_new-ansible_core_2_19",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/whats_new-ansible_core_2_19",
       "topic": "tech_preview",
       "title": "ansible_core 2_19",
       "audience": "admin",
@@ -37,7 +37,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "whats_new-assembly_workspaces_intro",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/whats_new-assembly_workspaces_intro",
       "topic": "tech_preview",
       "title": "Access preconfigured development tools with Ansible development workspaces",
       "audience": "admin",
@@ -48,7 +48,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "get_started-assembly_gs_auto_dev",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/get_started-assembly_gs_auto_dev",
       "topic": "get_started",
       "title": "Get started as an administrator",
       "audience": "admin",
@@ -59,7 +59,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "get_started-assembly_gs_auto_dev",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/get_started-assembly_gs_auto_dev",
       "topic": "get_started",
       "title": "Get started as a developer",
       "audience": "admin",
@@ -70,7 +70,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "get_started-assembly_intro_to_playbooks_1",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/get_started-assembly_intro_to_playbooks_1",
       "topic": "get_started",
       "title": "Get started automating with playbooks",
       "audience": "admin",
@@ -81,7 +81,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "plan-assembly_overview_tested_deployment_models",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/plan-assembly_overview_tested_deployment_models",
       "topic": "plan",
       "title": "Choose a deployment method and topology",
       "audience": "admin",
@@ -92,7 +92,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "plan-proc_attaching_subscriptions",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/plan-proc_attaching_subscriptions",
       "topic": "plan",
       "title": "Attach your Ansible Automation Platform subscription",
       "audience": "admin",
@@ -103,7 +103,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "install-proc_installing_containerized_aap",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/install-proc_installing_containerized_aap",
       "topic": "install",
       "title": "Install containerized Ansible Automation Platform",
       "audience": "admin",
@@ -114,7 +114,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "install-assembly_operator_install_operator",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/install-assembly_operator_install_operator",
       "topic": "install",
       "title": "Install on OpenShift Container Platform",
       "audience": "admin",
@@ -125,7 +125,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "install-assembly_platform_install_overview",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/install-assembly_platform_install_overview",
       "topic": "install",
       "title": "Installing RPM-based Ansible Automation Platform",
       "audience": "admin",
@@ -136,7 +136,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "install-assembly_appendix_inventory_file_vars",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/install-assembly_appendix_inventory_file_vars",
       "topic": "install",
       "title": "Inventory file variables",
       "audience": "admin",
@@ -147,7 +147,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "install-assembly_aap_activate_1",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/install-assembly_aap_activate_1",
       "topic": "install",
       "title": "Activate your Ansible Automation Platform subscription",
       "audience": "admin",
@@ -158,7 +158,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "install-assembly_devtools_install",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/install-assembly_devtools_install",
       "topic": "install",
       "title": "Install Ansible development tools",
       "audience": "admin",
@@ -169,7 +169,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "install-assembly_rhdh_intro",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/install-assembly_rhdh_intro",
       "topic": "install",
       "title": "Install Ansible plug-ins for Red Hat Developer Hub",
       "audience": "admin",
@@ -180,7 +180,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "install-assembly_self_service_about",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/install-assembly_self_service_about",
       "topic": "install",
       "title": "Install Ansible automation portal (OpenShift Container Platform only)",
       "audience": "admin",
@@ -191,7 +191,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "install-assembly_view_key_metrics",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/install-assembly_view_key_metrics",
       "topic": "install",
       "title": "Install automation dashboard to calculate savings (RHEL only)",
       "audience": "admin",
@@ -202,7 +202,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "install-proc_installing_builder",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/install-proc_installing_builder",
       "topic": "install",
       "title": "Install Ansible Builder to create or edit execution environments",
       "audience": "admin",
@@ -213,7 +213,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "Extend-assembly_deploying_ansible_mcp_server",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/Extend-assembly_deploying_ansible_mcp_server",
       "topic": "extend",
       "title": "Deploy an MCP server",
       "audience": "admin",
@@ -224,7 +224,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "Extend-assembly_deploying_alia",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/Extend-assembly_deploying_alia",
       "topic": "extend",
       "title": "Deploy the automation intelligent assistant",
       "audience": "admin",
@@ -235,7 +235,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "extend-enable_ai_in_the_ansible_vs_code_extension_with_the_mcp_server",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/extend-enable_ai_in_the_ansible_vs_code_extension_with_the_mcp_server",
       "topic": "extend",
       "title": "Enable AI in the Ansible VS Code extension",
       "audience": "admin",
@@ -246,7 +246,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "upgrade-con_aap_upgrade_overview",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/upgrade-con_aap_upgrade_overview",
       "topic": "upgrade",
       "title": "Plan your upgrade to 2.6",
       "audience": "admin",
@@ -257,7 +257,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "upgrade-ref_upgrade_scenarios_container",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/upgrade-ref_upgrade_scenarios_container",
       "topic": "upgrade",
       "title": "Containerized upgrade on RHEL",
       "audience": "admin",
@@ -268,7 +268,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "upgrade-ref_upgrade_scenarios_openshift",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/upgrade-ref_upgrade_scenarios_openshift",
       "topic": "upgrade",
       "title": "Upgrade on OpenShift Container Platform",
       "audience": "admin",
@@ -279,7 +279,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "upgrade-ansible_automation_platform_upgrade",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/upgrade-ansible_automation_platform_upgrade",
       "topic": "upgrade",
       "title": "RPM-based upgrade on RHEL",
       "audience": "admin",
@@ -290,7 +290,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "upgrade-upgrade_additional_services_for_ansible_automation_platform",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/upgrade-upgrade_additional_services_for_ansible_automation_platform",
       "topic": "upgrade",
       "title": "Upgrade additional services",
       "audience": "admin",
@@ -301,7 +301,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "upgrade-assembly_upgrade_support_matrix",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/upgrade-assembly_upgrade_support_matrix",
       "topic": "upgrade",
       "title": "Supported upgrade and migration scenarios",
       "audience": "admin",
@@ -312,7 +312,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "upgrade-assembly_upgrade_data_movement",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/upgrade-assembly_upgrade_data_movement",
       "topic": "upgrade",
       "title": "Identity and access management during upgrade",
       "audience": "admin",
@@ -323,7 +323,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "upgrade-proc_upgrading_automation_dashboard",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/upgrade-proc_upgrading_automation_dashboard",
       "topic": "upgrade",
       "title": "Upgrade automation dashboard",
       "audience": "admin",
@@ -334,7 +334,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "upgrade-assembly_rhdh_upgrade_ocp_helm",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/upgrade-assembly_rhdh_upgrade_ocp_helm",
       "topic": "upgrade",
       "title": "Upgrade Ansible plug-ins for Red Hat Developer Hub",
       "audience": "admin",
@@ -345,7 +345,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "upgrade-assembly_self_service_upgrading",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/upgrade-assembly_self_service_upgrading",
       "topic": "upgrade",
       "title": "Upgrade Ansible automation portal",
       "audience": "admin",
@@ -356,7 +356,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "migrate-con_introduction_and_objectives",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/migrate-con_introduction_and_objectives",
       "topic": "migrate",
       "title": "Migrate from existing deployment topologies",
       "audience": "admin",
@@ -367,7 +367,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "secure-assembly_gw_configure_authentication",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/secure-assembly_gw_configure_authentication",
       "topic": "security",
       "title": "Configure central authentication for Ansible Automation Platform",
       "audience": "admin",
@@ -378,7 +378,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "administer-assembly_planning_mesh",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/administer-assembly_planning_mesh",
       "topic": "admin",
       "title": "Scale your infrastructure",
       "audience": "admin",
@@ -389,7 +389,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "administer-assembly_aap_backup",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/administer-assembly_aap_backup",
       "topic": "admin",
       "title": "Backup and restore Ansible Automation Platform",
       "audience": "admin",
@@ -400,7 +400,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "develop-assembly_intro_to_playbooks",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/develop-assembly_intro_to_playbooks",
       "topic": "develop",
       "title": "Get started automating with playbooks",
       "audience": "admin",
@@ -411,7 +411,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "configure-assembly_gw_settings",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/configure-assembly_gw_settings",
       "topic": "configure",
       "title": "Configure Ansible Automation Platform",
       "audience": "admin",
@@ -422,7 +422,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "configure-distribute_workloads_with_clustering",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/configure-distribute_workloads_with_clustering",
       "topic": "configure",
       "title": "Distribute workloads with clustering",
       "audience": "admin",
@@ -433,7 +433,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "configure-configure_a_proxy_to_communicate_with_external_systems",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/configure-configure_a_proxy_to_communicate_with_external_systems",
       "topic": "configure",
       "title": "Configure a proxy to communicate with external systems",
       "audience": "admin",
@@ -444,7 +444,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "integrate-assembly_terraform_introduction",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/integrate-assembly_terraform_introduction",
       "topic": "integrate",
       "title": "Integrate with HashiCorp Terraform",
       "audience": "admin",
@@ -455,7 +455,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "integrate-assembly_vault_introduction",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/integrate-assembly_vault_introduction",
       "topic": "integrate",
       "title": "Integrate with HashiCorp Vault",
       "audience": "admin",
@@ -466,7 +466,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "integrate-assembly_ug_controller_setting_up_insights",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/integrate-assembly_ug_controller_setting_up_insights",
       "topic": "integrate",
       "title": "Integrate with Red Hat Lightspeed",
       "audience": "admin",
@@ -477,7 +477,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "integrate-assembly_controller_pac",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/integrate-assembly_controller_pac",
       "topic": "integrate",
       "title": "Implement policy enforcement",
       "audience": "admin",
@@ -488,7 +488,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "observe-ensure_system_health_and_efficiency_through_monitoring",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/observe-ensure_system_health_and_efficiency_through_monitoring",
       "topic": "observability",
       "title": "Metrics for monitoring automation controller application",
       "audience": "admin",
@@ -499,7 +499,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "observe-assembly_metrics_utility",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/observe-assembly_metrics_utility",
       "topic": "observability",
       "title": "Generate reports with the metrics utility",
       "audience": "admin",
@@ -510,7 +510,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "observe-assembly_controller_logging_aggregation",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/observe-assembly_controller_logging_aggregation",
       "topic": "observability",
       "title": "Configure logging",
       "audience": "admin",
@@ -521,7 +521,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "optimize-optimize_platform_performance",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/optimize-optimize_platform_performance",
       "topic": "performance",
       "title": "Optimize platform performance",
       "audience": "admin",
@@ -532,7 +532,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "optimize-assembly_controller_improving_performance",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/optimize-assembly_controller_improving_performance",
       "topic": "performance",
       "title": "Tune automation controller to improve performance",
       "audience": "admin",
@@ -543,7 +543,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "optimize-con_user_data_tracking",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/optimize-con_user_data_tracking",
       "topic": "performance",
       "title": "Get insights on automation across your environment with Automation Analytics",
       "audience": "admin",
@@ -554,7 +554,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "troubleshoot-proc_settings_troubleshooting",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/troubleshoot-proc_settings_troubleshooting",
       "topic": "troubleshoot",
       "title": "Troubleshoot Ansible Automation Platform",
       "audience": "admin",
@@ -565,7 +565,7 @@
       "aap_version": "2.6"
     },
     {
-      "path": "reference-ansible_automation_platform_custom_resources",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/reference-ansible_automation_platform_custom_resources",
       "topic": "reference",
       "title": "Ansible Automation Platform Operator API reference",
       "audience": "admin",

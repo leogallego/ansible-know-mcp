@@ -96,11 +96,10 @@ def _build_manifest_entries(landing: dict, version: str) -> list[dict]:
             if not url or "/documentation/" not in url:
                 continue
 
-            path_parts = url.rstrip("/").rsplit("/", 1)
-            slug = path_parts[-1].strip() if len(path_parts) > 1 else ""
-
+            # Store the full canonical URL from the landing page.
+            # The Red Hat MCP server rejects shortened slug-only URLs.
             entries.append({
-                "path": slug,
+                "url": url.strip(),
                 "topic": topic,
                 "title": name,
                 "audience": "admin",

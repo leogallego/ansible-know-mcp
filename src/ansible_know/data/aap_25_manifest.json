@@ -1,10 +1,10 @@
 {
   "version": "2.0",
-  "generated": "2026-07-17T02:52:40.583396+00:00",
+  "generated": "2026-07-17T04:40:39.049557+00:00",
   "base_url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5",
   "files": [
     {
-      "path": "release_notes",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/release_notes",
       "topic": "release_notes",
       "title": "Release notes",
       "audience": "admin",
@@ -15,7 +15,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "ansible_automation_platform_migration",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/ansible_automation_platform_migration",
       "topic": "tech_preview",
       "title": "Ansible Automation Platform migration",
       "audience": "admin",
@@ -26,7 +26,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "managing_device_fleets_with_the_red_hat_edge_manager",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/managing_device_fleets_with_the_red_hat_edge_manager",
       "topic": "tech_preview",
       "title": "Managing device fleets with the Red Hat Edge Manager",
       "audience": "admin",
@@ -37,7 +37,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "deploying-chatbot-operator",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/installing_on_openshift_container_platform/deploying-chatbot-operator",
       "topic": "tech_preview",
       "title": "Ansible Lightspeed intelligent assistant",
       "audience": "admin",
@@ -48,7 +48,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "using_ansible_development_workspaces_for_automation_content_development",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/using_ansible_development_workspaces_for_automation_content_development",
       "topic": "tech_preview",
       "title": "Using Ansible development workspaces for automation content development",
       "audience": "admin",
@@ -59,7 +59,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "tested_deployment_models",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/tested_deployment_models",
       "topic": "installing",
       "title": "Tested deployment models",
       "audience": "admin",
@@ -70,7 +70,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "planning_your_installation",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/planning_your_installation",
       "topic": "installing",
       "title": "Planning your installation",
       "audience": "admin",
@@ -81,7 +81,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "rpm_installation",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/rpm_installation",
       "topic": "installing",
       "title": "RPM installation",
       "audience": "admin",
@@ -92,7 +92,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "containerized_installation",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/containerized_installation",
       "topic": "installing",
       "title": "Containerized installation",
       "audience": "admin",
@@ -103,7 +103,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "installing_on_openshift_container_platform",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/installing_on_openshift_container_platform",
       "topic": "installing",
       "title": "Installing on OpenShift Container Platform",
       "audience": "admin",
@@ -114,7 +114,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "rpm_upgrade_and_migration",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/rpm_upgrade_and_migration",
       "topic": "upgrading",
       "title": "RPM upgrade and migration",
       "audience": "admin",
@@ -125,7 +125,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "index#operator-upgrade_licensing-gw",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html-single/installing_on_openshift_container_platform/index#operator-upgrade_licensing-gw",
       "topic": "upgrading",
       "title": "Upgrading on OpenShift Container Platform",
       "audience": "admin",
@@ -136,7 +136,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "maintaining-containerized-aap#updating-containerized-ansible-automation-platform",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/containerized_installation/maintaining-containerized-aap#updating-containerized-ansible-automation-platform",
       "topic": "upgrading",
       "title": "Updating from 2.5 to 2.5.x in a Containerized Environment",
       "audience": "admin",
@@ -147,7 +147,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "getting_started_with_ansible_automation_platform",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/getting_started_with_ansible_automation_platform",
       "topic": "about",
       "title": "Getting started with Ansible Automation Platform",
       "audience": "admin",
@@ -158,7 +158,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "access_management_and_authentication",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/access_management_and_authentication",
       "topic": "about",
       "title": "Access management and authentication",
       "audience": "admin",
@@ -169,7 +169,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "getting_started_with_playbooks",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/getting_started_with_playbooks",
       "topic": "about",
       "title": "Getting started with playbooks",
       "audience": "admin",
@@ -180,7 +180,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "getting_started_with_hashicorp_and_ansible_automation_platform",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/getting_started_with_hashicorp_and_ansible_automation_platform",
       "topic": "about",
       "title": "Getting started with HashiCorp and Ansible Automation Platform",
       "audience": "admin",
@@ -191,7 +191,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "operating_ansible_automation_platform",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/operating_ansible_automation_platform",
       "topic": "configure_and_operate",
       "title": "Operating Ansible Automation Platform",
       "audience": "admin",
@@ -202,7 +202,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "automation_mesh_for_managed_cloud_or_operator_environments",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/automation_mesh_for_managed_cloud_or_operator_environments",
       "topic": "configure_and_operate",
       "title": "Automation mesh for managed cloud or operator environments",
       "audience": "admin",
@@ -213,7 +213,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "automation_mesh_for_vm_environments",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/automation_mesh_for_vm_environments",
       "topic": "configure_and_operate",
       "title": "Automation mesh for VM environments",
       "audience": "admin",
@@ -224,7 +224,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "performance_considerations_for_operator_environments",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/performance_considerations_for_operator_environments",
       "topic": "configure_and_operate",
       "title": "Performance considerations for operator environments",
       "audience": "admin",
@@ -235,7 +235,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "troubleshooting_ansible_automation_platform",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/troubleshooting_ansible_automation_platform",
       "topic": "configure_and_operate",
       "title": "Troubleshooting Ansible Automation Platform",
       "audience": "admin",
@@ -246,7 +246,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "performance_tuning_for_ansible_automation_platform",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/performance_tuning_for_ansible_automation_platform",
       "topic": "configure_and_operate",
       "title": "Performance tuning for Ansible Automation Platform",
       "audience": "admin",
@@ -257,7 +257,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "backup_and_recovery_for_operator_environments",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/backup_and_recovery_for_operator_environments",
       "topic": "configure_and_operate",
       "title": "Backup and recovery for operator environments",
       "audience": "admin",
@@ -268,7 +268,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "hardening_and_compliance",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/hardening_and_compliance",
       "topic": "configure_and_operate",
       "title": "Hardening and compliance",
       "audience": "admin",
@@ -279,7 +279,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "configuring_automation_execution",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/configuring_automation_execution",
       "topic": "automation_execution",
       "title": "Configuring automation execution",
       "audience": "admin",
@@ -290,7 +290,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "using_automation_execution",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/using_automation_execution",
       "topic": "automation_execution",
       "title": "Using automation execution",
       "audience": "admin",
@@ -301,7 +301,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "automation_execution_api_overview",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/automation_execution_api_overview",
       "topic": "automation_execution",
       "title": "Automation execution API overview",
       "audience": "admin",
@@ -312,7 +312,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "using_automation_decisions",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/using_automation_decisions",
       "topic": "automation_decisions",
       "title": "Using automation decisions",
       "audience": "admin",
@@ -323,7 +323,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "managing_automation_content",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/managing_automation_content",
       "topic": "automation_content",
       "title": "Managing automation content",
       "audience": "admin",
@@ -334,7 +334,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "implementing_security_automation",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/implementing_security_automation",
       "topic": "security_automation",
       "title": "Implementing security automation",
       "audience": "admin",
@@ -345,7 +345,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "using_automation_analytics",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/using_automation_analytics",
       "topic": "automation_analytics",
       "title": "Using automation analytics",
       "audience": "admin",
@@ -356,7 +356,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "using_automation_dashboard",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/using_automation_dashboard",
       "topic": "automation_analytics",
       "title": "Using Automation Dashboard",
       "audience": "admin",
@@ -367,7 +367,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "creating_and_using_execution_environments",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/creating_and_using_execution_environments",
       "topic": "developer_resources",
       "title": "Creating and using execution environments",
       "audience": "admin",
@@ -378,7 +378,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "developing_automation_content",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/developing_automation_content",
       "topic": "developer_resources",
       "title": "Developing automation content",
       "audience": "admin",
@@ -389,7 +389,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "using_content_navigator",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/using_content_navigator",
       "topic": "developer_resources",
       "title": "Using content navigator",
       "audience": "admin",
@@ -400,7 +400,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "installing_ansible_plug-ins_for_red_hat_developer_hub",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/installing_ansible_plug-ins_for_red_hat_developer_hub",
       "topic": "developer_resources",
       "title": "Installing Ansible plug-ins for Red Hat Developer Hub",
       "audience": "admin",
@@ -411,7 +411,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "using_ansible_plug-ins_for_red_hat_developer_hub",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/using_ansible_plug-ins_for_red_hat_developer_hub",
       "topic": "developer_resources",
       "title": "Using Ansible plug-ins for Red Hat Developer Hub",
       "audience": "admin",
@@ -422,8 +422,8 @@
       "aap_version": "2.5"
     },
     {
-      "path": "2.x_latest",
-      "topic": "cloud",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_lightspeed_with_ibm_watsonx_code_assistant/2.x_latest",
+      "topic": "cloud_services",
       "title": "Red Hat Ansible Lightspeed with IBM watsonx Code Assistant",
       "audience": "admin",
       "core": false,
@@ -433,8 +433,8 @@
       "aap_version": "2.5"
     },
     {
-      "path": "2.x",
-      "topic": "cloud",
+      "url": "https://docs.redhat.com/en/documentation/ansible_on_clouds/2.x",
+      "topic": "cloud_services",
       "title": "Ansible on clouds",
       "audience": "admin",
       "core": false,
@@ -444,7 +444,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "installing_self-service_automation_portal",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/installing_self-service_automation_portal",
       "topic": "self-service_automation_portal",
       "title": "Installing self-service automation portal",
       "audience": "admin",
@@ -455,7 +455,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "configuring_self-service_automation_portal",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/configuring_self-service_automation_portal",
       "topic": "self-service_automation_portal",
       "title": "Configuring self-service automation portal",
       "audience": "admin",
@@ -466,7 +466,7 @@
       "aap_version": "2.5"
     },
     {
-      "path": "using_self-service_automation_portal",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/using_self-service_automation_portal",
       "topic": "self-service_automation_portal",
       "title": "Using self-service automation portal",
       "audience": "admin",
