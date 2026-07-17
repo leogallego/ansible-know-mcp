@@ -7,6 +7,7 @@ lazily and re-created on 404 (server-side session expiry).
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
@@ -16,16 +17,22 @@ import httpx
 
 from ansible_know.config import REDHAT_DOCS_MCP_URL, USER_AGENT
 from ansible_know.errors import AnsibleKnowError
+from ansible_know.text_utils import clean_redhat_markdown
+from ansible_know.types import FetchDocResult
+from ansible_know.validation import sanitize_error, truncate_response
 
 logger = logging.getLogger("ansible_know")
 
 __all__ = [
     "RedHatDocsClient",
+    "clear_redhat_client",
+    "fetch_redhat_doc",
     "parse_mcp_sse",
 ]
 
 _MCP_PROTOCOL_VERSION = "2024-11-05"
 _MAX_RETRIES = 3
+_MAX_RESPONSE_SIZE = 2_000_000  # 2MB
 
 
 def parse_mcp_sse(body: str) -> dict[str, Any] | None:
@@ -137,12 +144,18 @@ class RedHatDocsClient:
             raise _McpSessionExpired()
         resp.raise_for_status()
 
+        if len(resp.content) > _MAX_RESPONSE_SIZE:
+            raise AnsibleKnowError(
+                f"MCP response too large: {len(resp.content)} bytes "
+                f"(max {_MAX_RESPONSE_SIZE})"
+            )
+
         parsed = parse_mcp_sse(resp.text)
         if parsed is None:
             raise AnsibleKnowError(f"No valid JSON-RPC response from MCP server for {name}")
         if "error" in parsed:
             msg = parsed["error"].get("message", str(parsed["error"]))
-            raise AnsibleKnowError(f"MCP tool {name} error: {msg}")
+            raise AnsibleKnowError(f"MCP tool {name} error: {sanitize_error(msg)}")
 
         content_blocks = parsed.get("result", {}).get("content", [])
         raw = "".join(
@@ -174,6 +187,76 @@ def _mcp_headers(session_id: str | None) -> dict[str, str]:
     if session_id:
         headers["mcp-session-id"] = session_id
     return headers
+
+
+_redhat_client: RedHatDocsClient | None = None
+_redhat_client_lock: asyncio.Lock | None = None
+
+
+async def _get_redhat_client() -> RedHatDocsClient:
+    """Lazily create and return the shared RedHatDocsClient."""
+    global _redhat_client, _redhat_client_lock
+    if _redhat_client is not None:
+        return _redhat_client
+    if _redhat_client_lock is None:
+        _redhat_client_lock = asyncio.Lock()
+    async with _redhat_client_lock:
+        if _redhat_client is None:
+            _redhat_client = RedHatDocsClient()
+    return _redhat_client
+
+
+def clear_redhat_client() -> None:
+    """Reset the shared RedHatDocsClient singleton."""
+    global _redhat_client, _redhat_client_lock
+    _redhat_client = None
+    _redhat_client_lock = None
+
+
+def _estimate_tokens(text: str) -> int:
+    """Rough token estimate (~4 chars/token) for Red Hat docs.
+
+    The Red Hat MCP server provides no x-markdown-tokens header, unlike
+    docs.ansible.com's Cloudflare endpoint. This approximation is
+    intentionally rough — used only for max_tokens gating.
+    """
+    return len(text) // 4
+
+
+async def fetch_redhat_doc(
+    url: str,
+    max_tokens: int | None = None,
+) -> FetchDocResult:
+    """Fetch a docs.redhat.com page via the Red Hat Documentation MCP server."""
+    client = await _get_redhat_client()
+    raw = await client.fetch(url)
+
+    if raw.lstrip().startswith("{"):
+        try:
+            json.loads(raw)
+            raise AnsibleKnowError(
+                "URL appears to be a landing page, not a guide page. "
+                "Use search_docs to find specific guide URLs."
+            )
+        except json.JSONDecodeError:
+            pass
+
+    content, title = clean_redhat_markdown(raw)
+    content = truncate_response(content)
+    tokens = _estimate_tokens(content)
+
+    if max_tokens is not None and tokens > max_tokens:
+        raise AnsibleKnowError(
+            f"Page has ~{tokens} tokens (max_tokens={max_tokens}). "
+            f"Fetch without max_tokens or increase the limit."
+        )
+
+    return {
+        "content": content,
+        "title": title,
+        "tokens": tokens,
+        "source_url": url,
+    }
 
 
 def _unwrap_mcp_result(raw: str) -> str:

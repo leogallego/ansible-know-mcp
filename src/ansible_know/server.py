@@ -570,11 +570,17 @@ async def fetch_doc(
         return {"error": str(exc)}
 
     try:
-        from ansible_know import docs
+        from urllib.parse import urlparse as _urlparse
+        parsed = _urlparse(url)
 
-        return await docs.fetch_doc_content(
-            url=url, max_tokens=max_tokens, http_client=_get_http_client(ctx),
-        )
+        if parsed.netloc == "docs.redhat.com":
+            from ansible_know.redhat_docs import fetch_redhat_doc
+            return await fetch_redhat_doc(url=url, max_tokens=max_tokens)
+        else:
+            from ansible_know import docs
+            return await docs.fetch_doc_content(
+                url=url, max_tokens=max_tokens, http_client=_get_http_client(ctx),
+            )
     except (AnsibleKnowError, ValidationError) as exc:
         return {"error": str(exc)}
     except Exception as exc:

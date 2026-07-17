@@ -27,7 +27,7 @@ from ansible_know.config import (
     get_doc_sources,
 )
 from ansible_know.errors import AnsibleKnowError
-from ansible_know.text_utils import clean_redhat_markdown, clean_rtd_markdown
+from ansible_know.text_utils import clean_rtd_markdown
 from ansible_know.types import FetchDocResult, SearchDocsEntry
 from ansible_know.validation import truncate_response
 
@@ -393,77 +393,13 @@ async def search_docs(
 
 def clear_cache() -> None:
     """Clear the manifest, page, and Red Hat MCP client caches."""
-    global _redhat_client, _redhat_client_lock
+    from ansible_know.redhat_docs import clear_redhat_client
     _manifest_cache.clear()
     _page_cache.clear()
-    _redhat_client = None
-    _redhat_client_lock = None
+    clear_redhat_client()
 
 
 MAX_DOC_FETCH_SIZE = 2_000_000  # 2MB
-
-_redhat_client: Any = None
-_redhat_client_lock: asyncio.Lock | None = None
-
-
-async def _get_redhat_client():
-    """Lazily create and return the shared RedHatDocsClient."""
-    global _redhat_client, _redhat_client_lock
-    if _redhat_client is not None:
-        return _redhat_client
-    if _redhat_client_lock is None:
-        _redhat_client_lock = asyncio.Lock()
-    async with _redhat_client_lock:
-        if _redhat_client is None:
-            from ansible_know.redhat_docs import RedHatDocsClient
-            _redhat_client = RedHatDocsClient()
-    return _redhat_client
-
-
-def _estimate_tokens(text: str) -> int:
-    """Rough token estimate (~4 chars/token) for Red Hat docs.
-
-    The Red Hat MCP server provides no x-markdown-tokens header, unlike
-    docs.ansible.com's Cloudflare endpoint. This approximation is
-    intentionally rough — used only for max_tokens gating.
-    """
-    return len(text) // 4
-
-
-async def _fetch_redhat_doc(
-    url: str,
-    max_tokens: int | None = None,
-) -> FetchDocResult:
-    """Fetch a docs.redhat.com page via the Red Hat Documentation MCP server."""
-    client = await _get_redhat_client()
-    raw = await client.fetch(url)
-
-    if raw.lstrip().startswith("{"):
-        try:
-            json.loads(raw)
-            raise AnsibleKnowError(
-                "URL appears to be a landing page, not a guide page. "
-                "Use search_docs to find specific guide URLs."
-            )
-        except json.JSONDecodeError:
-            pass
-
-    content, title = clean_redhat_markdown(raw)
-    content = truncate_response(content)
-    tokens = _estimate_tokens(content)
-
-    if max_tokens is not None and tokens > max_tokens:
-        raise AnsibleKnowError(
-            f"Page has ~{tokens} tokens (max_tokens={max_tokens}). "
-            f"Fetch without max_tokens or increase the limit."
-        )
-
-    return {
-        "content": content,
-        "title": title,
-        "tokens": tokens,
-        "source_url": url,
-    }
 
 
 async def fetch_doc_content(
@@ -471,15 +407,14 @@ async def fetch_doc_content(
     max_tokens: int | None = None,
     http_client: httpx.AsyncClient | None = None,
 ) -> FetchDocResult:
-    """Fetch a documentation page as clean markdown.
+    """Fetch a docs.ansible.com page as clean markdown.
 
-    Supports both docs.ansible.com (via Cloudflare markdown content
-    negotiation) and docs.redhat.com (via Red Hat Documentation MCP server).
+    Uses Cloudflare's ``Accept: text/markdown`` content negotiation.
 
     Args:
-        url: Full documentation URL (caller must validate first).
+        url: Full docs.ansible.com URL (caller must validate first).
         max_tokens: If set, raise when page exceeds this token count.
-        http_client: Optional shared httpx client (docs.ansible.com only).
+        http_client: Optional shared httpx client.
 
     Returns:
         FetchDocResult on success.
@@ -487,7 +422,7 @@ async def fetch_doc_content(
     Raises:
         httpx.HTTPError: On HTTP request failure after retries.
         AnsibleKnowError: On CF challenge, content-type mismatch,
-            size/token limit, redirect to unexpected domain, or MCP error.
+            size/token limit, or redirect to unexpected domain.
     """
     cached = _page_cache.get(url)
     if cached is not None:
@@ -497,16 +432,6 @@ async def fetch_doc_content(
                 f"Fetch without max_tokens or increase the limit."
             )
         return cached
-
-    from urllib.parse import urlparse as _urlparse
-    parsed = _urlparse(url)
-
-    if parsed.netloc == "docs.redhat.com":
-        result = await _fetch_redhat_doc(url, max_tokens)
-        _page_cache.put(url, result)
-        return result
-
-    # --- docs.ansible.com path (existing logic) ---
     client = http_client
     should_close = False
     if client is None:
