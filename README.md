@@ -112,19 +112,7 @@ Add to `.vscode/mcp.json` in your workspace:
     "ansible-know": {
       "command": "uvx",
       "args": ["ansible-know-mcp"],
-      "type": "stdio"
-    }
-  }
-}
-```
-
-VS Code Copilot (`.vscode/mcp.json`):
-```json
-{
-  "servers": {
-    "ansible-know": {
-      "command": "uvx",
-      "args": ["ansible-know-mcp"],
+      "type": "stdio",
       "env": {
         "ANSIBLE_KNOW_PROJECT_DIR": "${workspaceFolder}"
       }

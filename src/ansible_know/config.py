@@ -35,7 +35,7 @@ except PackageNotFoundError:
     USER_AGENT = "ansible-know-mcp/unknown (+https://github.com/leogallego/ansible-know-mcp)"
 
 
-def get_project_root() -> Path | None:
+def get_project_root() -> Path:
     """Return the project root from env vars, or cwd as fallback."""
     for var in ("ANSIBLE_KNOW_PROJECT_DIR", "CLAUDE_PROJECT_DIR"):
         value = os.environ.get(var, "").strip()
