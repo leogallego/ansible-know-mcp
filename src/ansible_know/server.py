@@ -110,9 +110,13 @@ async def app_lifespan(server):
     global _shared_state, _session_manager
     from ansible_know.collections import CollectionManager
     from ansible_know.galaxy_config import load_galaxy_servers
+    from ansible_know.redhat_docs import RedHatDocsClient
 
     galaxy_servers = await run_in_executor(load_galaxy_servers)
-    shared = SharedState(galaxy_servers=galaxy_servers)
+    shared = SharedState(
+        galaxy_servers=galaxy_servers,
+        redhat_client=RedHatDocsClient(),
+    )
     sessions = SessionManager(shared, collection_factory=CollectionManager)
     _shared_state = shared
     _session_manager = sessions
@@ -146,6 +150,8 @@ async def app_lifespan(server):
                 await check_task
             with contextlib.suppress(asyncio.CancelledError):
                 await cleanup_task
+            if shared.redhat_client is not None:
+                await shared.redhat_client.close()
 
 mcp = FastMCP(
     name="Ansible Know",
@@ -548,7 +554,7 @@ async def search_docs(
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def fetch_doc(
-    url: Annotated[str, "A docs.ansible.com URL to fetch as markdown"],
+    url: Annotated[str, "A docs.ansible.com or docs.redhat.com URL to fetch as markdown"],
     max_tokens: Annotated[
         int | None,
         "If set, return error instead of content when the page exceeds this token count. "
@@ -556,12 +562,12 @@ async def fetch_doc(
     ] = None,
     ctx: Context | None = None,
 ) -> FetchDocResult | ErrorResponse:
-    """Fetch a page from docs.ansible.com as clean Markdown.
+    """Fetch a page from docs.ansible.com or docs.redhat.com as clean Markdown.
 
     Returns documentation content ready for LLM consumption.
     Use search_docs to discover relevant page URLs, or pass a known
-    docs.ansible.com URL directly. The url parameter must start with
-    https://docs.ansible.com/.
+    docs.ansible.com or docs.redhat.com URL directly. The url parameter must
+    start with https://docs.ansible.com/ or https://docs.redhat.com/.
     """
     logger.info("fetch_doc url=%r max_tokens=%r", url, max_tokens)
     try:
@@ -570,11 +576,20 @@ async def fetch_doc(
         return {"error": str(exc)}
 
     try:
-        from ansible_know import docs
+        from urllib.parse import urlparse as _urlparse
+        parsed = _urlparse(url)
 
-        return await docs.fetch_doc_content(
-            url=url, max_tokens=max_tokens, http_client=_get_http_client(ctx),
-        )
+        if parsed.netloc == "docs.redhat.com":
+            from ansible_know.redhat_docs import fetch_redhat_doc
+            return await fetch_redhat_doc(
+                url=url, max_tokens=max_tokens,
+                client=_get_shared(ctx).redhat_client,
+            )
+        else:
+            from ansible_know import docs
+            return await docs.fetch_doc_content(
+                url=url, max_tokens=max_tokens, http_client=_get_http_client(ctx),
+            )
     except (AnsibleKnowError, ValidationError) as exc:
         return {"error": str(exc)}
     except Exception as exc:

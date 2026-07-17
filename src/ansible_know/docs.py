@@ -104,7 +104,7 @@ def _postprocess_entries(
     for entry in entries:
         entry["_source"] = source_name
         if "url" not in entry and "path" in entry and base_url:
-            entry["url"] = f"{base_url.rstrip('/')}/{entry['path'].lstrip('/')}"
+            entry["url"] = f"{base_url.rstrip('/')}/{entry['path'].strip().lstrip('/')}"
         topics = entry.get("topics", entry.get("topic", []))
         if isinstance(topics, str):
             topics = [topics]
@@ -392,12 +392,19 @@ async def search_docs(
 
 
 def clear_cache() -> None:
-    """Clear the manifest and page caches."""
+    """Clear the manifest and page data caches.
+
+    Only clears actual data caches (stale-able content with TTL).
+    Does NOT touch transport clients like RedHatDocsClient — that is
+    not a cache, it manages its own MCP session lifecycle (auto-reconnect
+    on 404 expiry) and lives in SharedState.
+    """
     _manifest_cache.clear()
     _page_cache.clear()
 
 
 MAX_DOC_FETCH_SIZE = 2_000_000  # 2MB
+
 
 async def fetch_doc_content(
     url: str,
@@ -406,9 +413,7 @@ async def fetch_doc_content(
 ) -> FetchDocResult:
     """Fetch a docs.ansible.com page as clean markdown.
 
-    Uses a disk-backed page cache (24h TTL), rate limiting (1 req/sec),
-    retry with backoff for transient errors, and Cloudflare challenge
-    detection.
+    Uses Cloudflare's ``Accept: text/markdown`` content negotiation.
 
     Args:
         url: Full docs.ansible.com URL (caller must validate first).
@@ -431,7 +436,6 @@ async def fetch_doc_content(
                 f"Fetch without max_tokens or increase the limit."
             )
         return cached
-
     client = http_client
     should_close = False
     if client is None:

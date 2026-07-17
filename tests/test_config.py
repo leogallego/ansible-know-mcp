@@ -129,3 +129,19 @@ class TestPluginTypeConstants:
 
         combined = set(JINJA2_PLUGIN_TYPES) | set(PLAYBOOK_PLUGIN_TYPES) | set(INFRA_PLUGIN_TYPES)
         assert combined == set(PLUGIN_TYPES)
+
+
+class TestAapDocSources:
+    def test_aap_sources_registered(self):
+        assert "aap-2.5" in DEFAULT_DOC_SOURCES
+        assert "aap-2.6" in DEFAULT_DOC_SOURCES
+        assert "aap-2.7" in DEFAULT_DOC_SOURCES
+
+    def test_aap_sources_have_file_key(self):
+        for ver in ("aap-2.5", "aap-2.6", "aap-2.7"):
+            assert "file" in DEFAULT_DOC_SOURCES[ver]
+            assert "description" in DEFAULT_DOC_SOURCES[ver]
+
+    def test_aap_file_paths_end_with_json(self):
+        for ver in ("aap-2.5", "aap-2.6", "aap-2.7"):
+            assert DEFAULT_DOC_SOURCES[ver]["file"].endswith(".json")

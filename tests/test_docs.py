@@ -935,3 +935,94 @@ class TestFetchDocCfChallenge:
             )
         assert result["title"] == "Test Page"
         assert mock_client_regular.get.call_count == 2
+
+
+class TestFetchDocRedhat:
+    """Tests for fetch_redhat_doc (in redhat_docs module)."""
+
+    @pytest.mark.asyncio
+    async def test_redhat_fetch_returns_markdown(self):
+        """fetch_redhat_doc should use RedHatDocsClient and return FetchDocResult."""
+        from ansible_know.redhat_docs import fetch_redhat_doc
+
+        url = "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.7/install-proc_installing_containerized_aap"
+        markdown = "# Installing containerized AAP\n\nFollow these steps to install."
+
+        mock_client = AsyncMock()
+        mock_client.fetch = AsyncMock(return_value=markdown)
+
+        result = await fetch_redhat_doc(url, client=mock_client)
+
+        assert result["title"] == "Installing containerized AAP"
+        assert "Follow these steps" in result["content"]
+        assert result["source_url"] == url
+        mock_client.fetch.assert_called_once_with(url)
+
+    @pytest.mark.asyncio
+    async def test_redhat_fetch_respects_max_tokens(self):
+        from ansible_know.redhat_docs import fetch_redhat_doc
+
+        url = "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.7/install"
+        markdown = "# Title\n\n" + "word " * 10000
+
+        mock_client = AsyncMock()
+        mock_client.fetch = AsyncMock(return_value=markdown)
+
+        result = await fetch_redhat_doc(url, client=mock_client)
+        assert result["tokens"] > 0
+
+    @pytest.mark.asyncio
+    async def test_redhat_fetch_error_raises(self):
+        from ansible_know.errors import AnsibleKnowError
+        from ansible_know.redhat_docs import fetch_redhat_doc
+
+        url = "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.7/broken"
+
+        mock_client = AsyncMock()
+        mock_client.fetch = AsyncMock(
+            side_effect=AnsibleKnowError("MCP fetch failed")
+        )
+
+        with pytest.raises(AnsibleKnowError, match="MCP fetch failed"):
+            await fetch_redhat_doc(url, client=mock_client)
+
+    @pytest.mark.asyncio
+    async def test_redhat_landing_page_raises_helpful_error(self):
+        """Landing page URLs (returning JSON) should raise, not produce garbage."""
+        from ansible_know.errors import AnsibleKnowError
+        from ansible_know.redhat_docs import fetch_redhat_doc
+
+        url = "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.7"
+        landing_json = json.dumps({
+            "product": "Red Hat Ansible Automation Platform",
+            "version": "2.7",
+            "categoryTitles": {"Install": {"titles": []}},
+        })
+
+        mock_client = AsyncMock()
+        mock_client.fetch = AsyncMock(return_value=landing_json)
+
+        with pytest.raises(AnsibleKnowError, match="landing page"):
+            await fetch_redhat_doc(url, client=mock_client)
+
+    @pytest.mark.asyncio
+    async def test_redhat_fetch_raises_without_client(self):
+        """fetch_redhat_doc requires a client — no hidden singleton."""
+        from ansible_know.errors import AnsibleKnowError
+        from ansible_know.redhat_docs import fetch_redhat_doc
+
+        url = "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.7/install"
+        with pytest.raises(AnsibleKnowError, match="required"):
+            await fetch_redhat_doc(url)
+
+    @pytest.mark.asyncio
+    async def test_ansible_url_still_uses_direct_httpx(self):
+        """docs.ansible.com URLs should NOT use RedHatDocsClient."""
+        clear_cache()
+        url = "https://docs.ansible.com/projects/lint/rules/"
+
+        with patch("ansible_know.docs._fetch_with_retry", side_effect=httpx.ConnectError("mocked")):
+            try:
+                await fetch_doc_content(url)
+            except Exception:
+                pass

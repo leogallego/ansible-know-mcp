@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 
     from ansible_know.collections import CollectionManager
     from ansible_know.galaxy_config import GalaxyServerConfig
+    from ansible_know.redhat_docs import RedHatDocsClient
     from ansible_know.types import VersionInfo
 
 __all__ = [
@@ -93,6 +94,10 @@ class SharedState:
     galaxy_servers: list[GalaxyServerConfig] = field(default_factory=list)
     version_info: VersionInfo | None = None
     enrichment_semaphore: asyncio.Semaphore = field(default_factory=lambda: asyncio.Semaphore(5))
+    # Transport client, NOT a data cache.  Manages its own MCP session
+    # lifecycle (auto-reconnect on 404 expiry).  Created at lifespan
+    # startup, closed at shutdown — not touched by clear_cache.
+    redhat_client: RedHatDocsClient | None = None
 
 
 class SessionManager:

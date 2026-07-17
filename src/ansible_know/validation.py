@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 from ansible_know.errors import ValidationError
 
 __all__ = [
+    "ALLOWED_DOC_HOSTS",
     "extract_collection_fqcn",
     "extract_namespace",
     "split_collection_fqcn",
@@ -177,6 +178,9 @@ def validate_plugin_type(plugin_type: str) -> None:
         )
 
 
+ALLOWED_DOC_HOSTS = frozenset({"docs.ansible.com", "docs.redhat.com"})
+
+
 def validate_doc_url(url: str) -> None:
     if not url or len(url) > MAX_URL_LENGTH:
         raise ValidationError(
@@ -186,11 +190,11 @@ def validate_doc_url(url: str) -> None:
         parsed = urlparse(url)
     except ValueError as exc:
         raise ValidationError(f"Invalid URL format: {exc}") from exc
-    if parsed.scheme != "https" or parsed.netloc != "docs.ansible.com":
+    if parsed.scheme != "https" or parsed.netloc not in ALLOWED_DOC_HOSTS:
         raise ValidationError(
-            "URL must start with https://docs.ansible.com/"
+            "URL must start with https://docs.ansible.com/ or https://docs.redhat.com/"
         )
     if not parsed.path or parsed.path == "/":
         raise ValidationError(
-            "URL must include a document path after https://docs.ansible.com/"
+            "URL must include a document path after the domain."
         )

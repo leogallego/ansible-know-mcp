@@ -105,6 +105,7 @@ Classify each changed file into its architecture layer:
 | `src/ansible_know/galaxy.py` | **External Access** |
 | `src/ansible_know/collections.py` | **External Access** |
 | `src/ansible_know/readme_parser.py` | **External Access** |
+| `src/ansible_know/redhat_docs.py` | **External Access** |
 | `src/ansible_know/cache.py` | **Foundation** |
 | `src/ansible_know/config.py` | **Foundation** |
 | `src/ansible_know/galaxy_config.py` | **Foundation** |
@@ -300,12 +301,12 @@ For each finding, report:
 | Severity | Criteria | Action |
 |----------|----------|--------|
 | Error | Thread safety bug, layer skip introducing new coupling, security vulnerability, bare `except:`, `None` equality comparison, ADR contradiction without update | Block merge |
-| Warning | Missing types at boundary, private function access across modules, missing validation, missing `__all__`, new untyped state, overlap with upstream-marked tools | Fix or file issue before merge |
+| Warning | Missing types at boundary, private function access across modules, missing validation, missing `__all__`, new untyped state, overlap with upstream-marked tools, stale architecture docs (layer map missing new modules, service-contracts out of date, inaccurate PR description) | Fix or file issue before merge |
 | Info | Loose typing (`dict[str, Any]` where TypedDict exists), minor naming inconsistencies, missing type annotations on internal functions | Note in review, fix opportunistically |
 
 ---
 
-## Last reviewed: 2026-06-27
+## Last reviewed: 2026-07-17
 
 ## Revision History
 
@@ -313,3 +314,4 @@ For each finding, report:
 |------|--------|
 | 2026-06-19 | Initial skill — layer map, 8 review checklists, parallel dispatch model |
 | 2026-06-27 | Updated layer map (added resolution.py, text_utils.py, manifest_builder.py, cli.py). Updated known violations to current state (most fixed). Added Step 9: ADR and strategy compliance (ADRs 0006-0008). Updated state management checklist for SharedState/ServerState/SessionManager/CollectionManager. Made frontmatter agentskills.io spec-compliant. Added revision history. |
+| 2026-07-17 | Added redhat_docs.py to External Access layer map (PR #178). |
