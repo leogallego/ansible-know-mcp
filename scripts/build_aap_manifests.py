@@ -65,14 +65,6 @@ CORE_TOPICS = frozenset({
 SKIP_CATEGORIES = frozenset({"download pdf"})
 
 
-def _derive_topic_from_slug(slug: str) -> str:
-    """Extract topic from a 2.6/2.7 slug prefix (e.g., 'install-proc_...' -> 'install')."""
-    if "-" in slug:
-        prefix = slug.split("-", 1)[0].lower()
-        return CATEGORY_TOPIC_MAP.get(prefix, prefix)
-    return "general"
-
-
 def _parse_landing_json(raw: str) -> dict:
     """Parse landing page MCP response into structured data."""
     try:
@@ -105,7 +97,7 @@ def _build_manifest_entries(landing: dict, version: str) -> list[dict]:
                 continue
 
             path_parts = url.rstrip("/").rsplit("/", 1)
-            slug = path_parts[-1] if len(path_parts) > 1 else ""
+            slug = path_parts[-1].strip() if len(path_parts) > 1 else ""
 
             entries.append({
                 "path": slug,

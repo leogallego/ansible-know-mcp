@@ -121,7 +121,8 @@ class RedHatDocsClient:
 
     async def _call_tool(self, name: str, arguments: dict[str, Any]) -> str:
         """Call an MCP tool and return its text content."""
-        assert self._client is not None
+        if self._client is None:
+            raise AnsibleKnowError("RedHatDocsClient not connected")
         resp = await self._client.post(
             self.mcp_url,
             json={

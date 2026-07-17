@@ -104,7 +104,7 @@ def _postprocess_entries(
     for entry in entries:
         entry["_source"] = source_name
         if "url" not in entry and "path" in entry and base_url:
-            entry["url"] = f"{base_url.rstrip('/')}/{entry['path'].lstrip('/')}"
+            entry["url"] = f"{base_url.rstrip('/')}/{entry['path'].strip().lstrip('/')}"
         topics = entry.get("topics", entry.get("topic", []))
         if isinstance(topics, str):
             topics = [topics]

@@ -92,7 +92,7 @@
       "aap_version": "2.7"
     },
     {
-      "path": "install-proc_installing_containerized_aap ",
+      "path": "install-proc_installing_containerized_aap",
       "topic": "install",
       "title": "Install containerized Ansible Automation Platform",
       "audience": "admin",
@@ -510,7 +510,7 @@
       "aap_version": "2.7"
     },
     {
-      "path": "troubleshoot-proc_settings_troubleshooting ",
+      "path": "troubleshoot-proc_settings_troubleshooting",
       "topic": "troubleshoot",
       "title": "Troubleshoot Ansible Automation Platform",
       "audience": "admin",
