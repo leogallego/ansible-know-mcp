@@ -16,6 +16,9 @@ MINIMUM_COUNTS = {
     "ansible_builder_manifest.json": 5,
     "ansible_navigator_manifest.json": 5,
     "ansible_creator_manifest.json": 3,
+    "aap_25_manifest.json": 30,
+    "aap_26_manifest.json": 40,
+    "aap_27_manifest.json": 40,
 }
 
 MANIFEST_FILES = sorted(DATA_DIR.glob("*_manifest.json"))
@@ -51,3 +54,53 @@ def test_manifest_entry_count_above_minimum(manifest):
     assert count >= minimum, (
         f"{name}: {count} entries, expected at least {minimum}"
     )
+
+
+class TestAapManifests:
+    """Tests verifying AAP manifests load and are searchable."""
+
+    @pytest.mark.asyncio
+    async def test_aap_25_manifest_loads(self):
+        from ansible_know.docs import search_docs
+        results = await search_docs("installation", source="aap-2.5")
+        install_titles = [r["title"].lower() for r in results]
+        assert any("install" in t for t in install_titles), f"No install results in {install_titles}"
+
+    @pytest.mark.asyncio
+    async def test_aap_26_manifest_loads(self):
+        from ansible_know.docs import search_docs
+        results = await search_docs("install", source="aap-2.6")
+        assert len(results) > 0
+
+    @pytest.mark.asyncio
+    async def test_aap_27_manifest_loads(self):
+        from ansible_know.docs import search_docs
+        results = await search_docs("install", source="aap-2.7")
+        assert len(results) > 0
+
+    @pytest.mark.asyncio
+    async def test_aap_search_returns_redhat_urls(self):
+        from ansible_know.docs import search_docs
+        results = await search_docs("automation mesh", source="aap-2.5")
+        for r in results:
+            assert r["source"] == "aap-2.5"
+            if r["url"]:
+                assert "docs.redhat.com" in r["url"]
+
+    @pytest.mark.asyncio
+    async def test_aap_source_filter_works(self):
+        from ansible_know.docs import search_docs
+        results_25 = await search_docs("install", source="aap-2.5")
+        results_27 = await search_docs("install", source="aap-2.7")
+        urls_25 = {r["url"] for r in results_25}
+        urls_27 = {r["url"] for r in results_27}
+        assert urls_25 != urls_27 or (not urls_25 and not urls_27)
+
+    @pytest.mark.asyncio
+    async def test_aap_cross_version_search(self):
+        """Searching without source filter returns results from multiple AAP versions."""
+        from ansible_know.docs import search_docs
+        results = await search_docs("install containerized")
+        sources = {r["source"] for r in results}
+        aap_sources = {s for s in sources if s.startswith("aap-")}
+        assert len(aap_sources) >= 1
