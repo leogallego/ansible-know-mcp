@@ -223,6 +223,11 @@ GALAXY_BASE_URL = os.environ.get(
     "https://galaxy.ansible.com",
 )
 
+REDHAT_DOCS_MCP_URL = os.environ.get(
+    "ANSIBLE_KNOW_REDHAT_DOCS_MCP_URL",
+    "https://docs-mcp.api.redhat.com/mcp",
+)
+
 PLUGIN_TYPES: tuple[str, ...] = (
     "become", "cache", "callback", "cliconf", "connection",
     "filter", "httpapi", "inventory", "lookup", "netconf",
