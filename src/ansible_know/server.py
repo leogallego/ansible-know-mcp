@@ -548,7 +548,7 @@ async def search_docs(
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def fetch_doc(
-    url: Annotated[str, "A docs.ansible.com URL to fetch as markdown"],
+    url: Annotated[str, "A docs.ansible.com or docs.redhat.com URL to fetch as markdown"],
     max_tokens: Annotated[
         int | None,
         "If set, return error instead of content when the page exceeds this token count. "
@@ -556,12 +556,12 @@ async def fetch_doc(
     ] = None,
     ctx: Context | None = None,
 ) -> FetchDocResult | ErrorResponse:
-    """Fetch a page from docs.ansible.com as clean Markdown.
+    """Fetch a page from docs.ansible.com or docs.redhat.com as clean Markdown.
 
     Returns documentation content ready for LLM consumption.
     Use search_docs to discover relevant page URLs, or pass a known
-    docs.ansible.com URL directly. The url parameter must start with
-    https://docs.ansible.com/.
+    docs.ansible.com or docs.redhat.com URL directly. The url parameter must
+    start with https://docs.ansible.com/ or https://docs.redhat.com/.
     """
     logger.info("fetch_doc url=%r max_tokens=%r", url, max_tokens)
     try:
