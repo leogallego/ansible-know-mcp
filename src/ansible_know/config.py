@@ -190,6 +190,18 @@ DEFAULT_DOC_SOURCES: dict[str, dict[str, str]] = {
         "file": str(_PKG_DIR / "data" / "molecule_manifest.json"),
         "description": "molecule — test scenarios, configuration, getting started",
     },
+    "aap-2.5": {
+        "file": str(_PKG_DIR / "data" / "aap_25_manifest.json"),
+        "description": "Red Hat AAP 2.5 — installation, configuration, operations, troubleshooting",
+    },
+    "aap-2.6": {
+        "file": str(_PKG_DIR / "data" / "aap_26_manifest.json"),
+        "description": "Red Hat AAP 2.6 — installation, mesh, EE, RBAC, AI features, MCP server",
+    },
+    "aap-2.7": {
+        "file": str(_PKG_DIR / "data" / "aap_27_manifest.json"),
+        "description": "Red Hat AAP 2.7 — installation, mesh, self-service, metrics, AI features",
+    },
 }
 
 def get_doc_sources() -> dict[str, dict[str, str]]:

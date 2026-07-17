@@ -399,6 +399,23 @@ class TestValidateDocUrl:
         with pytest.raises(ValidationError):
             validate_doc_url("https://docs.ansible.com/" + "a" * 2024)
 
+    def test_valid_redhat_docs_url(self):
+        validate_doc_url("https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.7/install")
+
+    def test_valid_redhat_docs_url_26_topic(self):
+        validate_doc_url("https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/install-proc_installing_containerized_aap")
+
+    def test_valid_redhat_docs_url_25_html(self):
+        validate_doc_url("https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.5/html/planning_your_installation")
+
+    def test_invalid_other_redhat_domain(self):
+        with pytest.raises(ValidationError):
+            validate_doc_url("https://access.redhat.com/documentation/something")
+
+    def test_invalid_http_redhat(self):
+        with pytest.raises(ValidationError):
+            validate_doc_url("http://docs.redhat.com/page")
+
 
 class TestExtractCollectionFqcn:
     def test_three_part_fqcn(self):
