@@ -17,6 +17,7 @@ from ansible_know.skills import (
     render_role_skill,
     render_skill,
     role_skill_name,
+    update_agents_md,
     write_collection_skill_package,
     write_module_skill_package,
     write_plugin_skill_package,
@@ -729,3 +730,111 @@ class TestCollectionSkillWithPlugins:
         }]
         result = render_collection_skill("netbox.netbox", metadata_list)
         assert "Available Plugins" not in result
+
+
+class TestUpdateAgentsMd:
+    def _make_collection_skill(self, skills_dir, name):
+        """Create a minimal collection skill directory with SKILL.md."""
+        coll_dir = skills_dir / name
+        coll_dir.mkdir(parents=True)
+        (coll_dir / "SKILL.md").write_text(
+            "---\nname: test\ndescription: test collection\n---\n"
+        )
+        # Add a module-level skill for example path generation
+        mod_dir = coll_dir / "some-module"
+        mod_dir.mkdir()
+        (mod_dir / "SKILL.md").write_text(
+            "---\nname: test-mod\ndescription: test module\n---\n"
+        )
+
+    def test_create_agents_md(self, tmp_path):
+        skills_dir = tmp_path / "skills"
+        self._make_collection_skill(skills_dir, "netbox-netbox")
+        update_agents_md(tmp_path, skills_dir)
+        agents_md = (tmp_path / "AGENTS.md").read_text()
+        assert "<!-- ansible-know:skills:start -->" in agents_md
+        assert "<!-- ansible-know:skills:end -->" in agents_md
+        assert "netbox.netbox" in agents_md
+
+    def test_append_to_existing(self, tmp_path):
+        skills_dir = tmp_path / "skills"
+        self._make_collection_skill(skills_dir, "netbox-netbox")
+        (tmp_path / "AGENTS.md").write_text("# My Project\n\nExisting content.\n")
+        update_agents_md(tmp_path, skills_dir)
+        agents_md = (tmp_path / "AGENTS.md").read_text()
+        assert agents_md.startswith("# My Project")
+        assert "Existing content." in agents_md
+        assert "<!-- ansible-know:skills:start -->" in agents_md
+        assert "netbox.netbox" in agents_md
+
+    def test_replace_between_sentinels(self, tmp_path):
+        skills_dir = tmp_path / "skills"
+        self._make_collection_skill(skills_dir, "ansible-controller")
+        existing = (
+            "# My Project\n\n"
+            "<!-- ansible-know:skills:start -->\n"
+            "## Old content\n"
+            "<!-- ansible-know:skills:end -->\n\n"
+            "## Other section\n"
+        )
+        (tmp_path / "AGENTS.md").write_text(existing)
+        update_agents_md(tmp_path, skills_dir)
+        agents_md = (tmp_path / "AGENTS.md").read_text()
+        assert "# My Project" in agents_md
+        assert "Old content" not in agents_md
+        assert "ansible.controller" in agents_md
+        assert "## Other section" in agents_md
+
+    def test_preserves_other_sentinels(self, tmp_path):
+        skills_dir = tmp_path / "skills"
+        self._make_collection_skill(skills_dir, "netbox-netbox")
+        existing = (
+            "<!-- BEGIN ANSIBLE-DEVCONTAINER -->\n"
+            "## Devcontainer stuff\n"
+            "<!-- END ANSIBLE-DEVCONTAINER -->\n"
+        )
+        (tmp_path / "AGENTS.md").write_text(existing)
+        update_agents_md(tmp_path, skills_dir)
+        agents_md = (tmp_path / "AGENTS.md").read_text()
+        assert "BEGIN ANSIBLE-DEVCONTAINER" in agents_md
+        assert "Devcontainer stuff" in agents_md
+        assert "ansible-know:skills:start" in agents_md
+
+    def test_missing_end_sentinel_appends(self, tmp_path):
+        skills_dir = tmp_path / "skills"
+        self._make_collection_skill(skills_dir, "netbox-netbox")
+        existing = "# Project\n\n<!-- ansible-know:skills:start -->\nBroken\n"
+        (tmp_path / "AGENTS.md").write_text(existing)
+        update_agents_md(tmp_path, skills_dir)
+        agents_md = (tmp_path / "AGENTS.md").read_text()
+        assert agents_md.count("ansible-know:skills:start") == 2
+        assert "ansible-know:skills:end" in agents_md
+
+    def test_sensitive_path_rejected(self, tmp_path):
+        skills_dir = tmp_path / "skills"
+        self._make_collection_skill(skills_dir, "netbox-netbox")
+        from pathlib import Path
+
+        import pytest
+
+        from ansible_know.validation import ValidationError
+        with pytest.raises(ValidationError):
+            update_agents_md(Path("/etc"), skills_dir)
+
+    def test_empty_skills_dir(self, tmp_path):
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
+        update_agents_md(tmp_path, skills_dir)
+        agents_md = (tmp_path / "AGENTS.md").read_text()
+        assert "Available collections:" in agents_md
+
+    def test_skips_symlinks(self, tmp_path):
+        skills_dir = tmp_path / "skills"
+        self._make_collection_skill(skills_dir, "real-collection")
+        (skills_dir / "symlink-collection").symlink_to(skills_dir / "real-collection")
+        update_agents_md(tmp_path, skills_dir)
+        agents_md = (tmp_path / "AGENTS.md").read_text()
+        assert "real.collection" in agents_md
+        # Should appear once in collections list, not duplicated by symlink
+        assert "Available collections: real.collection" in agents_md
+        assert "symlink.collection" not in agents_md
