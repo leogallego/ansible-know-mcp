@@ -7,7 +7,6 @@ lazily and re-created on 404 (server-side session expiry).
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import uuid
@@ -25,7 +24,6 @@ logger = logging.getLogger("ansible_know")
 
 __all__ = [
     "RedHatDocsClient",
-    "clear_redhat_client",
     "fetch_redhat_doc",
     "parse_mcp_sse",
 ]
@@ -189,30 +187,6 @@ def _mcp_headers(session_id: str | None) -> dict[str, str]:
     return headers
 
 
-_redhat_client: RedHatDocsClient | None = None
-_redhat_client_lock: asyncio.Lock | None = None
-
-
-async def _get_redhat_client() -> RedHatDocsClient:
-    """Lazily create and return the shared RedHatDocsClient."""
-    global _redhat_client, _redhat_client_lock
-    if _redhat_client is not None:
-        return _redhat_client
-    if _redhat_client_lock is None:
-        _redhat_client_lock = asyncio.Lock()
-    async with _redhat_client_lock:
-        if _redhat_client is None:
-            _redhat_client = RedHatDocsClient()
-    return _redhat_client
-
-
-def clear_redhat_client() -> None:
-    """Reset the shared RedHatDocsClient singleton."""
-    global _redhat_client, _redhat_client_lock
-    _redhat_client = None
-    _redhat_client_lock = None
-
-
 def _estimate_tokens(text: str) -> int:
     """Rough token estimate (~4 chars/token) for Red Hat docs.
 
@@ -226,9 +200,17 @@ def _estimate_tokens(text: str) -> int:
 async def fetch_redhat_doc(
     url: str,
     max_tokens: int | None = None,
+    client: RedHatDocsClient | None = None,
 ) -> FetchDocResult:
-    """Fetch a docs.redhat.com page via the Red Hat Documentation MCP server."""
-    client = await _get_redhat_client()
+    """Fetch a docs.redhat.com page via the Red Hat Documentation MCP server.
+
+    The caller (Orchestration layer) owns the client lifecycle — created
+    at lifespan startup in SharedState, closed at shutdown.  This function
+    is a stateless transform: fetch raw content, detect landing pages,
+    clean markdown, estimate tokens.
+    """
+    if client is None:
+        raise AnsibleKnowError("RedHatDocsClient is required — pass via SharedState")
     raw = await client.fetch(url)
 
     if raw.lstrip().startswith("{"):

@@ -392,11 +392,15 @@ async def search_docs(
 
 
 def clear_cache() -> None:
-    """Clear the manifest, page, and Red Hat MCP client caches."""
-    from ansible_know.redhat_docs import clear_redhat_client
+    """Clear the manifest and page data caches.
+
+    Only clears actual data caches (stale-able content with TTL).
+    Does NOT touch transport clients like RedHatDocsClient — that is
+    not a cache, it manages its own MCP session lifecycle (auto-reconnect
+    on 404 expiry) and lives in SharedState.
+    """
     _manifest_cache.clear()
     _page_cache.clear()
-    clear_redhat_client()
 
 
 MAX_DOC_FETCH_SIZE = 2_000_000  # 2MB

@@ -110,9 +110,13 @@ async def app_lifespan(server):
     global _shared_state, _session_manager
     from ansible_know.collections import CollectionManager
     from ansible_know.galaxy_config import load_galaxy_servers
+    from ansible_know.redhat_docs import RedHatDocsClient
 
     galaxy_servers = await run_in_executor(load_galaxy_servers)
-    shared = SharedState(galaxy_servers=galaxy_servers)
+    shared = SharedState(
+        galaxy_servers=galaxy_servers,
+        redhat_client=RedHatDocsClient(),
+    )
     sessions = SessionManager(shared, collection_factory=CollectionManager)
     _shared_state = shared
     _session_manager = sessions
@@ -146,6 +150,8 @@ async def app_lifespan(server):
                 await check_task
             with contextlib.suppress(asyncio.CancelledError):
                 await cleanup_task
+            if shared.redhat_client is not None:
+                await shared.redhat_client.close()
 
 mcp = FastMCP(
     name="Ansible Know",
@@ -575,7 +581,10 @@ async def fetch_doc(
 
         if parsed.netloc == "docs.redhat.com":
             from ansible_know.redhat_docs import fetch_redhat_doc
-            return await fetch_redhat_doc(url=url, max_tokens=max_tokens)
+            return await fetch_redhat_doc(
+                url=url, max_tokens=max_tokens,
+                client=_get_shared(ctx).redhat_client,
+            )
         else:
             from ansible_know import docs
             return await docs.fetch_doc_content(
