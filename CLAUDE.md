@@ -27,11 +27,12 @@ src/ansible_know/
 ├── config.py              # paths, constants, doc source registry
 ├── collection_manifest.py # collection-level MANIFEST.json generation/caching
 ├── docs.py                # multi-manifest documentation client (httpx)
-├── text_utils.py          # RTD markdown cleaning (Foundation)
+├── text_utils.py          # RTD + Red Hat markdown cleaning (Foundation)
 ├── galaxy.py              # Galaxy v3 API client — search, docs-blob, format conversion
+├── redhat_docs.py         # Red Hat Documentation MCP client — JSON-RPC over Streamable HTTP (External Access)
 ├── tagging.py             # Tag derivation from module metadata (Foundation)
 ├── manifest_builder.py    # Build-time: generate doc manifests from objects.inv/sitemap
-├── data/                  # Shipped JSON doc manifests (ansible-core, lint, navigator, etc.)
+├── data/                  # Shipped JSON doc manifests (ansible-core, lint, navigator, AAP 2.5/2.6/2.7, etc.)
 └── templates/             # Jinja2 templates for skill packages
 ```
 
@@ -45,7 +46,7 @@ src/ansible_know/
 | `get_plugin_doc` | read-only | Get full plugin documentation |
 | `get_role_doc` | read-only | Get full role documentation (local or Galaxy README) |
 | `search_docs` | read-only | Search conceptual doc manifests |
-| `fetch_doc` | read-only | Fetch a docs.ansible.com page as clean Markdown |
+| `fetch_doc` | read-only | Fetch a docs.ansible.com or docs.redhat.com page as clean Markdown |
 | `search_collections` | read-only | Search Galaxy for collections by keyword |
 | `get_collection_manifest` | read-only | Get collection-level module and role summary |
 | `get_collection_docs` | read-only | Get all module docs for a collection from Galaxy |
@@ -98,6 +99,10 @@ src/ansible_know/
 - RTD Search API (`_search_rtd_api`) serves as fallback when manifest search returns empty (only when no filters caused the empty result).
 - Doc manifests shipped as JSON in `src/ansible_know/data/`, loaded from disk (no HTTP at startup).
 - `manifest_builder.py` generates manifests at build time from objects.inv and sitemap sources (requires `[build]` optional deps: `sphobjinv`, `defusedxml`).
+- `redhat_docs.py` (`RedHatDocsClient`) connects to `docs-mcp.api.redhat.com` via JSON-RPC over Streamable HTTP. Manages MCP sessions lazily (connect on first fetch, auto-reconnect on 404 expiry). Lives in `SharedState` — transport client, not a data cache.
+- `fetch_doc` routes `docs.redhat.com` URLs through `RedHatDocsClient`, `docs.ansible.com` URLs through Cloudflare content negotiation.
+- `text_utils.clean_redhat_markdown` strips Red Hat docs boilerplate (Legal Notice, Copy link artifacts).
+- AAP 2.5/2.6/2.7 doc manifests shipped as static JSON in `data/`, built by `scripts/build_aap_manifests.py`.
 
 ## Testing
 

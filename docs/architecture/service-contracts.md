@@ -25,12 +25,12 @@ The server follows a 5-layer pipeline architecture adapted for MCP:
 │                    resolution.py                         │
 ├─────────────────────────────────────────────────────────┤
 │  External Access   galaxy.py, collections.py,           │
-│                    readme_parser.py                      │
+│                    readme_parser.py, redhat_docs.py      │
 ├─────────────────────────────────────────────────────────┤
 │  Foundation        async_utils.py, cache.py, config.py,  │
 │                    galaxy_config.py, state.py,            │
-│                    tagging.py, validation.py,             │
-│                    errors.py, types.py                    │
+│                    tagging.py, text_utils.py,             │
+│                    validation.py, errors.py, types.py     │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -107,7 +107,7 @@ business logic. Domain modules are imported lazily to avoid loading
 | `parser` | `search_modules()`, `get_module_doc()`, `get_role_doc()`, `list_roles()`, `extract_module_metadata()`, `extract_role_metadata()` | `parser.py` |
 | `skills` | `render_skill()`, `write_skill_package()`, `render_role_skill()`, `write_role_skill_package()`, `_module_to_skill_name()` | `skills.py` |
 | `collection_manifest` | `generate_manifest()`, `load_cached_manifest()` | `collection_manifest.py` |
-| `docs` | `search_docs()` | `docs.py` |
+| `docs` | `search_docs()`, `fetch_doc_content()` | `docs.py` |
 | `collections` | `ensure_collection()`, `list_installed()` | `collections.py` |
 | `resolution` | `resolve_module_doc()`, `resolve_role_doc()`, `search_galaxy_collections()`, `clear_missing_namespace()` | `resolution.py` |
 
@@ -165,6 +165,7 @@ the process boundary: the Galaxy REST API, the `ansible-doc` CLI, the
 | `galaxy.py` (`GalaxyClient`) | `resolution.py` (via `GalaxyDocClient` Protocol) | `galaxy.py` |
 | `collections.py` | `server.py`, `resolution.py` | `collections.py` |
 | `readme_parser.py` | `galaxy.py` | `readme_parser.py` |
+| `redhat_docs.py` (`RedHatDocsClient`) | `server.py` (via `SharedState`) | `redhat_docs.py` |
 
 `GalaxyClient` is the primary class in the codebase. It acts as an async HTTP
 client wrapper for the Galaxy v3 REST API. (`BoundedCache` in the Foundation
@@ -191,6 +192,11 @@ layer and `_ReadmeParser` in `readme_parser.py` are the other classes.)
   (lock-protected, LRU-bounded, TTL-expiring).
 - `collections.py` uses per-collection locks and a global `_install_gate`
   to serialize `ansible-galaxy` subprocess calls.
+- `RedHatDocsClient` methods are **async**. It manages its own MCP session
+  lifecycle (lazy connect, auto-reconnect on 404 expiry). The client
+  instance lives in `SharedState` (created at lifespan, closed at shutdown).
+  It is a transport client, not a data cache — `clear_cache` does not
+  touch it.
 
 ### Violations
 
@@ -281,8 +287,11 @@ AnsibleKnowError
 
 State is split into process-wide and per-session layers (PR #87):
 
-- **`SharedState`** (process-wide): `galaxy_servers`, `version_info`. Created
-  once in lifespan. `version_info` updated by periodic PyPI check.
+- **`SharedState`** (process-wide): `galaxy_servers`, `version_info`,
+  `enrichment_semaphore`, `redhat_client`. Created once in lifespan.
+  `version_info` updated by periodic PyPI check. `redhat_client` is a
+  transport client (not a data cache) — manages its own MCP session
+  lifecycle and is closed at lifespan shutdown, not by `clear_cache`.
 - **`ServerState`** (per-session): `collection_manager`, `missing_collections`,
   `upgrade_warned`. Created lazily by `SessionManager.get_or_create()`.
 - **`SessionManager`**: manages session lifecycle with `asyncio.Lock`.
