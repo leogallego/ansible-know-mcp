@@ -7,7 +7,9 @@ import pytest
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "src" / "ansible_know" / "data"
 
-REQUIRED_FILE_KEYS = {"path", "title", "summary"}
+# Entries need either "path" (resolved via base_url) or "url" (direct)
+REQUIRED_FILE_KEYS = {"title", "summary"}
+REQUIRED_LOCATION_KEYS = {"path", "url"}
 
 MINIMUM_COUNTS = {
     "ansible_core_manifest.json": 300,
@@ -43,6 +45,8 @@ def test_manifest_entries_have_required_keys(manifest):
     for i, entry in enumerate(data["files"]):
         missing = REQUIRED_FILE_KEYS - set(entry.keys())
         assert not missing, f"{name}: entry {i} missing keys: {missing}"
+        has_location = REQUIRED_LOCATION_KEYS & set(entry.keys())
+        assert has_location, f"{name}: entry {i} needs 'path' or 'url'"
 
 
 def test_manifest_entry_count_above_minimum(manifest):
