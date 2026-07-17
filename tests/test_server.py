@@ -280,6 +280,28 @@ class TestGenerateCollectionSkillsTool:
         assert result["succeeded"] == 1
         assert (tmp_path / "netbox-netbox" / "netbox-device" / "SKILL.md").exists()
 
+    @pytest.mark.asyncio
+    async def test_updates_agents_md(self, tmp_path, mock_ansible_doc, monkeypatch):
+        """generate_collection_skills calls update_agents_md after writing skills."""
+        responses = [
+            json.dumps(SAMPLE_MODULE_LIST),
+            json.dumps({}),
+        ]
+        responses.extend([json.dumps({})] * 14)
+        responses.extend([json.dumps(SAMPLE_MODULE_DOC)] * 4)
+
+        mock_ansible_doc.side_effect = responses
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+
+        mock_update = MagicMock()
+        with patch("ansible_know.skills.update_agents_md", mock_update), \
+             patch("ansible_know.config.get_project_root", return_value=tmp_path):
+            from ansible_know.server import generate_collection_skills
+            result = await generate_collection_skills("ansible.builtin", install_to=str(tmp_path))
+
+        assert result["succeeded"] + result["failed"] == result["total"]
+        mock_update.assert_called_once_with(tmp_path, tmp_path)
+
 
 class TestFQCNValidation:
     @pytest.mark.asyncio
