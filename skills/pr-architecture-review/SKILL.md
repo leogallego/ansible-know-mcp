@@ -301,7 +301,7 @@ For each finding, report:
 | Severity | Criteria | Action |
 |----------|----------|--------|
 | Error | Thread safety bug, layer skip introducing new coupling, security vulnerability, bare `except:`, `None` equality comparison, ADR contradiction without update | Block merge |
-| Warning | Missing types at boundary, private function access across modules, missing validation, missing `__all__`, new untyped state, overlap with upstream-marked tools | Fix or file issue before merge |
+| Warning | Missing types at boundary, private function access across modules, missing validation, missing `__all__`, new untyped state, overlap with upstream-marked tools, stale architecture docs (layer map missing new modules, service-contracts out of date, inaccurate PR description) | Fix or file issue before merge |
 | Info | Loose typing (`dict[str, Any]` where TypedDict exists), minor naming inconsistencies, missing type annotations on internal functions | Note in review, fix opportunistically |
 
 ---
