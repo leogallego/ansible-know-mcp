@@ -902,7 +902,11 @@ async def get_skill(
 @mcp.tool(annotations=ToolAnnotations(idempotentHint=True))
 async def generate_skill(
     module_name: Annotated[str, "Fully-qualified module name (e.g. 'ansible.builtin.copy')"],
-    install_to: Annotated[str | None, "Optional absolute path to install the skill to"] = None,
+    install_to: Annotated[
+        str | None,
+        "Optional absolute path to install the skill to. Defaults to the project "
+        "directory (via ANSIBLE_KNOW_PROJECT_DIR or CLAUDE_PROJECT_DIR env vars, then cwd).",
+    ] = None,
     ctx: Context | None = None,
 ) -> str | ErrorResponse:
     """Generate a skill package for one module.
@@ -964,7 +968,11 @@ async def generate_skill(
 @mcp.tool(annotations=ToolAnnotations(idempotentHint=True))
 async def generate_role_skill(
     role_name: Annotated[str, "Fully-qualified role name (e.g. 'fedora.linux_system_roles.timesync')"],
-    install_to: Annotated[str | None, "Optional absolute path to install the skill to"] = None,
+    install_to: Annotated[
+        str | None,
+        "Optional absolute path to install the skill to. Defaults to the project "
+        "directory (via ANSIBLE_KNOW_PROJECT_DIR or CLAUDE_PROJECT_DIR env vars, then cwd).",
+    ] = None,
     ctx: Context | None = None,
 ) -> str | ErrorResponse:
     """Generate a skill package for one role.
@@ -1031,7 +1039,11 @@ async def generate_plugin_skill(
         "strategy, callback, inventory, cache, cliconf, httpapi, "
         "netconf, shell, or vars)",
     ],
-    install_to: Annotated[str | None, "Optional absolute path to install the skill to"] = None,
+    install_to: Annotated[
+        str | None,
+        "Optional absolute path to install the skill to. Defaults to the project "
+        "directory (via ANSIBLE_KNOW_PROJECT_DIR or CLAUDE_PROJECT_DIR env vars, then cwd).",
+    ] = None,
     ctx: Context | None = None,
 ) -> str | ErrorResponse:
     """Generate a skill package for one plugin.
@@ -1094,12 +1106,18 @@ async def generate_plugin_skill(
 @mcp.tool(annotations=ToolAnnotations(idempotentHint=True))
 async def generate_collection_skills(
     collection_namespace: Annotated[str, "Collection namespace (e.g. 'netbox.netbox')"],
-    install_to: Annotated[str | None, "Optional absolute path to install skills to"] = None,
+    install_to: Annotated[
+        str | None,
+        "Optional absolute path to install skills to. Defaults to the project "
+        "directory (via ANSIBLE_KNOW_PROJECT_DIR or CLAUDE_PROJECT_DIR env vars, then cwd).",
+    ] = None,
     ctx: Context | None = None,
 ) -> GenerateCollectionSkillsResult | ErrorResponse:
     """Batch generate skills for an entire collection.
 
     Generates/updates the collection MANIFEST.json as a byproduct.
+    Updates AGENTS.md in the project root with a managed section
+    listing available collections for cross-agent discovery.
     Returns {"succeeded": int, "failed": int, "total": int, "manifest": dict, "collection_skill": str},
     or {"error": str} on failure.
     """

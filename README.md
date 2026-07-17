@@ -118,6 +118,21 @@ Add to `.vscode/mcp.json` in your workspace:
 }
 ```
 
+VS Code Copilot (`.vscode/mcp.json`):
+```json
+{
+  "servers": {
+    "ansible-know": {
+      "command": "uvx",
+      "args": ["ansible-know-mcp"],
+      "env": {
+        "ANSIBLE_KNOW_PROJECT_DIR": "${workspaceFolder}"
+      }
+    }
+  }
+}
+```
+
 ### Any MCP client
 
 The server communicates over stdio by default:
