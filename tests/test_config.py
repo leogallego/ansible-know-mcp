@@ -145,3 +145,76 @@ class TestAapDocSources:
     def test_aap_file_paths_end_with_json(self):
         for ver in ("aap-2.5", "aap-2.6", "aap-2.7"):
             assert DEFAULT_DOC_SOURCES[ver]["file"].endswith(".json")
+
+
+class TestGetProjectRoot:
+    def test_ansible_know_project_dir_wins(self, monkeypatch, tmp_path):
+        from ansible_know.config import get_project_root
+
+        monkeypatch.setenv("ANSIBLE_KNOW_PROJECT_DIR", str(tmp_path))
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", "/should/not/win")
+        assert get_project_root() == tmp_path
+
+    def test_claude_project_dir_fallback(self, monkeypatch, tmp_path):
+        from ansible_know.config import get_project_root
+
+        monkeypatch.delenv("ANSIBLE_KNOW_PROJECT_DIR", raising=False)
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+        assert get_project_root() == tmp_path
+
+    def test_cwd_fallback(self, monkeypatch):
+        from pathlib import Path
+
+        from ansible_know.config import get_project_root
+
+        monkeypatch.delenv("ANSIBLE_KNOW_PROJECT_DIR", raising=False)
+        monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+        assert get_project_root() == Path.cwd()
+
+    def test_empty_env_var_skipped(self, monkeypatch, tmp_path):
+        from ansible_know.config import get_project_root
+
+        monkeypatch.setenv("ANSIBLE_KNOW_PROJECT_DIR", "")
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+        assert get_project_root() == tmp_path
+
+
+class TestSkillsDirResolution:
+    def _reload_skills_dir(self, monkeypatch):
+        """Force SKILLS_DIR to re-resolve by clearing the cached value."""
+        import ansible_know.config as config_mod
+
+        monkeypatch.delattr(config_mod, "SKILLS_DIR", raising=False)
+        if "SKILLS_DIR" in config_mod.__dict__:
+            del config_mod.__dict__["SKILLS_DIR"]
+        return config_mod.SKILLS_DIR
+
+    def test_explicit_skills_dir_wins(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("ANSIBLE_KNOW_SKILLS_DIR", str(tmp_path / "explicit"))
+        monkeypatch.setenv("ANSIBLE_KNOW_PROJECT_DIR", str(tmp_path / "project"))
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path / "claude"))
+        result = self._reload_skills_dir(monkeypatch)
+        assert result == tmp_path / "explicit"
+
+    def test_project_dir_adds_skills_suffix(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("ANSIBLE_KNOW_SKILLS_DIR", raising=False)
+        monkeypatch.setenv("ANSIBLE_KNOW_PROJECT_DIR", str(tmp_path))
+        monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+        result = self._reload_skills_dir(monkeypatch)
+        assert result == tmp_path / "skills"
+
+    def test_claude_project_dir_adds_skills_suffix(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("ANSIBLE_KNOW_SKILLS_DIR", raising=False)
+        monkeypatch.delenv("ANSIBLE_KNOW_PROJECT_DIR", raising=False)
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+        result = self._reload_skills_dir(monkeypatch)
+        assert result == tmp_path / "skills"
+
+    def test_cwd_fallback(self, monkeypatch):
+        from pathlib import Path
+
+        monkeypatch.delenv("ANSIBLE_KNOW_SKILLS_DIR", raising=False)
+        monkeypatch.delenv("ANSIBLE_KNOW_PROJECT_DIR", raising=False)
+        monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+        result = self._reload_skills_dir(monkeypatch)
+        assert result == Path.cwd() / "skills"
