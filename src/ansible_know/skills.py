@@ -338,6 +338,7 @@ def update_agents_md(project_root: Path, skills_dir: Path) -> None:
 
     collections = []
     example_path = ""
+    example_dir = ""
     if skills_dir.exists():
         for entry in sorted(skills_dir.iterdir()):
             try:

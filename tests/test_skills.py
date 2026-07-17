@@ -1,5 +1,9 @@
 """Tests for ansible_know.skills."""
 
+from pathlib import Path
+
+import pytest
+
 from ansible_know.parser import extract_module_metadata
 from ansible_know.skills import (
     _build_example_args,
@@ -24,6 +28,7 @@ from ansible_know.skills import (
     write_role_skill_package,
     write_skill_package,
 )
+from ansible_know.validation import ValidationError
 
 
 class TestFqcnToSkillName:
@@ -813,11 +818,6 @@ class TestUpdateAgentsMd:
     def test_sensitive_path_rejected(self, tmp_path):
         skills_dir = tmp_path / "skills"
         self._make_collection_skill(skills_dir, "netbox-netbox")
-        from pathlib import Path
-
-        import pytest
-
-        from ansible_know.validation import ValidationError
         with pytest.raises(ValidationError):
             update_agents_md(Path("/etc"), skills_dir)
 

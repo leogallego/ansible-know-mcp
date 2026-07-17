@@ -1,6 +1,7 @@
 """Tests for ansible_know.config."""
 
 import json
+from pathlib import Path
 
 from ansible_know.config import DEFAULT_DOC_SOURCES, get_doc_sources
 
@@ -163,8 +164,6 @@ class TestGetProjectRoot:
         assert get_project_root() == tmp_path
 
     def test_cwd_fallback(self, monkeypatch):
-        from pathlib import Path
-
         from ansible_know.config import get_project_root
 
         monkeypatch.delenv("ANSIBLE_KNOW_PROJECT_DIR", raising=False)
@@ -211,8 +210,6 @@ class TestSkillsDirResolution:
         assert result == tmp_path / "skills"
 
     def test_cwd_fallback(self, monkeypatch):
-        from pathlib import Path
-
         monkeypatch.delenv("ANSIBLE_KNOW_SKILLS_DIR", raising=False)
         monkeypatch.delenv("ANSIBLE_KNOW_PROJECT_DIR", raising=False)
         monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)

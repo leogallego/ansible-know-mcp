@@ -1314,7 +1314,7 @@ async def generate_collection_skills(
         from ansible_know.config import get_project_root
 
         project_root = get_project_root()
-        if project_root is not None and project_root.is_dir():
+        if project_root.is_dir():
             try:
                 await run_in_executor(skills.update_agents_md, project_root, base_dir)
             except OSError as exc:
