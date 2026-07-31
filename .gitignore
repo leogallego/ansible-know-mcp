@@ -3,9 +3,11 @@ tmp/
 *.egg-info/
 __pycache__/
 *.pyc
-.claude/settings.local.json
-.claude/worktrees/
-.claude/commands/
+# Claude Code local state (machine-specific paths, worktrees, session memory).
+# Project agent skill lives in skills/pr-architecture-review/ (tracked).
+.claude/
+.playwright-mcp/
+.superpowers/
 .coverage
 dist/
 build/
@@ -13,7 +15,4 @@ build/
 skills/*
 !skills/pr-architecture-review/
 docs/research/
-demo/*.cast
-demo/*.gif
-demo/*.mp4
-demo/*.webm
+demo/
