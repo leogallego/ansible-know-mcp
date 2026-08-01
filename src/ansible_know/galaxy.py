@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import threading
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -36,26 +37,32 @@ MAX_DISCOVERY_RESPONSE_SIZE = 100_000  # 100KB — discovery payloads are tiny
 _SAFE_V3_PATH_RE = re.compile(r"^[a-zA-Z0-9/_-]+/?$")
 
 # Module-level caches shared across all GalaxyClient instances.
-# Keys include server identity (base URL) so private Hub and public Galaxy
-# never collide for the same FQCN. Thread-safe via BoundedCache.
-# Filename bump (v2) retires pre-server-keyed on-disk entries from #190.
-_version_cache: BoundedCache[tuple[str, str, str], str] = BoundedCache(
+# Keys include server identity (normalized base URL + server name) so private
+# Hub and public Galaxy never collide for the same FQCN, and so two configs
+# that share a URL but differ by name/auth stay partitioned.
+# Filename bump (v3) retires pre-#190 and interim v2 on-disk entries.
+_version_cache: BoundedCache[tuple[str, str, str, str], str] = BoundedCache(
     max_size=500, ttl=CACHE_TTL_SECONDS,
-    path=CACHE_DIR / "galaxy-versions-v2.json",
+    path=CACHE_DIR / "galaxy-versions-v3.json",
 )
-_blob_cache: BoundedCache[tuple[str, str, str, str], dict[str, Any]] = BoundedCache(
+_blob_cache: BoundedCache[tuple[str, str, str, str, str], dict[str, Any]] = BoundedCache(
     max_size=50, ttl=CACHE_TTL_SECONDS,
-    path=CACHE_DIR / "galaxy-blobs-v2.json",
+    path=CACHE_DIR / "galaxy-blobs-v3.json",
 )
 
 _LEGACY_CACHE_FILES = (
     CACHE_DIR / "galaxy-versions.json",
     CACHE_DIR / "galaxy-blobs.json",
+    CACHE_DIR / "galaxy-versions-v2.json",
+    CACHE_DIR / "galaxy-blobs-v2.json",
 )
+
+_legacy_retired = False
+_legacy_retire_lock = threading.Lock()
 
 
 def _retire_legacy_cache_files() -> None:
-    """Remove pre-v2 Galaxy disk caches that omit server identity."""
+    """Remove Galaxy disk caches that omit full server identity."""
     for path in _LEGACY_CACHE_FILES:
         try:
             path.unlink(missing_ok=True)
@@ -63,11 +70,34 @@ def _retire_legacy_cache_files() -> None:
             logger.debug("Could not remove legacy Galaxy cache file %s", path)
 
 
-_retire_legacy_cache_files()
+def _ensure_legacy_caches_retired() -> None:
+    """Lazily delete legacy on-disk caches on first cache use."""
+    global _legacy_retired
+    if _legacy_retired:
+        return
+    with _legacy_retire_lock:
+        if _legacy_retired:
+            return
+        _retire_legacy_cache_files()
+        _legacy_retired = True
+
+
+def _normalize_cache_base_url(url: str) -> str:
+    """Normalize a Galaxy/Hub URL for cache partitioning.
+
+    Trailing slashes and a trailing ``/api`` suffix are stripped so
+    ``https://hub.example/api`` and ``https://hub.example`` share a
+    partition without changing the request base URL.
+    """
+    base = url.rstrip("/")
+    if base.endswith("/api"):
+        base = base[: -len("/api")].rstrip("/")
+    return base
 
 
 def clear_cache() -> None:
     """Clear Galaxy caches (useful for testing)."""
+    _ensure_legacy_caches_retired()
     _version_cache.clear()
     _blob_cache.clear()
 
@@ -119,10 +149,13 @@ class GalaxyClient:
         self._discovery_lock = asyncio.Lock()
         self._discovery_failed: bool = False
 
-    @property
-    def _cache_server_id(self) -> str:
-        """Stable cache partition key: normalized Galaxy/Hub base URL."""
-        return self._base
+    def _cache_identity(self) -> tuple[str, str]:
+        """Stable cache partition: normalized base URL + server name.
+
+        Server name distinguishes configs that share a URL but use
+        different credentials (typical ansible.cfg ``galaxy_server.*``).
+        """
+        return (_normalize_cache_base_url(self._base), self.server_name or "")
 
     def _build_provenance(
         self,
@@ -436,7 +469,8 @@ class GalaxyClient:
         Raises:
             GalaxyError: If the collection is not found or the API fails.
         """
-        cache_key = (self._cache_server_id, namespace, name)
+        _ensure_legacy_caches_retired()
+        cache_key = (*self._cache_identity(), namespace, name)
         cached = _version_cache.get(cache_key)
         if cached is not None:
             return cached
@@ -542,7 +576,8 @@ class GalaxyClient:
     async def _fetch_docs_blob(
         self, namespace: str, name: str, version: str,
     ) -> dict[str, Any]:
-        cache_key = (self._cache_server_id, namespace, name, version)
+        _ensure_legacy_caches_retired()
+        cache_key = (*self._cache_identity(), namespace, name, version)
         cached = _blob_cache.get(cache_key)
         if cached is not None:
             return cached

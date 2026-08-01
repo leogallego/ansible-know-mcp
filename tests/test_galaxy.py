@@ -8,6 +8,7 @@ from unittest.mock import patch as stdlib_patch
 import httpx
 import pytest
 
+from ansible_know import galaxy as galaxy_mod
 from ansible_know.config import GALAXY_BASE_URL
 from ansible_know.errors import GalaxyError
 from ansible_know.galaxy import (
@@ -18,12 +19,16 @@ from ansible_know.galaxy import (
     TIMEOUT_SLOW,
     GalaxyClient,
     _blob_cache,
+    _ensure_legacy_caches_retired,
+    _normalize_cache_base_url,
+    _retire_legacy_cache_files,
     _version_cache,
     clear_cache,
 )
 from tests.conftest import SAMPLE_DOCS_BLOB_WITH_ROLES
 
-DEFAULT_CACHE_SERVER = GALAXY_BASE_URL.rstrip("/")
+DEFAULT_CACHE_SERVER = _normalize_cache_base_url(GALAXY_BASE_URL)
+DEFAULT_CACHE_NAME = ""
 
 
 @pytest.fixture(autouse=True)
@@ -35,10 +40,13 @@ def reset_galaxy_cache():
 
 
 def _vkey(
-    namespace: str, name: str, server: str = DEFAULT_CACHE_SERVER,
-) -> tuple[str, str, str]:
+    namespace: str,
+    name: str,
+    server: str = DEFAULT_CACHE_SERVER,
+    server_name: str = DEFAULT_CACHE_NAME,
+) -> tuple[str, str, str, str]:
     """Build a version-cache key including server identity."""
-    return (server, namespace, name)
+    return (_normalize_cache_base_url(server), server_name, namespace, name)
 
 
 def _bkey(
@@ -46,9 +54,22 @@ def _bkey(
     name: str,
     version: str,
     server: str = DEFAULT_CACHE_SERVER,
-) -> tuple[str, str, str, str]:
+    server_name: str = DEFAULT_CACHE_NAME,
+) -> tuple[str, str, str, str, str]:
     """Build a blob-cache key including server identity."""
-    return (server, namespace, name, version)
+    return (
+        _normalize_cache_base_url(server), server_name, namespace, name, version,
+    )
+
+
+def _identity_vkey(client: GalaxyClient, namespace: str, name: str) -> tuple[str, str, str, str]:
+    return (*client._cache_identity(), namespace, name)
+
+
+def _identity_bkey(
+    client: GalaxyClient, namespace: str, name: str, version: str,
+) -> tuple[str, str, str, str, str]:
+    return (*client._cache_identity(), namespace, name, version)
 
 
 def _skip_discovery(gc: GalaxyClient, base: str = "https://galaxy.ansible.com/api") -> GalaxyClient:
@@ -919,12 +940,8 @@ class TestMultiServerCacheIsolation:
             base="https://hub.example.internal/api",
         )
 
-        public_versions = {
-            "data": [{"version": "1.0.0"}],
-        }
-        private_versions = {
-            "data": [{"version": "9.9.9"}],
-        }
+        public_versions = {"data": [{"version": "1.0.0"}]}
+        private_versions = {"data": [{"version": "9.9.9"}]}
 
         with patch.object(
             GalaxyClient, "_safe_api_get", new_callable=AsyncMock,
@@ -933,7 +950,6 @@ class TestMultiServerCacheIsolation:
             assert await public.latest_version("acme", "widgets") == "1.0.0"
             assert mock_get.await_count == 1
 
-            # Public cache must not satisfy a different server for the same FQCN.
             mock_get.return_value = private_versions
             assert await private.latest_version("acme", "widgets") == "9.9.9"
             assert mock_get.await_count == 2
@@ -942,12 +958,13 @@ class TestMultiServerCacheIsolation:
             assert await private.latest_version("acme", "widgets") == "9.9.9"
             mock_get.assert_not_called()
 
-        assert _version_cache.get(
-            _vkey("acme", "widgets", "https://galaxy.ansible.com"),
-        ) == "1.0.0"
-        assert _version_cache.get(
-            _vkey("acme", "widgets", "https://hub.example.internal"),
-        ) == "9.9.9"
+            # Symmetric: public re-fetch must also hit its own partition.
+            mock_get.reset_mock()
+            assert await public.latest_version("acme", "widgets") == "1.0.0"
+            mock_get.assert_not_called()
+
+        assert _version_cache.get(_identity_vkey(public, "acme", "widgets")) == "1.0.0"
+        assert _version_cache.get(_identity_vkey(private, "acme", "widgets")) == "9.9.9"
 
     @pytest.mark.asyncio
     async def test_blob_cache_partitioned_by_server(self):
@@ -991,12 +1008,136 @@ class TestMultiServerCacheIsolation:
             assert await private._fetch_docs_blob("acme", "widgets", "1.0.0") == private_blob
             mock_get.assert_not_called()
 
+            mock_get.reset_mock()
+            assert await public._fetch_docs_blob("acme", "widgets", "1.0.0") == public_blob
+            mock_get.assert_not_called()
+
         assert _blob_cache.get(
-            _bkey("acme", "widgets", "1.0.0", "https://galaxy.ansible.com"),
+            _identity_bkey(public, "acme", "widgets", "1.0.0"),
         ) == public_blob
         assert _blob_cache.get(
-            _bkey("acme", "widgets", "1.0.0", "https://hub.example.internal"),
+            _identity_bkey(private, "acme", "widgets", "1.0.0"),
         ) == private_blob
+
+    @pytest.mark.asyncio
+    async def test_trailing_slash_and_api_suffix_share_partition(self):
+        with_slash = _skip_discovery(
+            GalaxyClient(
+                base_url="https://hub.example.internal/", server_name="hub",
+            ),
+            base="https://hub.example.internal/api",
+        )
+        with_api = _skip_discovery(
+            GalaxyClient(
+                base_url="https://hub.example.internal/api", server_name="hub",
+            ),
+            base="https://hub.example.internal/api",
+        )
+        assert with_slash._cache_identity() == with_api._cache_identity()
+
+        with patch.object(
+            GalaxyClient, "_safe_api_get", new_callable=AsyncMock,
+        ) as mock_get:
+            mock_get.return_value = {"data": [{"version": "2.0.0"}]}
+            assert await with_slash.latest_version("acme", "widgets") == "2.0.0"
+            assert mock_get.await_count == 1
+
+            mock_get.reset_mock()
+            assert await with_api.latest_version("acme", "widgets") == "2.0.0"
+            mock_get.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_same_server_name_different_urls_stay_isolated(self):
+        """Guards against regressing to server_name-only cache keys."""
+        hub_a = _skip_discovery(
+            GalaxyClient(base_url="https://hub-a.example", server_name="hub"),
+            base="https://hub-a.example/api",
+        )
+        hub_b = _skip_discovery(
+            GalaxyClient(base_url="https://hub-b.example", server_name="hub"),
+            base="https://hub-b.example/api",
+        )
+
+        with patch.object(
+            GalaxyClient, "_safe_api_get", new_callable=AsyncMock,
+        ) as mock_get:
+            mock_get.return_value = {"data": [{"version": "1.0.0"}]}
+            assert await hub_a.latest_version("acme", "widgets") == "1.0.0"
+
+            mock_get.return_value = {"data": [{"version": "2.0.0"}]}
+            assert await hub_b.latest_version("acme", "widgets") == "2.0.0"
+            assert mock_get.await_count == 2
+
+        assert _version_cache.get(_identity_vkey(hub_a, "acme", "widgets")) == "1.0.0"
+        assert _version_cache.get(_identity_vkey(hub_b, "acme", "widgets")) == "2.0.0"
+
+    @pytest.mark.asyncio
+    async def test_same_url_different_server_names_stay_isolated(self):
+        """Same endpoint with different ansible.cfg names/auth must not share."""
+        token_a = _skip_discovery(
+            GalaxyClient(
+                base_url="https://hub.example.internal",
+                server_name="hub_readonly",
+                token="token-a",
+            ),
+            base="https://hub.example.internal/api",
+        )
+        token_b = _skip_discovery(
+            GalaxyClient(
+                base_url="https://hub.example.internal",
+                server_name="hub_admin",
+                token="token-b",
+            ),
+            base="https://hub.example.internal/api",
+        )
+        assert token_a._cache_identity() != token_b._cache_identity()
+
+        with patch.object(
+            GalaxyClient, "_safe_api_get", new_callable=AsyncMock,
+        ) as mock_get:
+            mock_get.return_value = {"data": [{"version": "1.0.0"}]}
+            assert await token_a.latest_version("acme", "widgets") == "1.0.0"
+
+            mock_get.return_value = {"data": [{"version": "9.0.0"}]}
+            assert await token_b.latest_version("acme", "widgets") == "9.0.0"
+            assert mock_get.await_count == 2
+
+
+class TestLegacyCacheRetirement:
+    def test_retire_legacy_cache_files_deletes_old_filenames(self, tmp_path, monkeypatch):
+        legacy = [
+            tmp_path / "galaxy-versions.json",
+            tmp_path / "galaxy-blobs.json",
+            tmp_path / "galaxy-versions-v2.json",
+            tmp_path / "galaxy-blobs-v2.json",
+        ]
+        for path in legacy:
+            path.write_text("{}", encoding="utf-8")
+
+        monkeypatch.setattr(galaxy_mod, "_LEGACY_CACHE_FILES", tuple(legacy))
+        _retire_legacy_cache_files()
+        assert all(not path.exists() for path in legacy)
+
+    def test_ensure_legacy_retired_is_lazy_and_once(self, tmp_path, monkeypatch):
+        legacy = tmp_path / "galaxy-versions.json"
+        legacy.write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(galaxy_mod, "_LEGACY_CACHE_FILES", (legacy,))
+        monkeypatch.setattr(galaxy_mod, "_legacy_retired", False)
+
+        assert legacy.exists()
+        _ensure_legacy_caches_retired()
+        assert not legacy.exists()
+        assert galaxy_mod._legacy_retired is True
+
+        # Second call must be a no-op even if a file reappears.
+        legacy.write_text("{}", encoding="utf-8")
+        _ensure_legacy_caches_retired()
+        assert legacy.exists()
+
+    def test_normalize_cache_base_url(self):
+        assert _normalize_cache_base_url("https://hub.example/") == "https://hub.example"
+        assert _normalize_cache_base_url("https://hub.example/api") == "https://hub.example"
+        assert _normalize_cache_base_url("https://hub.example/api/") == "https://hub.example"
 
 
 class TestSearchCollectionsEdgeCases:
