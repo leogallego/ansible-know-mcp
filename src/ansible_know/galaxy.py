@@ -36,16 +36,34 @@ MAX_DISCOVERY_RESPONSE_SIZE = 100_000  # 100KB — discovery payloads are tiny
 _SAFE_V3_PATH_RE = re.compile(r"^[a-zA-Z0-9/_-]+/?$")
 
 # Module-level caches shared across all GalaxyClient instances.
-# Keys include enough context (namespace, name, version) to avoid
-# cross-instance collisions. Thread-safe via BoundedCache.
-_version_cache: BoundedCache[tuple[str, str], str] = BoundedCache(
+# Keys include server identity (base URL) so private Hub and public Galaxy
+# never collide for the same FQCN. Thread-safe via BoundedCache.
+# Filename bump (v2) retires pre-server-keyed on-disk entries from #190.
+_version_cache: BoundedCache[tuple[str, str, str], str] = BoundedCache(
     max_size=500, ttl=CACHE_TTL_SECONDS,
-    path=CACHE_DIR / "galaxy-versions.json",
+    path=CACHE_DIR / "galaxy-versions-v2.json",
 )
-_blob_cache: BoundedCache[tuple[str, str, str], dict[str, Any]] = BoundedCache(
+_blob_cache: BoundedCache[tuple[str, str, str, str], dict[str, Any]] = BoundedCache(
     max_size=50, ttl=CACHE_TTL_SECONDS,
-    path=CACHE_DIR / "galaxy-blobs.json",
+    path=CACHE_DIR / "galaxy-blobs-v2.json",
 )
+
+_LEGACY_CACHE_FILES = (
+    CACHE_DIR / "galaxy-versions.json",
+    CACHE_DIR / "galaxy-blobs.json",
+)
+
+
+def _retire_legacy_cache_files() -> None:
+    """Remove pre-v2 Galaxy disk caches that omit server identity."""
+    for path in _LEGACY_CACHE_FILES:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            logger.debug("Could not remove legacy Galaxy cache file %s", path)
+
+
+_retire_legacy_cache_files()
 
 
 def clear_cache() -> None:
@@ -100,6 +118,11 @@ class GalaxyClient:
         self._v3_path: str | None = None
         self._discovery_lock = asyncio.Lock()
         self._discovery_failed: bool = False
+
+    @property
+    def _cache_server_id(self) -> str:
+        """Stable cache partition key: normalized Galaxy/Hub base URL."""
+        return self._base
 
     def _build_provenance(
         self,
@@ -413,7 +436,7 @@ class GalaxyClient:
         Raises:
             GalaxyError: If the collection is not found or the API fails.
         """
-        cache_key = (namespace, name)
+        cache_key = (self._cache_server_id, namespace, name)
         cached = _version_cache.get(cache_key)
         if cached is not None:
             return cached
@@ -519,7 +542,7 @@ class GalaxyClient:
     async def _fetch_docs_blob(
         self, namespace: str, name: str, version: str,
     ) -> dict[str, Any]:
-        cache_key = (namespace, name, version)
+        cache_key = (self._cache_server_id, namespace, name, version)
         cached = _blob_cache.get(cache_key)
         if cached is not None:
             return cached
