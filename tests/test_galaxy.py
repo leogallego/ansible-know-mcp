@@ -1104,12 +1104,17 @@ class TestMultiServerCacheIsolation:
 
 
 class TestLegacyCacheRetirement:
+    def test_blob_cache_is_memory_only(self):
+        """#194 workaround: large docs-blobs must not persist to disk."""
+        assert _blob_cache._path is None
+
     def test_retire_legacy_cache_files_deletes_old_filenames(self, tmp_path, monkeypatch):
         legacy = [
             tmp_path / "galaxy-versions.json",
             tmp_path / "galaxy-blobs.json",
             tmp_path / "galaxy-versions-v2.json",
             tmp_path / "galaxy-blobs-v2.json",
+            tmp_path / "galaxy-blobs-v3.json",
         ]
         for path in legacy:
             path.write_text("{}", encoding="utf-8")

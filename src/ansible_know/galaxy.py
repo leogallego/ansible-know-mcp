@@ -40,14 +40,16 @@ _SAFE_V3_PATH_RE = re.compile(r"^[a-zA-Z0-9/_-]+/?$")
 # Keys include server identity (normalized base URL + server name) so private
 # Hub and public Galaxy never collide for the same FQCN, and so two configs
 # that share a URL but differ by name/auth stay partitioned.
-# Filename bump (v3) retires pre-#190 and interim v2 on-disk entries.
+# Version cache persists to disk (tiny). Blob cache is memory-only (#194
+# workaround): docs-blobs are large and rewriting a full JSON file on every
+# put was too expensive; a proper deferred/coalesced disk strategy is TBD.
+# Filename bump (v3) retires pre-#190 and interim v2 version-cache entries.
 _version_cache: BoundedCache[tuple[str, str, str, str], str] = BoundedCache(
     max_size=500, ttl=CACHE_TTL_SECONDS,
     path=CACHE_DIR / "galaxy-versions-v3.json",
 )
 _blob_cache: BoundedCache[tuple[str, str, str, str, str], dict[str, Any]] = BoundedCache(
     max_size=50, ttl=CACHE_TTL_SECONDS,
-    path=CACHE_DIR / "galaxy-blobs-v3.json",
 )
 
 _LEGACY_CACHE_FILES = (
@@ -55,6 +57,7 @@ _LEGACY_CACHE_FILES = (
     CACHE_DIR / "galaxy-blobs.json",
     CACHE_DIR / "galaxy-versions-v2.json",
     CACHE_DIR / "galaxy-blobs-v2.json",
+    CACHE_DIR / "galaxy-blobs-v3.json",
 )
 
 _legacy_retired = False
