@@ -30,18 +30,29 @@ on the previous, uses the same spec-compliant skills throughout.
 
 ### Layer 1: Local (now)
 
-ansible-skill-mcp runs alongside next-mcp on a developer's machine.
+ansible-know-mcp runs alongside next-mcp on a developer's machine.
 Skills are generated in real time from collections resolved via multiple
 endpoints (locally installed, private Automation Hub, public Galaxy).
 
-- Skills land in `ANSIBLE_KNOW_SKILLS_DIR` (our env var, default `./skills/`)
-- next-mcp reads via `type: "local"` source in `ANSIBLE_SKILL_SOURCES`
-  (next-mcp's env var — JSON array of `SkillSource` objects with
-  `{id, type, url, trust}`)
-- Developer gets immediate access via `skill_search`
+- Skills land under the project by default via the `SKILLS_DIR` env chain
+  (`ANSIBLE_KNOW_SKILLS_DIR` → `ANSIBLE_KNOW_PROJECT_DIR/skills` →
+  `CLAUDE_PROJECT_DIR/skills` → `cwd/skills`) — see issue #181
+- **Host-agent discovery:** `generate_collection_skills` updates a managed
+  section in project-root `AGENTS.md` pointing agents at `skills/`.
+  This is Layer 1 host discovery, not repository distribution.
+  Skipped when skills are written outside `{project_root}/skills`
+  (explicit `install_to` or non-project `ANSIBLE_KNOW_SKILLS_DIR`)
+- **next-mcp registry:** dual-config — point `ANSIBLE_SKILL_SOURCES`
+  (or `ansibleEnvironments.skillSources`) `type: "local"` `url` at the
+  same skills directory (`{id, type, url, trust}`). know-mcp and next-mcp
+  do not read each other's env vars
+- next-mcp `_loadLocalSource` currently scans **1 level**, so nested
+  module skills are missed until upstream scan depth is expanded
+  (local tracking: #200; upstream issue TBD)
 
 **Value:** Real-time generation from any collection source. No pre-work,
-no publishing step.
+no publishing step. Host agents find skills via `AGENTS.md` even when
+next-mcp's local scanner is shallow.
 
 ### Layer 2: Repository (next)
 
@@ -50,15 +61,19 @@ consumed by multiple developers.
 
 Two consumption paths:
 - **next-mcp SkillRegistry:** `type: "github"` source. Lola format
-  detection scans 2 levels — works today.
+  detection can load nested skills **only** when the repo uses Lola
+  layout (`{module}/skills/{skill}/SKILL.md`). Raw ansible-know output
+  (`skills/{collection}/{module}/SKILL.md`) is **not** Lola layout —
+  wrap via #149 (or equivalent) before relying on GitHub Lola loading.
+  Vercel/generic GitHub loaders remain 1-level.
 - **Lola:** Users wrap skills into a Lola module and distribute to
-  40+ agents via `lola install`.
+  40+ agents via `lola install` (#149).
 
 **Value:** Persistence, sharing, version control, cross-agent reach.
 
 ### Layer 3: Remote Service (future)
 
-ansible-skill-mcp runs as an HTTP/SSE MCP server deployed by a platform
+ansible-know-mcp runs as an HTTP/SSE MCP server deployed by a platform
 team. Any MCP client calls it directly for on-demand skill generation.
 
 Target environments:
@@ -77,14 +92,17 @@ generated once per collection version, served to all developers.
   Teams can use any combination.
 - **Same output format**: spec-compliant skills at every layer. No
   format variations or compatibility concerns.
-- **Incremental rollout**: Layer 1 works today. Layer 2 requires
-  publishing to a repo. Layer 3 requires infrastructure.
+- **Incremental rollout**: Layer 1 works today (host agents + know MCP
+  tools). Layer 2 requires publishing/packaging. Layer 3 requires
+  infrastructure.
 
 ### Negative
 
-- **Layer 1 gap**: next-mcp's `_loadLocalSource` scans 1 level. Our
-  2-level output (collection/skill) is within spec bounds but missed
-  by the current implementation. Proposed patch pending.
+- **Layer 1 gap (next-mcp)**: `_loadLocalSource` scans 1 level. Our
+  2-level output (collection/skill) is within agentskills.io bounds but
+  missed by the current implementation until upstream expands depth.
+- **Layer 2 packaging**: Lola/GitHub Lola consumption needs a wrap step
+  (#149); not automatic from raw nested trees.
 - **Layer 3 infrastructure**: remote deployment requires hosting,
   authentication, and monitoring. Not trivial for enterprise environments.
 - **Scope creep risk**: three layers could expand the project's scope
@@ -100,16 +118,21 @@ would break. Spec compliance makes the layers possible.
 
 ## Implementation Notes
 
-- **Layer 1** (local): `ANSIBLE_KNOW_SKILLS_DIR` env var (default
-  `./skills/`), configured in `config.py`. next-mcp reads via
-  `ANSIBLE_SKILL_SOURCES` with `type: "local"` pointing to the same path.
-- **Layer 2** (repository): generated skills pushed to a GitHub repo.
-  next-mcp reads via `ANSIBLE_SKILL_SOURCES` with `type: "github"`.
-  Lola-compatible packaging is a separate user concern.
+- **Layer 1** (local): `get_project_root()` + `SKILLS_DIR` in `config.py`;
+  `update_agents_md()` in `skills.py`; wired from `generate_collection_skills`.
+  Alignment details:
+  [`docs/superpowers/specs/2026-08-02-skill-discoverability-alignment.md`](../../superpowers/specs/2026-08-02-skill-discoverability-alignment.md)
+- **Layer 2** (repository): generated skills pushed to a GitHub repo;
+  Lola packaging is a separate user concern (#149).
 - **Layer 3** (remote): FastMCP HTTP/SSE transport (see ADR-0001). Not
-  yet implemented — requires hosting, auth, and monitoring infrastructure.
-- **Scan depth gap**: next-mcp `_loadLocalSource` scans 1 level; our
-  2-level output requires a patch (draft at `tmp/draft-issue-local-scan-depth.md`).
+  yet implemented — requires hosting, auth, and monitoring infrastructure
+  (#71).
+- **Scan depth gap**: next-mcp `_loadLocalSource` / content reload assume
+  flat `{root}/{name}/SKILL.md`. Tracked in #200; upstream patch against
+  ansible/vscode-ansible `next` comes after our side is consistent.
+  Draft notes live in `tmp/draft-issue-local-scan-depth.md` (algorithm
+  must always scan nested skills even when a collection-level
+  `SKILL.md` exists).
 
 ## Related Decisions
 
@@ -125,3 +148,4 @@ would break. Spec compliance makes the layers possible.
 | Date | Author | Change |
 |------|--------|--------|
 | 2026-06-26 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Initial proposal |
+| 2026-08-03 | Leonardo Gallego (Assisted-by: Cursor) | Layer 1: project-scoped skills + AGENTS.md host discovery; correct Lola/GitHub claims; dual-config; scan-depth tracking |

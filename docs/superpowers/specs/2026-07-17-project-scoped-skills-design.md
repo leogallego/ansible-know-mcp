@@ -116,14 +116,20 @@ def update_agents_md(project_root: Path, skills_dir: Path) -> None:
 
 Called from `generate_collection_skills` in `server.py` after all skills are written. Since this is a sync function doing file I/O called from an async tool handler, it must be wrapped in `run_in_executor()` — same pattern as `write_module_skill_package` and friends.
 
-The call in `server.py` must be wrapped in its own `try/except OSError` so AGENTS.md failures don't mask successful skill generation:
+The call in `server.py` must be wrapped so AGENTS.md failures don't mask
+successful skill generation. Catch at least `(OSError, ValidationError)` —
+`validate_install_path` raises `ValidationError`, not `OSError`.
+
+Only call `update_agents_md` when `base_dir.resolve() == (project_root / "skills").resolve()`.
+Otherwise skip (explicit `install_to` or non-project `ANSIBLE_KNOW_SKILLS_DIR`).
 
 ```python
 project_root = get_project_root()
-if project_root is not None and project_root.is_dir():
+project_skills = (project_root / "skills").resolve()
+if project_root.is_dir() and base_dir.resolve() == project_skills:
     try:
         await run_in_executor(skills.update_agents_md, project_root, base_dir)
-    except OSError as exc:
+    except (OSError, ValidationError) as exc:
         logger.warning("AGENTS.md update failed: %s", sanitize_error(str(exc)))
 ```
 
@@ -132,14 +138,15 @@ if project_root is not None and project_root.is_dir():
 Lives in `config.py`.
 
 ```python
-def get_project_root() -> Path | None:
+def get_project_root() -> Path:
 ```
 
-Walks the env var chain (`ANSIBLE_KNOW_PROJECT_DIR` → `CLAUDE_PROJECT_DIR` → `cwd`). Returns `None` if no project root can be determined (defensive — shouldn't happen in practice since `cwd` always exists).
+Walks the env var chain (`ANSIBLE_KNOW_PROJECT_DIR` → `CLAUDE_PROJECT_DIR` →
+`cwd`). Always returns a `Path` (cwd fallback).
 
-`ANSIBLE_KNOW_SKILLS_DIR` is intentionally excluded from this chain — it points to a skills directory, not a project root. A user who sets `ANSIBLE_KNOW_SKILLS_DIR=/opt/shared/skills` doesn't want AGENTS.md written to `/opt/shared/`.
-
-When `get_project_root()` returns `None`, `generate_collection_skills` skips the AGENTS.md update silently (log a debug message). Skills are still written to `SKILLS_DIR` — only the AGENTS.md step is skipped.
+`ANSIBLE_KNOW_SKILLS_DIR` is intentionally excluded from this chain — it points
+to a skills directory, not a project root. AGENTS.md updates are skipped when
+skills were written outside `{project_root}/skills`.
 
 #### Files changed
 
@@ -176,7 +183,7 @@ The AGENTS.md update runs inside `generate_collection_skills`, which already has
 
 ### 5. Documentation
 
-Update tool descriptions for `generate_skill`, `generate_role_skill`, `generate_plugin_skill`, and `generate_collection_skills` to mention that `install_to` defaults to the project directory (not the server directory).
+Update tool descriptions for `generate_skill`, `generate_role_skill`, `generate_plugin_skill`, and `generate_collection_skills` to mention that `install_to` defaults to the project `skills/` directory (not the server cwd and not the project root itself).
 
 Update README registration section to note that `ANSIBLE_KNOW_PROJECT_DIR` can be set for non-Claude clients.
 
@@ -207,9 +214,10 @@ discovery, not Layer 2) and defines dual-config with `ANSIBLE_SKILL_SOURCES`.
 ## Follow-Up Issues
 
 1. **Multi-path search for `list_skills`/`get_skill`** (#182): search both project-local and a secondary path (e.g., pre-baked devcontainer skills). Enables shared + project-specific skill coexistence. Blocked on this design landing first.
-2. **`generate_collection_skills` AGENTS.md for single-module generators**: if users frequently call `generate_skill` directly (not via collection batch), consider updating AGENTS.md from those tools too.
-3. ~~**Update ADR-0008**: add AGENTS.md as a third Layer 2 consumption path~~ — **Superseded** by the alignment addendum: AGENTS.md is Layer 1; ADR-0008 revision is tracked under #196.
-4. **Validate `SKILLS_DIR` against sensitive prefixes**: pre-existing gap — `ANSIBLE_KNOW_SKILLS_DIR` env var is not validated through `validate_install_path()`. Include in #181 implementation (see alignment addendum).
+2. **AGENTS.md from single-module generators** (intentional non-goal of #181): only `generate_collection_skills` updates AGENTS.md. Per-module/role/plugin generators do not — avoids noisy rewrites when called in a loop. Revisit only if operators commonly generate one-off skills without the collection batch tool. No GitHub issue yet; not required for this design.
+3. ~~**Update ADR-0008**~~ — **Done in #181 / PR #184**: ADR-0008 revised for Layer 1 AGENTS.md + dual-config; Lola/GitHub claims corrected.
+4. ~~**Validate `SKILLS_DIR` against sensitive prefixes**~~ — **Done in #181 / PR #184**: `SKILLS_DIR` resolution runs through `validate_install_path()`.
+5. **next-mcp local scan depth** (#200) — nested module skills missed by `_loadLocalSource` (1-level). Upstream vscode-ansible patch after our side is consistent.
 
 ## References
 

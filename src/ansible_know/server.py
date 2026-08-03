@@ -905,7 +905,8 @@ async def generate_skill(
     install_to: Annotated[
         str | None,
         "Optional absolute path to install the skill to. Defaults to the project "
-        "directory (via ANSIBLE_KNOW_PROJECT_DIR or CLAUDE_PROJECT_DIR env vars, then cwd).",
+        "skills/ directory (via ANSIBLE_KNOW_SKILLS_DIR, or "
+        "ANSIBLE_KNOW_PROJECT_DIR/CLAUDE_PROJECT_DIR/cwd + /skills).",
     ] = None,
     ctx: Context | None = None,
 ) -> str | ErrorResponse:
@@ -971,7 +972,8 @@ async def generate_role_skill(
     install_to: Annotated[
         str | None,
         "Optional absolute path to install the skill to. Defaults to the project "
-        "directory (via ANSIBLE_KNOW_PROJECT_DIR or CLAUDE_PROJECT_DIR env vars, then cwd).",
+        "skills/ directory (via ANSIBLE_KNOW_SKILLS_DIR, or "
+        "ANSIBLE_KNOW_PROJECT_DIR/CLAUDE_PROJECT_DIR/cwd + /skills).",
     ] = None,
     ctx: Context | None = None,
 ) -> str | ErrorResponse:
@@ -1042,7 +1044,8 @@ async def generate_plugin_skill(
     install_to: Annotated[
         str | None,
         "Optional absolute path to install the skill to. Defaults to the project "
-        "directory (via ANSIBLE_KNOW_PROJECT_DIR or CLAUDE_PROJECT_DIR env vars, then cwd).",
+        "skills/ directory (via ANSIBLE_KNOW_SKILLS_DIR, or "
+        "ANSIBLE_KNOW_PROJECT_DIR/CLAUDE_PROJECT_DIR/cwd + /skills).",
     ] = None,
     ctx: Context | None = None,
 ) -> str | ErrorResponse:
@@ -1109,7 +1112,8 @@ async def generate_collection_skills(
     install_to: Annotated[
         str | None,
         "Optional absolute path to install skills to. Defaults to the project "
-        "directory (via ANSIBLE_KNOW_PROJECT_DIR or CLAUDE_PROJECT_DIR env vars, then cwd).",
+        "skills/ directory (via ANSIBLE_KNOW_SKILLS_DIR, or "
+        "ANSIBLE_KNOW_PROJECT_DIR/CLAUDE_PROJECT_DIR/cwd + /skills).",
     ] = None,
     ctx: Context | None = None,
 ) -> GenerateCollectionSkillsResult | ErrorResponse:
@@ -1313,12 +1317,20 @@ async def generate_collection_skills(
 
         from ansible_know.config import get_project_root
 
+        # AGENTS.md is project-root discovery only. Skip when skills were written
+        # outside {project_root}/skills (explicit install_to or ANSIBLE_KNOW_SKILLS_DIR).
         project_root = get_project_root()
-        if project_root.is_dir():
+        project_skills = (project_root / "skills").resolve()
+        if project_root.is_dir() and base_dir.resolve() == project_skills:
             try:
                 await run_in_executor(skills.update_agents_md, project_root, base_dir)
-            except OSError as exc:
+            except (OSError, ValidationError) as exc:
                 logger.warning("AGENTS.md update failed: %s", sanitize_error(str(exc)))
+        elif project_root.is_dir():
+            logger.debug(
+                "Skipping AGENTS.md update: skills dir %s is not %s",
+                base_dir, project_skills,
+            )
 
         if ctx:
             await ctx.report_progress(progress=total, total=total)

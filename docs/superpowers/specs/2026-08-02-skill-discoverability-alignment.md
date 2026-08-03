@@ -159,9 +159,8 @@ Managed section **must not**:
 | **#181** | Implement; body/comments: dual-config, A+B only, link this doc; harden `SKILLS_DIR` validation | Our side — now |
 | **#182** | Comment: blocked on #181; know-only multi-path; not next-mcp | Our side — after #181 |
 | **#149** | Comment: required for Layer 2 Lola/GitHub Lola; not a substitute for local scan depth | Our side — later |
-| **#196** | Checklist: Accept ADR-0007; revise ADR-0008 layers/`AGENTS.md`/Lola claims; fix July 31 skill tree example; clear stale project-strategy open items (#148 done) | Our side — with or right after #181 |
-| **Upstream scan depth** | Keep draft at `tmp/draft-issue-local-scan-depth.md`; **fix algorithm before filing** (see below) | Upstream — after our docs/issues agree |
-| Optional tracker | Open “Skill discoverability alignment” only if useful to link 181/182/149/196 + upstream | Optional |
+| **#196** | Remaining v0.7 docs drift only (service-contracts counts, ADR-0003, ADR-0007 Accepted, July 31 comparison, strategy table). ADR-0008 / discoverability owned by #181 | After #181 |
+| **#200** | next-mcp local scan depth tracking; draft at `tmp/draft-issue-local-scan-depth.md` (fix algorithm before filing upstream) | After #181; then upstream |
 
 ### Upstream draft fix (do not file until our wave lands)
 
