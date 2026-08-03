@@ -116,6 +116,10 @@ class TestGetCollectionManifestTool:
 
 
 class TestListSkillsTool:
+    @pytest.fixture(autouse=True)
+    def _clear_skills_path(self, monkeypatch):
+        monkeypatch.delenv("ANSIBLE_KNOW_SKILLS_PATH", raising=False)
+
     @pytest.mark.asyncio
     async def test_returns_empty_when_no_skills(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
@@ -161,8 +165,37 @@ class TestListSkillsTool:
         result = await list_skills(collection="bad!")
         assert "error" in result
 
+    @pytest.mark.asyncio
+    async def test_merges_skills_path_dirs(self, tmp_path, monkeypatch):
+        project = tmp_path / "project"
+        bundled = tmp_path / "bundled"
+        for root, name, desc in (
+            (project, "netbox.netbox", "project"),
+            (bundled, "netbox.netbox", "bundled"),
+            (bundled, "ansible.builtin", "builtin"),
+        ):
+            d = root / name
+            d.mkdir(parents=True)
+            (d / "SKILL.md").write_text(
+                f"---\nname: {name}\ndescription: {desc}\n---\n"
+            )
+        monkeypatch.setenv(
+            "ANSIBLE_KNOW_SKILLS_PATH",
+            f"{project}:{bundled}",
+        )
+        from ansible_know.server import list_skills
+        result = await list_skills()
+        assert isinstance(result, list)
+        by_name = {e["name"]: e["description"] for e in result}
+        assert by_name["netbox.netbox"] == "project"
+        assert by_name["ansible.builtin"] == "builtin"
+
 
 class TestGetSkillTool:
+    @pytest.fixture(autouse=True)
+    def _clear_skills_path(self, monkeypatch):
+        monkeypatch.delenv("ANSIBLE_KNOW_SKILLS_PATH", raising=False)
+
     @pytest.mark.asyncio
     async def test_returns_not_found(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
@@ -200,6 +233,22 @@ class TestGetSkillTool:
         from ansible_know.server import get_skill
         result = await get_skill("ansible.builtin.copy")
         assert result == "flat skill content"
+
+    @pytest.mark.asyncio
+    async def test_skills_path_first_match_wins(self, tmp_path, monkeypatch):
+        project = tmp_path / "project"
+        bundled = tmp_path / "bundled"
+        for root, content in ((project, "from project"), (bundled, "from bundled")):
+            d = root / "netbox.netbox"
+            d.mkdir(parents=True)
+            (d / "SKILL.md").write_text(content)
+        monkeypatch.setenv(
+            "ANSIBLE_KNOW_SKILLS_PATH",
+            f"{project}:{bundled}",
+        )
+        from ansible_know.server import get_skill
+        result = await get_skill("netbox.netbox")
+        assert result == "from project"
 
 
 class TestGenerateSkillTool:

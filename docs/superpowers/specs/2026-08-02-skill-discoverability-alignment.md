@@ -157,7 +157,7 @@ Managed section **must not**:
 | Issue | Action after this addendum | Phase |
 |-------|----------------------------|-------|
 | **#181** | Implement; body/comments: dual-config, A+B only, link this doc; harden `SKILLS_DIR` validation | Our side — now |
-| **#182** | Comment: blocked on #181; know-only multi-path; not next-mcp | Our side — after #181 |
+| **#182** | Done: `ANSIBLE_KNOW_SKILLS_PATH` for know-mcp `list_skills` / `get_skill` / `skills://*` | Our side — shipped |
 | **#149** | Comment: required for Layer 2 Lola/GitHub Lola; not a substitute for local scan depth | Our side — later |
 | **#196** | Remaining v0.7 docs drift only (service-contracts counts, ADR-0003, ADR-0007 Accepted, July 31 comparison, strategy table). ADR-0008 / discoverability owned by #181 | After #181 |
 | **#200** | next-mcp local scan depth tracking; draft at `tmp/draft-issue-local-scan-depth.md` (fix algorithm before filing upstream) | After #181; then upstream |

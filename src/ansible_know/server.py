@@ -848,6 +848,9 @@ async def list_skills(
 ) -> list[SkillEntry] | ErrorResponse:
     """List all available generated skills. Returns name, description, path for each.
 
+    Searches ``ANSIBLE_KNOW_SKILLS_PATH`` (colon-separated) when set, otherwise
+    the single ``SKILLS_DIR``. Duplicate names keep the first path's entry.
+
     Returns: [{"name": str, "description": str, "path": str}, ...] or {"error": str} on failure.
     """
     logger.info("list_skills collection=%r", collection)
@@ -858,10 +861,10 @@ async def list_skills(
             return {"error": str(exc)}
 
     try:
-        from ansible_know.config import SKILLS_DIR
+        from ansible_know.config import get_skills_dirs
         from ansible_know.skills import list_skills_sync
 
-        return await run_in_executor(list_skills_sync, SKILLS_DIR, collection)
+        return await run_in_executor(list_skills_sync, get_skills_dirs(), collection)
     except Exception as exc:
         logger.warning("list_skills failed: %s", exc)
         return {"error": sanitize_error(str(exc))}
@@ -877,6 +880,9 @@ async def get_skill(
 ) -> str | ErrorResponse:
     """Read a specific skill's SKILL.md content by name.
 
+    Searches ``ANSIBLE_KNOW_SKILLS_PATH`` (colon-separated) when set, otherwise
+    the single ``SKILLS_DIR``. First match wins.
+
     Returns: SKILL.md content as str, or {"error": str} on failure/not found.
     """
     logger.info("get_skill name=%r", skill_name)
@@ -886,10 +892,10 @@ async def get_skill(
         return {"error": str(exc)}
 
     try:
-        from ansible_know.config import SKILLS_DIR
+        from ansible_know.config import get_skills_dirs
         from ansible_know.skills import get_skill_sync
 
-        return await run_in_executor(get_skill_sync, SKILLS_DIR, skill_name)
+        return await run_in_executor(get_skill_sync, get_skills_dirs(), skill_name)
     except FileNotFoundError as exc:
         return {"error": str(exc)}
     except ValidationError as exc:
@@ -1392,10 +1398,10 @@ async def clear_cache(
 def resource_skills_list() -> str:
     import json
 
-    from ansible_know.config import SKILLS_DIR
+    from ansible_know.config import get_skills_dirs
     from ansible_know.skills import list_skills_sync
 
-    entries = list_skills_sync(SKILLS_DIR, collection=None)
+    entries = list_skills_sync(get_skills_dirs(), collection=None)
     return json.dumps([e["name"] for e in entries], indent=2)
 
 
@@ -1405,7 +1411,7 @@ def resource_skills_list() -> str:
     description="Read a generated skill's SKILL.md by FQCN or collection namespace",
 )
 def resource_skill_content(skill_name: str) -> str:
-    from ansible_know.config import SKILLS_DIR
+    from ansible_know.config import get_skills_dirs
     from ansible_know.skills import get_skill_sync
 
     try:
@@ -1414,7 +1420,7 @@ def resource_skill_content(skill_name: str) -> str:
         return str(exc)
 
     try:
-        return get_skill_sync(SKILLS_DIR, skill_name)
+        return get_skill_sync(get_skills_dirs(), skill_name)
     except FileNotFoundError as exc:
         return str(exc)
     except ValidationError as exc:
