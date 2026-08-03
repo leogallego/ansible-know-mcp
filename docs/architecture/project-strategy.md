@@ -1,6 +1,6 @@
 # ansible-know-mcp: Project Strategy and Evolution
 
-**Last updated:** 2026-06-26
+**Last updated:** 2026-08-03
 **Status:** Active
 
 ---
@@ -9,7 +9,7 @@
 
 **ansible-know-mcp** is a community MCP server for Ansible knowledge retrieval and AI skill generation.
 
-| Dimension | Current (v0.6.0) |
+| Dimension | Current (v0.7.0) |
 |---|---|
 | Language | Python (FastMCP) |
 | License | GPL-3.0-or-later |
@@ -17,8 +17,8 @@
 | Tools | 18 |
 | Resources | 6 |
 | Prompts | 5 |
-| Tests | 776 (unit + integration) |
-| Modules | 21 Python source modules |
+| Tests | 974 collected (unit + integration; integration skipped by default) |
+| Modules | 23 Python source modules |
 
 ### Core capabilities
 
@@ -89,8 +89,8 @@ All significant decisions are recorded in [docs/architecture/adr/](adr/). Decisi
 | ADR | Title | Status | Summary |
 |---|---|---|---|
 | [0006](adr/0006-upstream-first-integration.md) | Upstream-First Integration with @ansible/mcp-server (next) | Proposed | Contribute knowledge features upstream, keep skill generation |
-| [0007](adr/0007-agentskills-spec-compliance.md) | agentskills.io Specification Compliance | Proposed | One output format, spec-compliant; naming and metadata conventions |
-| [0008](adr/0008-three-layer-distribution.md) | Three-Layer Skill Distribution Model | Proposed | Local → Repository → Remote, additive layers |
+| [0007](adr/0007-agentskills-spec-compliance.md) | agentskills.io Specification Compliance | Accepted | One output format, spec-compliant; naming and metadata conventions (#148) |
+| [0008](adr/0008-three-layer-distribution.md) | Three-Layer Skill Distribution Model | Proposed | Local → Repository → Remote; Layer 1 AGENTS.md + dual-config (#181/#184) |
 
 Prior decisions:
 
@@ -114,8 +114,8 @@ The Ansible DevTools MCP server, bundled in the VS Code extension. Our primary i
 - **Repo:** `github.com/ansible/vscode-ansible`
 - **Version:** 0.0.1 (pre-release)
 - **Relationship:** We upstream knowledge features; they distribute skills via the SkillRegistry
-- **Integration point:** Shared skill directory (local) or GitHub source (Lola format, 2-level scan)
-- **Gap:** `_loadLocalSource` scans 1 level; spec recommends 4-6. Patch proposed.
+- **Integration point:** Shared project `skills/` directory (Layer 1 dual-config + `AGENTS.md`; see ADR-0008 / #181) or GitHub source after Lola packaging (#149)
+- **Gap:** `_loadLocalSource` scans 1 level; tracked in [#200](https://github.com/leogallego/ansible-know-mcp/issues/200) (upstream later)
 - **Pitch document:** [upstream-integration-proposal-2026-06-26.md](../research/upstream-integration-proposal-2026-06-26.md)
 
 ### aap-mcp-server
@@ -141,17 +141,18 @@ The standard specification for AI agent skills.
 
 - **Spec:** `agentskills.io/specification`
 - **Validator:** `github.com/agentskills/agentskills/tree/main/skills-ref`
-- **Our compliance:** Issue #148. Fixing name format, metadata fields, directory naming.
+- **Our compliance:** #148 closed; ADR-0007 Accepted. Nested kebab layout + metadata shipped.
 - **See:** [ADR-0007](adr/0007-agentskills-spec-compliance.md)
 
 ---
 
 ## Open Items
 
-1. **Finalize issue #148** — update body with all decisions from ADR-0007
-2. **Draft next-mcp scan depth proposal** — venue (issue/comment/PR) and wording
-3. **Update upstream integration proposal** — add agentskills.io findings and three-layer model
-4. **Validate with `skills-ref`** — generate sample skills with new format, run the validator
+1. ~~**Finalize issue #148**~~ — **Done** (closed; ADR-0007 Accepted)
+2. ~~**Draft next-mcp scan depth proposal**~~ — **Tracked** as [#200](https://github.com/leogallego/ansible-know-mcp/issues/200)
+3. **#182** — multi-path `list_skills` / `get_skill`
+4. **#149** — Lola packaging helper (Layer 2)
+5. **#189 / #125** — FastMCP 4 / MCP 2026-07-28 session migration (blocked on stable release)
 
 ---
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (with known technical debt)
+Accepted (with known technical debt; largely mitigated by PR #87 SharedState / SessionManager)
 
 ## Date
 
@@ -77,32 +77,30 @@ Thread safety measures applied:
   `clear_cache()` calls between tests. Existing tests already do this,
   but it is fragile. (`BoundedCache.clear()` makes this cleaner than
   manual dict/lock manipulation.)
-- **Thread safety gap**: `server.py` `_missing_collections` relies on
-  CPython GIL atomicity, which is an implementation detail, not a
-  language guarantee. (The `docs.py` thread-safety gap was fixed in
-  PR #60 via `BoundedCache`.)
-- **No reset mechanism**: there is no way to reset the server's state
-  without restarting the process. This makes it impossible to run multiple
-  isolated test scenarios in the same process.
-- **State scattering**: mutable state is spread across 4 modules, making
-  it hard to reason about the full state of the server at any point in time.
-  (`BoundedCache` provides a consistent abstraction but state is still
-  scattered across modules.)
-- **Singleton coupling**: functions implicitly depend on module-level state,
-  making their signatures incomplete — the function's behavior depends on
-  hidden global state, not just its arguments.
+- ~~**Thread safety gap**: `server.py` `_missing_collections` relies on
+  CPython GIL atomicity.~~ **Mitigated in PR #87** — `missing_collections`
+  is per-session on `ServerState` (async-only within a session).
+- **No reset mechanism**: there is no way to fully reset process-wide
+  state without restarting. Per-session state is scoped by `SessionManager`
+  TTL eviction.
+- **State scattering**: mutable state remains across modules
+  (`BoundedCache` instances, Galaxy clients), though session/process
+  boundaries are clearer after PR #87.
+- **Singleton coupling**: some Domain/External helpers still read
+  module-level caches; Orchestration obtains session state via
+  `Context` / lifespan.
 
 ### Known Technical Debt
 
 1. ~~`docs.py` `_manifest_cache` needs an `asyncio.Lock`.~~ **Fixed in PR #60**
    — now uses `BoundedCache` with internal `threading.Lock`.
-2. `server.py` `_missing_collections` should use explicit synchronization.
-3. All module-level state should eventually be encapsulated in a
-   `ServerState` or `SessionContext` class that is:
-   - Created at lifespan start
-   - Passed through the lifespan context
-   - Accessible to tool handlers via `Context`
-   - Resettable for testing
+2. ~~`server.py` `_missing_collections` should use explicit synchronization.~~
+   **Mitigated in PR #87** — per-session `ServerState.missing_collections`.
+3. ~~Encapsulate module-level state in `ServerState` / session context.~~
+   **Largely done in PR #87** — `SharedState` (process-wide) +
+   `SessionManager` / `ServerState` (per-session) + `CollectionManager`.
+   Residual: some caches remain module-scoped by design (`galaxy.py`,
+   `docs.py` `BoundedCache`).
 
 ### Partial Mitigation: BoundedCache (PR #60)
 
@@ -147,3 +145,4 @@ to use module-level state remains unchanged.
 | 2026-06-19 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Initial decision |
 | 2026-06-19 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Updated with BoundedCache mitigation (PR #60) |
 | 2026-06-26 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Added Implementation Notes, Related Decisions, Revision History |
+| 2026-08-03 | Leonardo Gallego (Assisted-by: Cursor) | Acknowledge PR #87 SharedState / SessionManager mitigation in Status and debt list |
