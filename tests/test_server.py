@@ -280,6 +280,90 @@ class TestGenerateCollectionSkillsTool:
         assert result["succeeded"] == 1
         assert (tmp_path / "netbox-netbox" / "netbox-device" / "SKILL.md").exists()
 
+    @pytest.mark.asyncio
+    async def test_updates_agents_md(self, tmp_path, mock_ansible_doc, monkeypatch):
+        """generate_collection_skills calls update_agents_md after writing skills."""
+        responses = [
+            json.dumps(SAMPLE_MODULE_LIST),
+            json.dumps({}),
+        ]
+        responses.extend([json.dumps({})] * 14)
+        responses.extend([json.dumps(SAMPLE_MODULE_DOC)] * 4)
+
+        mock_ansible_doc.side_effect = responses
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", skills_dir)
+
+        mock_update = MagicMock()
+        with patch("ansible_know.skills.update_agents_md", mock_update), \
+             patch("ansible_know.config.get_project_root", return_value=tmp_path):
+            from ansible_know.server import generate_collection_skills
+            result = await generate_collection_skills(
+                "ansible.builtin", install_to=str(skills_dir),
+            )
+
+        assert result["succeeded"] + result["failed"] == result["total"]
+        mock_update.assert_called_once_with(tmp_path, skills_dir)
+
+    @pytest.mark.asyncio
+    async def test_agents_md_validation_error_does_not_mask_success(
+        self, tmp_path, mock_ansible_doc, monkeypatch,
+    ):
+        """ValidationError from update_agents_md must not turn success into error."""
+        from ansible_know.errors import ValidationError
+
+        responses = [
+            json.dumps(SAMPLE_MODULE_LIST),
+            json.dumps({}),
+        ]
+        responses.extend([json.dumps({})] * 14)
+        responses.extend([json.dumps(SAMPLE_MODULE_DOC)] * 4)
+        mock_ansible_doc.side_effect = responses
+
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", skills_dir)
+
+        mock_update = MagicMock(side_effect=ValidationError("Install path not allowed"))
+        with patch("ansible_know.skills.update_agents_md", mock_update), \
+             patch("ansible_know.config.get_project_root", return_value=tmp_path):
+            from ansible_know.server import generate_collection_skills
+            result = await generate_collection_skills(
+                "ansible.builtin", install_to=str(skills_dir),
+            )
+
+        assert "error" not in result
+        assert result["succeeded"] + result["failed"] == result["total"]
+
+    @pytest.mark.asyncio
+    async def test_skips_agents_md_when_install_to_diverges(
+        self, tmp_path, mock_ansible_doc, monkeypatch,
+    ):
+        """Do not update AGENTS.md when skills land outside project skills/."""
+        responses = [
+            json.dumps(SAMPLE_MODULE_LIST),
+            json.dumps({}),
+        ]
+        responses.extend([json.dumps({})] * 14)
+        responses.extend([json.dumps(SAMPLE_MODULE_DOC)] * 4)
+        mock_ansible_doc.side_effect = responses
+
+        other_dir = tmp_path / "elsewhere"
+        other_dir.mkdir()
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path / "skills")
+
+        mock_update = MagicMock()
+        with patch("ansible_know.skills.update_agents_md", mock_update), \
+             patch("ansible_know.config.get_project_root", return_value=tmp_path):
+            from ansible_know.server import generate_collection_skills
+            result = await generate_collection_skills(
+                "ansible.builtin", install_to=str(other_dir),
+            )
+
+        assert "error" not in result
+        mock_update.assert_not_called()
+
 
 class TestFQCNValidation:
     @pytest.mark.asyncio

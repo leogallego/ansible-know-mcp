@@ -10,6 +10,7 @@ import functools
 import logging
 import re
 import stat
+import threading
 from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -19,6 +20,7 @@ from ansible_know.tagging import derive_tags
 from ansible_know.validation import (
     split_collection_fqcn,
     truncate_response,
+    validate_install_path,
     validate_path_containment,
 )
 
@@ -35,6 +37,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger("ansible_know")
 
 PLUGIN_SKILL_DIR_RE = re.compile(r"^([a-z]+)-(.+)$")
+_AGENTS_MD_START = "<!-- ansible-know:skills:start -->"
+_AGENTS_MD_END = "<!-- ansible-know:skills:end -->"
+_agents_md_lock = threading.Lock()
 
 __all__ = [
     "PLUGIN_SKILL_DIR_RE",
@@ -53,6 +58,7 @@ __all__ = [
     "render_role_skill",
     "render_skill",
     "role_skill_name",
+    "update_agents_md",
     "write_collection_skill_package",
     "write_module_skill_package",
     "write_plugin_skill_package",
@@ -324,6 +330,72 @@ def get_skill_sync(skills_dir: Path, skill_name: str) -> str:
             return truncate_response(skill_path.read_text())
 
     raise FileNotFoundError(f"Skill '{skill_name}' not found.")
+
+
+def update_agents_md(project_root: Path, skills_dir: Path) -> None:
+    """Write or update the managed AGENTS.md section listing generated skills."""
+    validate_install_path(str(project_root))
+
+    collections = []
+    example_path = ""
+    example_dir = ""
+    if skills_dir.exists():
+        for entry in sorted(skills_dir.iterdir()):
+            try:
+                if not entry.is_dir() or entry.is_symlink():
+                    continue
+                if (entry / "SKILL.md").exists():
+                    fqcn = skill_dir_to_collection_fqcn(entry.name)
+                    collections.append(fqcn)
+                    if not example_path:
+                        for sub in sorted(entry.iterdir()):
+                            if sub.is_dir() and not sub.is_symlink() and (sub / "SKILL.md").exists():
+                                example_path = f"{fqcn}.{skill_dir_to_short_fqcn(sub.name)}"
+                                example_dir = f"skills/{entry.name}/{sub.name}/SKILL.md"
+                                break
+            except OSError:
+                continue
+
+    example_line = ""
+    if example_path:
+        example_line = f"\n(e.g., `{example_path}` → `{example_dir}`)."
+    else:
+        example_line = "."
+
+    section = (
+        f"{_AGENTS_MD_START}\n"
+        f"## Ansible Module Skills\n"
+        f"\n"
+        f"Generated Ansible module documentation skills are in `skills/`.\n"
+        f"Before writing tasks for a module, check for a SKILL.md in the\n"
+        f"matching collection and module directory{example_line}\n"
+        f"\n"
+        f"Available collections: {', '.join(collections)}\n"
+        f"{_AGENTS_MD_END}\n"
+    )
+
+    agents_md_path = project_root / "AGENTS.md"
+
+    with _agents_md_lock:
+        if not agents_md_path.exists():
+            agents_md_path.write_text(section)
+            return
+
+        content = agents_md_path.read_text()
+
+        if _AGENTS_MD_START in content and _AGENTS_MD_END in content:
+            start_idx = content.index(_AGENTS_MD_START)
+            end_idx = content.index(_AGENTS_MD_END) + len(_AGENTS_MD_END)
+            if content[end_idx:end_idx + 1] == "\n":
+                end_idx += 1
+            content = content[:start_idx] + section + content[end_idx:]
+            agents_md_path.write_text(content)
+            return
+
+        if not content.endswith("\n"):
+            content += "\n"
+        content += "\n" + section
+        agents_md_path.write_text(content)
 
 
 def _build_example_args(params: list[ParamDict], examples_yaml: str = "") -> str:

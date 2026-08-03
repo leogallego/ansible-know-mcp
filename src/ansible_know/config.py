@@ -35,12 +35,26 @@ except PackageNotFoundError:
     USER_AGENT = "ansible-know-mcp/unknown (+https://github.com/leogallego/ansible-know-mcp)"
 
 
+def get_project_root() -> Path:
+    """Return the project root from env vars, or cwd as fallback."""
+    for var in ("ANSIBLE_KNOW_PROJECT_DIR", "CLAUDE_PROJECT_DIR"):
+        value = os.environ.get(var, "").strip()
+        if value:
+            return Path(value)
+    return Path.cwd()
+
+
 def __getattr__(name: str):
     if name == "SKILLS_DIR":
-        value = Path(os.environ.get(
-            "ANSIBLE_KNOW_SKILLS_DIR",
-            Path.cwd() / "skills",
-        ))
+        # Lazy import: validation is Foundation and must not import config.
+        from ansible_know.validation import validate_install_path
+
+        explicit = os.environ.get("ANSIBLE_KNOW_SKILLS_DIR", "").strip()
+        if explicit:
+            value = validate_install_path(explicit)
+        else:
+            root = get_project_root()
+            value = validate_install_path(str(root / "skills"))
         globals()["SKILLS_DIR"] = value
         return value
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

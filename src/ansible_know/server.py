@@ -902,7 +902,12 @@ async def get_skill(
 @mcp.tool(annotations=ToolAnnotations(idempotentHint=True))
 async def generate_skill(
     module_name: Annotated[str, "Fully-qualified module name (e.g. 'ansible.builtin.copy')"],
-    install_to: Annotated[str | None, "Optional absolute path to install the skill to"] = None,
+    install_to: Annotated[
+        str | None,
+        "Optional absolute path to install the skill to. Defaults to the project "
+        "skills/ directory (via ANSIBLE_KNOW_SKILLS_DIR, or "
+        "ANSIBLE_KNOW_PROJECT_DIR/CLAUDE_PROJECT_DIR/cwd + /skills).",
+    ] = None,
     ctx: Context | None = None,
 ) -> str | ErrorResponse:
     """Generate a skill package for one module.
@@ -964,7 +969,12 @@ async def generate_skill(
 @mcp.tool(annotations=ToolAnnotations(idempotentHint=True))
 async def generate_role_skill(
     role_name: Annotated[str, "Fully-qualified role name (e.g. 'fedora.linux_system_roles.timesync')"],
-    install_to: Annotated[str | None, "Optional absolute path to install the skill to"] = None,
+    install_to: Annotated[
+        str | None,
+        "Optional absolute path to install the skill to. Defaults to the project "
+        "skills/ directory (via ANSIBLE_KNOW_SKILLS_DIR, or "
+        "ANSIBLE_KNOW_PROJECT_DIR/CLAUDE_PROJECT_DIR/cwd + /skills).",
+    ] = None,
     ctx: Context | None = None,
 ) -> str | ErrorResponse:
     """Generate a skill package for one role.
@@ -1031,7 +1041,12 @@ async def generate_plugin_skill(
         "strategy, callback, inventory, cache, cliconf, httpapi, "
         "netconf, shell, or vars)",
     ],
-    install_to: Annotated[str | None, "Optional absolute path to install the skill to"] = None,
+    install_to: Annotated[
+        str | None,
+        "Optional absolute path to install the skill to. Defaults to the project "
+        "skills/ directory (via ANSIBLE_KNOW_SKILLS_DIR, or "
+        "ANSIBLE_KNOW_PROJECT_DIR/CLAUDE_PROJECT_DIR/cwd + /skills).",
+    ] = None,
     ctx: Context | None = None,
 ) -> str | ErrorResponse:
     """Generate a skill package for one plugin.
@@ -1094,12 +1109,19 @@ async def generate_plugin_skill(
 @mcp.tool(annotations=ToolAnnotations(idempotentHint=True))
 async def generate_collection_skills(
     collection_namespace: Annotated[str, "Collection namespace (e.g. 'netbox.netbox')"],
-    install_to: Annotated[str | None, "Optional absolute path to install skills to"] = None,
+    install_to: Annotated[
+        str | None,
+        "Optional absolute path to install skills to. Defaults to the project "
+        "skills/ directory (via ANSIBLE_KNOW_SKILLS_DIR, or "
+        "ANSIBLE_KNOW_PROJECT_DIR/CLAUDE_PROJECT_DIR/cwd + /skills).",
+    ] = None,
     ctx: Context | None = None,
 ) -> GenerateCollectionSkillsResult | ErrorResponse:
     """Batch generate skills for an entire collection.
 
     Generates/updates the collection MANIFEST.json as a byproduct.
+    Updates AGENTS.md in the project root with a managed section
+    listing available collections for cross-agent discovery.
     Returns {"succeeded": int, "failed": int, "total": int, "manifest": dict, "collection_skill": str},
     or {"error": str} on failure.
     """
@@ -1293,6 +1315,23 @@ async def generate_collection_skills(
             metadata_list, installed_version, plugins_metadata,
         )
 
+        from ansible_know.config import get_project_root
+
+        # AGENTS.md is project-root discovery only. Skip when skills were written
+        # outside {project_root}/skills (explicit install_to or ANSIBLE_KNOW_SKILLS_DIR).
+        project_root = get_project_root()
+        project_skills = (project_root / "skills").resolve()
+        if project_root.is_dir() and base_dir.resolve() == project_skills:
+            try:
+                await run_in_executor(skills.update_agents_md, project_root, base_dir)
+            except (OSError, ValidationError) as exc:
+                logger.warning("AGENTS.md update failed: %s", sanitize_error(str(exc)))
+        elif project_root.is_dir():
+            logger.debug(
+                "Skipping AGENTS.md update: skills dir %s is not %s",
+                base_dir, project_skills,
+            )
+
         if ctx:
             await ctx.report_progress(progress=total, total=total)
 
@@ -1304,8 +1343,8 @@ async def generate_collection_skills(
             "manifest": manifest,
             "collection_skill": collection_namespace,
         }
-    except ValidationError:
-        raise
+    except ValidationError as exc:
+        return {"error": str(exc)}
     except Exception as exc:
         logger.warning("generate_collection_skills failed: %s", exc)
         return {"error": maybe_add_hint(sanitize_error(str(exc)), collection_namespace)}
