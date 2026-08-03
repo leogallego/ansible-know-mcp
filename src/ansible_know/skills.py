@@ -252,6 +252,7 @@ def _list_nested_skills(
 
 
 def _normalize_skills_dirs(skills_dirs: Path | Sequence[Path]) -> list[Path]:
+    """Normalize a single Path or a sequence of Paths to a list."""
     if isinstance(skills_dirs, Path):
         return [skills_dirs]
     return list(skills_dirs)
@@ -262,7 +263,7 @@ def _list_skills_one_dir(
 ) -> list[SkillEntry]:
     """List skills from a single directory (no multi-path merge)."""
     results: list[SkillEntry] = []
-    if not skills_dir.exists():
+    if not skills_dir.is_dir():
         return results
 
     if collection:

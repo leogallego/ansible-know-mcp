@@ -885,3 +885,12 @@ class TestMultiPathSkills:
         results = list_skills_sync(tmp_path, collection=None)
         assert len(results) == 1
         assert get_skill_sync(tmp_path, "netbox.netbox").startswith("---")
+
+    def test_skips_nondirectory_path_entries(self, tmp_path):
+        not_a_dir = tmp_path / "file"
+        not_a_dir.write_text("x")
+        good = tmp_path / "bundled"
+        self._write_collection_skill(good, "ansible.builtin", "ok")
+        results = list_skills_sync([not_a_dir, good], collection=None)
+        assert len(results) == 1
+        assert results[0]["name"] == "ansible.builtin"

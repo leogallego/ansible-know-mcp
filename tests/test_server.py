@@ -15,6 +15,12 @@ from tests.conftest import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _clear_ansible_know_skills_path(monkeypatch):
+    """Keep SKILLS_DIR monkeypatches effective; PATH would override them."""
+    monkeypatch.delenv("ANSIBLE_KNOW_SKILLS_PATH", raising=False)
+
+
 def _make_mock_ctx(state, shared, http_client=None):
     """Build a mock FastMCP Context with session-based state."""
     mock_ctx = MagicMock()
@@ -116,10 +122,6 @@ class TestGetCollectionManifestTool:
 
 
 class TestListSkillsTool:
-    @pytest.fixture(autouse=True)
-    def _clear_skills_path(self, monkeypatch):
-        monkeypatch.delenv("ANSIBLE_KNOW_SKILLS_PATH", raising=False)
-
     @pytest.mark.asyncio
     async def test_returns_empty_when_no_skills(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
@@ -192,10 +194,6 @@ class TestListSkillsTool:
 
 
 class TestGetSkillTool:
-    @pytest.fixture(autouse=True)
-    def _clear_skills_path(self, monkeypatch):
-        monkeypatch.delenv("ANSIBLE_KNOW_SKILLS_PATH", raising=False)
-
     @pytest.mark.asyncio
     async def test_returns_not_found(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)

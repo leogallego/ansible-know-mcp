@@ -315,7 +315,7 @@ url = https://galaxy.ansible.com/api/
 | Environment Variable | Description | Default |
 |---------------------|-------------|---------|
 | `ANSIBLE_KNOW_SKILLS_DIR` | Explicit skills directory for writes / single-path reads (wins over project-dir chain) | *(not set)* |
-| `ANSIBLE_KNOW_SKILLS_PATH` | Colon-separated skills dirs for `list_skills` / `get_skill` / `skills://*` (like `$PATH`; first match wins). When set, replaces the single-dir search | *(not set)* |
+| `ANSIBLE_KNOW_SKILLS_PATH` | Colon-separated skills dirs for `list_skills` / `get_skill` / `skills://*` (like `$PATH`; first match wins). When set, replaces the single-dir search. Include the write directory (project `skills/` or `ANSIBLE_KNOW_SKILLS_DIR`) in this list if generated skills should remain discoverable | *(not set)* |
 | `ANSIBLE_KNOW_PROJECT_DIR` | Project root; skills go to `{root}/skills` | *(not set)* |
 | `CLAUDE_PROJECT_DIR` | Same as project dir when set by Claude Code | *(not set)* |
 | *(skills fallback)* | If none of the above are set | `cwd/skills/` |
