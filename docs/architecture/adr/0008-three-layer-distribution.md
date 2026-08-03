@@ -37,6 +37,9 @@ endpoints (locally installed, private Automation Hub, public Galaxy).
 - Skills land under the project by default via the `SKILLS_DIR` env chain
   (`ANSIBLE_KNOW_SKILLS_DIR` → `ANSIBLE_KNOW_PROJECT_DIR/skills` →
   `CLAUDE_PROJECT_DIR/skills` → `cwd/skills`) — see issue #181
+- **Multi-path reads (optional):** `ANSIBLE_KNOW_SKILLS_PATH` (colon-separated)
+  lets `list_skills` / `get_skill` / `skills://*` search multiple trees
+  (e.g. project + bundled). Writes still use single `SKILLS_DIR` — see #182
 - **Host-agent discovery:** `generate_collection_skills` updates a managed
   section in project-root `AGENTS.md` pointing agents at `skills/`.
   This is Layer 1 host discovery, not repository distribution.
@@ -149,3 +152,4 @@ would break. Spec compliance makes the layers possible.
 |------|--------|--------|
 | 2026-06-26 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Initial proposal |
 | 2026-08-03 | Leonardo Gallego (Assisted-by: Cursor) | Layer 1: project-scoped skills + AGENTS.md host discovery; correct Lola/GitHub claims; dual-config; scan-depth tracking |
+| 2026-08-03 | Leonardo Gallego (Assisted-by: Cursor) | Layer 1: optional `ANSIBLE_KNOW_SKILLS_PATH` multi-path reads (#182) |

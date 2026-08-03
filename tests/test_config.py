@@ -226,3 +226,57 @@ class TestSkillsDirResolution:
         monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
         with pytest.raises(ValidationError, match="system directories"):
             self._reload_skills_dir(monkeypatch)
+
+
+class TestGetSkillsDirs:
+    def _clear_skills_dir_cache(self, monkeypatch):
+        import ansible_know.config as config_mod
+
+        monkeypatch.delattr(config_mod, "SKILLS_DIR", raising=False)
+        if "SKILLS_DIR" in config_mod.__dict__:
+            del config_mod.__dict__["SKILLS_DIR"]
+
+    def test_falls_back_to_skills_dir(self, monkeypatch, tmp_path):
+        from ansible_know.config import get_skills_dirs
+
+        monkeypatch.delenv("ANSIBLE_KNOW_SKILLS_PATH", raising=False)
+        monkeypatch.setenv("ANSIBLE_KNOW_SKILLS_DIR", str(tmp_path / "skills"))
+        self._clear_skills_dir_cache(monkeypatch)
+        assert get_skills_dirs() == [(tmp_path / "skills").resolve()]
+
+    def test_path_env_returns_colon_separated_dirs(self, monkeypatch, tmp_path):
+        from ansible_know.config import get_skills_dirs
+
+        first = tmp_path / "project-skills"
+        second = tmp_path / "bundled"
+        monkeypatch.setenv(
+            "ANSIBLE_KNOW_SKILLS_PATH",
+            f"{first}:{second}",
+        )
+        assert get_skills_dirs() == [first.resolve(), second.resolve()]
+
+    def test_path_skips_empty_segments_and_dedupes(self, monkeypatch, tmp_path):
+        from ansible_know.config import get_skills_dirs
+
+        only = tmp_path / "skills"
+        monkeypatch.setenv(
+            "ANSIBLE_KNOW_SKILLS_PATH",
+            f":{only}::{only}:",
+        )
+        assert get_skills_dirs() == [only.resolve()]
+
+    def test_empty_path_falls_back_to_skills_dir(self, monkeypatch, tmp_path):
+        from ansible_know.config import get_skills_dirs
+
+        monkeypatch.setenv("ANSIBLE_KNOW_SKILLS_PATH", ":::")
+        monkeypatch.setenv("ANSIBLE_KNOW_SKILLS_DIR", str(tmp_path / "fallback"))
+        self._clear_skills_dir_cache(monkeypatch)
+        assert get_skills_dirs() == [(tmp_path / "fallback").resolve()]
+
+    def test_path_rejects_sensitive_prefix(self, monkeypatch):
+        from ansible_know.config import get_skills_dirs
+        from ansible_know.errors import ValidationError
+
+        monkeypatch.setenv("ANSIBLE_KNOW_SKILLS_PATH", "/etc/skills")
+        with pytest.raises(ValidationError, match="system directories"):
+            get_skills_dirs()

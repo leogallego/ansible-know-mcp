@@ -213,7 +213,7 @@ discovery, not Layer 2) and defines dual-config with `ANSIBLE_SKILL_SOURCES`.
 
 ## Follow-Up Issues
 
-1. **Multi-path search for `list_skills`/`get_skill`** (#182): search both project-local and a secondary path (e.g., pre-baked devcontainer skills). Enables shared + project-specific skill coexistence. Blocked on this design landing first.
+1. ~~**Multi-path search for `list_skills`/`get_skill`** (#182)~~ — Implemented: `ANSIBLE_KNOW_SKILLS_PATH` (colon-separated); `list_skills` / `get_skill` / `skills://*` merge/search in order (first wins). Writes still use single `SKILLS_DIR`.
 2. **AGENTS.md from single-module generators** (intentional non-goal of #181): only `generate_collection_skills` updates AGENTS.md. Per-module/role/plugin generators do not — avoids noisy rewrites when called in a loop. Revisit only if operators commonly generate one-off skills without the collection batch tool. No GitHub issue yet; not required for this design.
 3. ~~**Update ADR-0008**~~ — **Done in #181 / PR #184**: ADR-0008 revised for Layer 1 AGENTS.md + dual-config; Lola/GitHub claims corrected.
 4. ~~**Validate `SKILLS_DIR` against sensitive prefixes**~~ — **Done in #181 / PR #184**: `SKILLS_DIR` resolution runs through `validate_install_path()`.

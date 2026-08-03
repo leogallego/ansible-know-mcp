@@ -12,6 +12,7 @@ import re
 import stat
 import threading
 from collections import Counter
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -250,17 +251,19 @@ def _list_nested_skills(
     return results
 
 
-def list_skills_sync(
+def _normalize_skills_dirs(skills_dirs: Path | Sequence[Path]) -> list[Path]:
+    """Normalize a single Path or a sequence of Paths to a list."""
+    if isinstance(skills_dirs, Path):
+        return [skills_dirs]
+    return list(skills_dirs)
+
+
+def _list_skills_one_dir(
     skills_dir: Path, collection: str | None,
 ) -> list[SkillEntry]:
-    """List generated skills from *skills_dir*.
-
-    When *collection* is given, returns module/role/plugin skills within that
-    collection directory.  Otherwise returns all skills: collection-level
-    entries followed by their nested module/role/plugin skills.
-    """
+    """List skills from a single directory (no multi-path merge)."""
     results: list[SkillEntry] = []
-    if not skills_dir.exists():
+    if not skills_dir.is_dir():
         return results
 
     if collection:
@@ -290,16 +293,33 @@ def list_skills_sync(
     return results
 
 
-def get_skill_sync(skills_dir: Path, skill_name: str) -> str:
-    """Read a skill's SKILL.md content from disk.
+def list_skills_sync(
+    skills_dirs: Path | Sequence[Path],
+    collection: str | None,
+) -> list[SkillEntry]:
+    """List generated skills from one or more skills directories.
 
-    Callers MUST validate *skill_name* with ``validate_skill_name()`` first.
+    When *collection* is given, returns module/role/plugin skills within that
+    collection directory.  Otherwise returns all skills: collection-level
+    entries followed by their nested module/role/plugin skills.
 
-    Raises:
-        FileNotFoundError: If no matching SKILL.md exists.
-        ValidationError: If a resolved path escapes *skills_dir*.
-        OSError: On permission or I/O errors reading the file.
+    With multiple directories, results are merged in path order and deduplicated
+    by skill name (first path wins).
     """
+    merged: list[SkillEntry] = []
+    seen: set[str] = set()
+    for skills_dir in _normalize_skills_dirs(skills_dirs):
+        for entry in _list_skills_one_dir(skills_dir, collection):
+            name = entry["name"]
+            if name in seen:
+                continue
+            seen.add(name)
+            merged.append(entry)
+    return merged
+
+
+def _get_skill_one_dir(skills_dir: Path, skill_name: str) -> str | None:
+    """Read a skill from *skills_dir*, or return None if missing."""
     parts = skill_name.split(".")
     if len(parts) >= 3:
         namespace = ".".join(parts[:2])
@@ -314,7 +334,9 @@ def get_skill_sync(skills_dir: Path, skill_name: str) -> str:
 
         from ansible_know.config import PLUGIN_TYPES
         for ptype in PLUGIN_TYPES:
-            plugin_path = (skills_dir / collection_dir_name / f"{ptype}-{kebab_short}" / "SKILL.md").resolve()
+            plugin_path = (
+                skills_dir / collection_dir_name / f"{ptype}-{kebab_short}" / "SKILL.md"
+            ).resolve()
             validate_path_containment(plugin_path, skills_dir)
             if plugin_path.exists():
                 return truncate_response(plugin_path.read_text())
@@ -328,6 +350,26 @@ def get_skill_sync(skills_dir: Path, skill_name: str) -> str:
         validate_path_containment(skill_path, skills_dir)
         if skill_path.exists():
             return truncate_response(skill_path.read_text())
+
+    return None
+
+
+def get_skill_sync(skills_dirs: Path | Sequence[Path], skill_name: str) -> str:
+    """Read a skill's SKILL.md content from disk.
+
+    Callers MUST validate *skill_name* with ``validate_skill_name()`` first.
+
+    With multiple directories, searches in order and returns the first match.
+
+    Raises:
+        FileNotFoundError: If no matching SKILL.md exists in any directory.
+        ValidationError: If a resolved path escapes its skills directory.
+        OSError: On permission or I/O errors reading the file.
+    """
+    for skills_dir in _normalize_skills_dirs(skills_dirs):
+        content = _get_skill_one_dir(skills_dir, skill_name)
+        if content is not None:
+            return content
 
     raise FileNotFoundError(f"Skill '{skill_name}' not found.")
 

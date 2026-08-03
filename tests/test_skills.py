@@ -13,6 +13,8 @@ from ansible_know.skills import (
     _role_template_context,
     collection_skill_name,
     fqcn_to_skill_name,
+    get_skill_sync,
+    list_skills_sync,
     module_to_skill_name,
     plugin_skill_name,
     render_collection_skill,
@@ -838,3 +840,122 @@ class TestUpdateAgentsMd:
         # Should appear once in collections list, not duplicated by symlink
         assert "Available collections: real.collection" in agents_md
         assert "symlink.collection" not in agents_md
+
+
+class TestMultiPathSkills:
+    def _write_collection_skill(self, root: Path, dir_name: str, description: str) -> None:
+        skill_dir = root / dir_name
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            f"---\nname: {dir_name}\ndescription: {description}\n---\n"
+        )
+
+    def test_list_merges_and_dedupes_first_wins(self, tmp_path):
+        project = tmp_path / "project"
+        bundled = tmp_path / "bundled"
+        self._write_collection_skill(project, "netbox.netbox", "project netbox")
+        self._write_collection_skill(bundled, "netbox.netbox", "bundled netbox")
+        self._write_collection_skill(bundled, "ansible.builtin", "bundled builtin")
+
+        results = list_skills_sync([project, bundled], collection=None)
+        by_name = {e["name"]: e for e in results}
+        assert by_name["netbox.netbox"]["description"] == "project netbox"
+        assert by_name["ansible.builtin"]["description"] == "bundled builtin"
+        assert len(results) == 2
+
+    def test_get_searches_in_order(self, tmp_path):
+        project = tmp_path / "project"
+        bundled = tmp_path / "bundled"
+        self._write_collection_skill(project, "netbox.netbox", "from project")
+        self._write_collection_skill(bundled, "netbox.netbox", "from bundled")
+        self._write_collection_skill(bundled, "ansible.builtin", "bundled only")
+
+        project_hit = get_skill_sync([project, bundled], "netbox.netbox")
+        assert "from project" in project_hit
+
+        bundled_only = get_skill_sync([project, bundled], "ansible.builtin")
+        assert "bundled only" in bundled_only
+
+    def test_get_not_found_across_all_dirs(self, tmp_path):
+        with pytest.raises(FileNotFoundError, match="not found"):
+            get_skill_sync([tmp_path / "a", tmp_path / "b"], "missing.collection")
+
+    def test_single_path_still_accepted(self, tmp_path):
+        self._write_collection_skill(tmp_path, "netbox.netbox", "solo")
+        results = list_skills_sync(tmp_path, collection=None)
+        assert len(results) == 1
+        assert get_skill_sync(tmp_path, "netbox.netbox").startswith("---")
+
+    def test_skips_nondirectory_path_entries(self, tmp_path):
+        not_a_dir = tmp_path / "file"
+        not_a_dir.write_text("x")
+        good = tmp_path / "bundled"
+        self._write_collection_skill(good, "ansible.builtin", "ok")
+        results = list_skills_sync([not_a_dir, good], collection=None)
+        assert len(results) == 1
+        assert results[0]["name"] == "ansible.builtin"
+
+    def _write_nested_module_skill(
+        self, root: Path, collection_kebab: str, module_kebab: str, body: str,
+    ) -> None:
+        nested = root / collection_kebab / module_kebab
+        nested.mkdir(parents=True)
+        (nested / "SKILL.md").write_text(body)
+
+    def test_list_collection_filter_merges_dirs(self, tmp_path):
+        project = tmp_path / "project"
+        bundled = tmp_path / "bundled"
+        self._write_nested_module_skill(
+            project, "netbox-netbox", "netbox-device",
+            "---\nname: netbox.netbox.netbox_device\ndescription: project device\n---\n",
+        )
+        self._write_nested_module_skill(
+            bundled, "netbox-netbox", "netbox-device",
+            "---\nname: netbox.netbox.netbox_device\ndescription: bundled device\n---\n",
+        )
+        self._write_nested_module_skill(
+            bundled, "netbox-netbox", "netbox-site",
+            "---\nname: netbox.netbox.netbox_site\ndescription: bundled site\n---\n",
+        )
+        # Unrelated collection should be ignored by the filter.
+        self._write_nested_module_skill(
+            bundled, "ansible-builtin", "copy",
+            "---\nname: ansible.builtin.copy\ndescription: copy\n---\n",
+        )
+
+        results = list_skills_sync([project, bundled], collection="netbox.netbox")
+        by_name = {e["name"]: e["description"] for e in results}
+        assert by_name["netbox.netbox.netbox_device"] == "project device"
+        assert by_name["netbox.netbox.netbox_site"] == "bundled site"
+        assert "ansible.builtin.copy" not in by_name
+        assert len(results) == 2
+
+    def test_nested_skill_shadows_across_dirs(self, tmp_path):
+        project = tmp_path / "project"
+        bundled = tmp_path / "bundled"
+        self._write_nested_module_skill(
+            project, "netbox-netbox", "netbox-device", "from project nested",
+        )
+        self._write_nested_module_skill(
+            bundled, "netbox-netbox", "netbox-device", "from bundled nested",
+        )
+        self._write_nested_module_skill(
+            bundled, "netbox-netbox", "netbox-site", "bundled only nested",
+        )
+
+        assert get_skill_sync(
+            [project, bundled], "netbox.netbox.netbox_device",
+        ) == "from project nested"
+        assert get_skill_sync(
+            [project, bundled], "netbox.netbox.netbox_site",
+        ) == "bundled only nested"
+
+        listed = list_skills_sync([project, bundled], collection=None)
+        by_name = {e["name"]: e["description"] for e in listed}
+        # Nested list uses frontmatter description when present; bodies above
+        # have no frontmatter so description may be empty — assert first-wins
+        # via path instead.
+        device = next(e for e in listed if e["name"] == "netbox.netbox.netbox_device")
+        assert str(project) in device["path"]
+        assert str(bundled) not in device["path"]
+        assert "netbox.netbox.netbox_site" in by_name

@@ -44,17 +44,53 @@ def get_project_root() -> Path:
     return Path.cwd()
 
 
+def _resolve_skills_dir() -> Path:
+    """Resolve the single default skills directory (write target / PATH fallback)."""
+    # Lazy import: validation is Foundation and must not import config at module load.
+    from ansible_know.validation import validate_install_path
+
+    explicit = os.environ.get("ANSIBLE_KNOW_SKILLS_DIR", "").strip()
+    if explicit:
+        return validate_install_path(explicit)
+    root = get_project_root()
+    return validate_install_path(str(root / "skills"))
+
+
+def get_skills_dirs() -> list[Path]:
+    """Return skill search directories for list_skills / get_skill.
+
+    Resolution:
+    1. ``ANSIBLE_KNOW_SKILLS_PATH`` — colon-separated list (like ``$PATH``)
+    2. Else ``SKILLS_DIR`` — single path from the existing env chain
+
+    Each path is validated via ``validate_install_path``. Empty segments are
+    skipped; duplicates are dropped (first occurrence wins).
+    """
+    from ansible_know.validation import validate_install_path
+
+    raw = os.environ.get("ANSIBLE_KNOW_SKILLS_PATH", "").strip()
+    if raw:
+        dirs: list[Path] = []
+        seen: set[Path] = set()
+        for part in raw.split(":"):
+            part = part.strip()
+            if not part:
+                continue
+            path = validate_install_path(part)
+            if path not in seen:
+                seen.add(path)
+                dirs.append(path)
+        if dirs:
+            return dirs
+
+    if "SKILLS_DIR" in globals():
+        return [globals()["SKILLS_DIR"]]
+    return [_resolve_skills_dir()]
+
+
 def __getattr__(name: str):
     if name == "SKILLS_DIR":
-        # Lazy import: validation is Foundation and must not import config.
-        from ansible_know.validation import validate_install_path
-
-        explicit = os.environ.get("ANSIBLE_KNOW_SKILLS_DIR", "").strip()
-        if explicit:
-            value = validate_install_path(explicit)
-        else:
-            root = get_project_root()
-            value = validate_install_path(str(root / "skills"))
+        value = _resolve_skills_dir()
         globals()["SKILLS_DIR"] = value
         return value
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
