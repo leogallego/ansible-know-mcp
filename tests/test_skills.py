@@ -894,3 +894,68 @@ class TestMultiPathSkills:
         results = list_skills_sync([not_a_dir, good], collection=None)
         assert len(results) == 1
         assert results[0]["name"] == "ansible.builtin"
+
+    def _write_nested_module_skill(
+        self, root: Path, collection_kebab: str, module_kebab: str, body: str,
+    ) -> None:
+        nested = root / collection_kebab / module_kebab
+        nested.mkdir(parents=True)
+        (nested / "SKILL.md").write_text(body)
+
+    def test_list_collection_filter_merges_dirs(self, tmp_path):
+        project = tmp_path / "project"
+        bundled = tmp_path / "bundled"
+        self._write_nested_module_skill(
+            project, "netbox-netbox", "netbox-device",
+            "---\nname: netbox.netbox.netbox_device\ndescription: project device\n---\n",
+        )
+        self._write_nested_module_skill(
+            bundled, "netbox-netbox", "netbox-device",
+            "---\nname: netbox.netbox.netbox_device\ndescription: bundled device\n---\n",
+        )
+        self._write_nested_module_skill(
+            bundled, "netbox-netbox", "netbox-site",
+            "---\nname: netbox.netbox.netbox_site\ndescription: bundled site\n---\n",
+        )
+        # Unrelated collection should be ignored by the filter.
+        self._write_nested_module_skill(
+            bundled, "ansible-builtin", "copy",
+            "---\nname: ansible.builtin.copy\ndescription: copy\n---\n",
+        )
+
+        results = list_skills_sync([project, bundled], collection="netbox.netbox")
+        by_name = {e["name"]: e["description"] for e in results}
+        assert by_name["netbox.netbox.netbox_device"] == "project device"
+        assert by_name["netbox.netbox.netbox_site"] == "bundled site"
+        assert "ansible.builtin.copy" not in by_name
+        assert len(results) == 2
+
+    def test_nested_skill_shadows_across_dirs(self, tmp_path):
+        project = tmp_path / "project"
+        bundled = tmp_path / "bundled"
+        self._write_nested_module_skill(
+            project, "netbox-netbox", "netbox-device", "from project nested",
+        )
+        self._write_nested_module_skill(
+            bundled, "netbox-netbox", "netbox-device", "from bundled nested",
+        )
+        self._write_nested_module_skill(
+            bundled, "netbox-netbox", "netbox-site", "bundled only nested",
+        )
+
+        assert get_skill_sync(
+            [project, bundled], "netbox.netbox.netbox_device",
+        ) == "from project nested"
+        assert get_skill_sync(
+            [project, bundled], "netbox.netbox.netbox_site",
+        ) == "bundled only nested"
+
+        listed = list_skills_sync([project, bundled], collection=None)
+        by_name = {e["name"]: e["description"] for e in listed}
+        # Nested list uses frontmatter description when present; bodies above
+        # have no frontmatter so description may be empty — assert first-wins
+        # via path instead.
+        device = next(e for e in listed if e["name"] == "netbox.netbox.netbox_device")
+        assert str(project) in device["path"]
+        assert str(bundled) not in device["path"]
+        assert "netbox.netbox.netbox_site" in by_name

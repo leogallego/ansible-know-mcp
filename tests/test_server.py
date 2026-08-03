@@ -192,6 +192,37 @@ class TestListSkillsTool:
         assert by_name["netbox.netbox"] == "project"
         assert by_name["ansible.builtin"] == "builtin"
 
+    @pytest.mark.asyncio
+    async def test_merges_skills_path_with_collection_filter(self, tmp_path, monkeypatch):
+        project = tmp_path / "project"
+        bundled = tmp_path / "bundled"
+        for root, module, desc in (
+            (project, "netbox-device", "project device"),
+            (bundled, "netbox-device", "bundled device"),
+            (bundled, "netbox-site", "bundled site"),
+        ):
+            d = root / "netbox-netbox" / module
+            d.mkdir(parents=True)
+            (d / "SKILL.md").write_text(
+                f"---\nname: x\ndescription: {desc}\n---\n"
+            )
+        other = bundled / "ansible-builtin" / "copy"
+        other.mkdir(parents=True)
+        (other / "SKILL.md").write_text(
+            "---\nname: x\ndescription: copy\n---\n"
+        )
+        monkeypatch.setenv(
+            "ANSIBLE_KNOW_SKILLS_PATH",
+            f"{project}:{bundled}",
+        )
+        from ansible_know.server import list_skills
+        result = await list_skills(collection="netbox.netbox")
+        assert isinstance(result, list)
+        by_name = {e["name"]: e["description"] for e in result}
+        assert by_name["netbox.netbox.netbox_device"] == "project device"
+        assert by_name["netbox.netbox.netbox_site"] == "bundled site"
+        assert "ansible.builtin.copy" not in by_name
+
 
 class TestGetSkillTool:
     @pytest.mark.asyncio
@@ -247,6 +278,28 @@ class TestGetSkillTool:
         from ansible_know.server import get_skill
         result = await get_skill("netbox.netbox")
         assert result == "from project"
+
+    @pytest.mark.asyncio
+    async def test_skills_path_nested_first_match_wins(self, tmp_path, monkeypatch):
+        project = tmp_path / "project"
+        bundled = tmp_path / "bundled"
+        for root, content in (
+            (project, "from project nested"),
+            (bundled, "from bundled nested"),
+        ):
+            d = root / "netbox-netbox" / "netbox-device"
+            d.mkdir(parents=True)
+            (d / "SKILL.md").write_text(content)
+        only = bundled / "netbox-netbox" / "netbox-site"
+        only.mkdir(parents=True)
+        (only / "SKILL.md").write_text("bundled only nested")
+        monkeypatch.setenv(
+            "ANSIBLE_KNOW_SKILLS_PATH",
+            f"{project}:{bundled}",
+        )
+        from ansible_know.server import get_skill
+        assert await get_skill("netbox.netbox.netbox_device") == "from project nested"
+        assert await get_skill("netbox.netbox.netbox_site") == "bundled only nested"
 
 
 class TestGenerateSkillTool:
@@ -945,6 +998,40 @@ class TestResourceFunctions:
         result = json.loads(resource_skills_list())
         assert "netbox.netbox" in result
         assert "netbox.netbox.netbox_device" in result
+
+    def test_resource_skills_list_merges_skills_path(self, tmp_path, monkeypatch):
+        project = tmp_path / "project"
+        bundled = tmp_path / "bundled"
+        for root, name in (
+            (project, "netbox.netbox"),
+            (bundled, "netbox.netbox"),
+            (bundled, "ansible.builtin"),
+        ):
+            d = root / name
+            d.mkdir(parents=True)
+            (d / "SKILL.md").write_text(f"# {name}")
+        monkeypatch.setenv(
+            "ANSIBLE_KNOW_SKILLS_PATH",
+            f"{project}:{bundled}",
+        )
+        from ansible_know.server import resource_skills_list
+        result = json.loads(resource_skills_list())
+        assert result.count("netbox.netbox") == 1
+        assert "ansible.builtin" in result
+
+    def test_resource_skill_content_skills_path_first_wins(self, tmp_path, monkeypatch):
+        project = tmp_path / "project"
+        bundled = tmp_path / "bundled"
+        for root, content in ((project, "from project"), (bundled, "from bundled")):
+            d = root / "netbox-netbox" / "netbox-device"
+            d.mkdir(parents=True)
+            (d / "SKILL.md").write_text(content)
+        monkeypatch.setenv(
+            "ANSIBLE_KNOW_SKILLS_PATH",
+            f"{project}:{bundled}",
+        )
+        from ansible_know.server import resource_skill_content
+        assert resource_skill_content("netbox.netbox.netbox_device") == "from project"
 
     def test_resource_skill_content_flat_fallback(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
