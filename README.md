@@ -121,6 +121,36 @@ Add to `.vscode/mcp.json` in your workspace:
 }
 ```
 
+Skill packages default to `{project}/skills/`. Claude Code injects
+`CLAUDE_PROJECT_DIR` automatically; set `ANSIBLE_KNOW_PROJECT_DIR` for other
+clients. After `generate_collection_skills`, a managed section in `AGENTS.md`
+points host agents at that tree.
+
+#### Pairing with Ansible Devtools MCP (next-mcp)
+
+know-mcp and next-mcp use different env vars. To share one skills directory,
+also configure next-mcp's local skill source (extension setting
+`ansibleEnvironments.skillSources`, or `ANSIBLE_SKILL_SOURCES`):
+
+```json
+{
+  "ansibleEnvironments.skillSources": [
+    {
+      "id": "know-generated",
+      "type": "local",
+      "url": "${workspaceFolder}/skills",
+      "trust": "community"
+    }
+  ]
+}
+```
+
+Use `{id, type, url, trust}` — next-mcp's loader expects `url` (directory path),
+not `path`/`repo` alone. Until next-mcp expands local scan depth past one level,
+`skill_*` tools see collection-level `SKILL.md` files; nested module skills remain
+available to host agents via the `AGENTS.md` pointer. See
+`docs/superpowers/specs/2026-08-02-skill-discoverability-alignment.md`.
+
 ### Any MCP client
 
 The server communicates over stdio by default:
@@ -284,7 +314,10 @@ url = https://galaxy.ansible.com/api/
 
 | Environment Variable | Description | Default |
 |---------------------|-------------|---------|
-| `ANSIBLE_KNOW_SKILLS_DIR` | Where to write generated skills | `./skills/` |
+| `ANSIBLE_KNOW_SKILLS_DIR` | Explicit skills directory (wins over project-dir chain) | *(not set)* |
+| `ANSIBLE_KNOW_PROJECT_DIR` | Project root; skills go to `{root}/skills` | *(not set)* |
+| `CLAUDE_PROJECT_DIR` | Same as project dir when set by Claude Code | *(not set)* |
+| *(skills fallback)* | If none of the above are set | `cwd/skills/` |
 | `ANSIBLE_KNOW_DOC_SOURCES` | JSON dict of doc manifest sources | Built-in ansible-core source |
 | `ANSIBLE_KNOW_GALAXY_URL` | Galaxy API base URL | `https://galaxy.ansible.com` |
 | `ANSIBLE_KNOW_SKIP_UPDATE_CHECK` | Set to `1` to disable PyPI version check at startup | *(not set)* |

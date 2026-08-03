@@ -1331,8 +1331,8 @@ async def generate_collection_skills(
             "manifest": manifest,
             "collection_skill": collection_namespace,
         }
-    except ValidationError:
-        raise
+    except ValidationError as exc:
+        return {"error": str(exc)}
     except Exception as exc:
         logger.warning("generate_collection_skills failed: %s", exc)
         return {"error": maybe_add_hint(sanitize_error(str(exc)), collection_namespace)}

@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from ansible_know.config import DEFAULT_DOC_SOURCES, get_doc_sources
 
 
@@ -193,25 +195,34 @@ class TestSkillsDirResolution:
         monkeypatch.setenv("ANSIBLE_KNOW_PROJECT_DIR", str(tmp_path / "project"))
         monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path / "claude"))
         result = self._reload_skills_dir(monkeypatch)
-        assert result == tmp_path / "explicit"
+        assert result == (tmp_path / "explicit").resolve()
 
     def test_project_dir_adds_skills_suffix(self, monkeypatch, tmp_path):
         monkeypatch.delenv("ANSIBLE_KNOW_SKILLS_DIR", raising=False)
         monkeypatch.setenv("ANSIBLE_KNOW_PROJECT_DIR", str(tmp_path))
         monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
         result = self._reload_skills_dir(monkeypatch)
-        assert result == tmp_path / "skills"
+        assert result == (tmp_path / "skills").resolve()
 
     def test_claude_project_dir_adds_skills_suffix(self, monkeypatch, tmp_path):
         monkeypatch.delenv("ANSIBLE_KNOW_SKILLS_DIR", raising=False)
         monkeypatch.delenv("ANSIBLE_KNOW_PROJECT_DIR", raising=False)
         monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
         result = self._reload_skills_dir(monkeypatch)
-        assert result == tmp_path / "skills"
+        assert result == (tmp_path / "skills").resolve()
 
     def test_cwd_fallback(self, monkeypatch):
         monkeypatch.delenv("ANSIBLE_KNOW_SKILLS_DIR", raising=False)
         monkeypatch.delenv("ANSIBLE_KNOW_PROJECT_DIR", raising=False)
         monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
         result = self._reload_skills_dir(monkeypatch)
-        assert result == Path.cwd() / "skills"
+        assert result == (Path.cwd() / "skills").resolve()
+
+    def test_rejects_sensitive_skills_dir(self, monkeypatch):
+        from ansible_know.errors import ValidationError
+
+        monkeypatch.setenv("ANSIBLE_KNOW_SKILLS_DIR", "/etc/ansible-know-skills")
+        monkeypatch.delenv("ANSIBLE_KNOW_PROJECT_DIR", raising=False)
+        monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+        with pytest.raises(ValidationError, match="system directories"):
+            self._reload_skills_dir(monkeypatch)
