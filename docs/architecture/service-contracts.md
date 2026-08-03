@@ -57,9 +57,9 @@ decorated tool, resource, and prompt handler functions. FastMCP manages:
 
 | Element | File | Registration |
 |---------|------|--------------|
-| 12 tool handlers | `server.py` | `@mcp.tool(annotations=ToolAnnotations(...))` |
+| 18 tool handlers | `server.py` | `@mcp.tool(annotations=ToolAnnotations(...))` |
 | 6 resource handlers | `server.py` | `@mcp.resource(uri, ...)` |
-| 4 prompt handlers | `server.py` | `@mcp.prompt` |
+| 5 prompt handlers | `server.py` | `@mcp.prompt` |
 | Lifespan hook | `server.py` | `@lifespan` decorator on `app_lifespan()` |
 
 ### Types Crossing This Boundary
@@ -88,7 +88,7 @@ decorated tool, resource, and prompt handler functions. FastMCP manages:
 |----|----------|-------------|----------|
 | ~~V-T1~~ | ~~Warning~~ | ~~Lifespan context is an untyped `dict[str, Any]` accessed by string keys.~~ **Fixed in PR #87** — `LifespanContext` TypedDict with typed keys (`http_client`, `shared`, `sessions`). | ~~`server.py:103-108`~~ → `state.py` |
 | ~~V-T2~~ | ~~Warning~~ | ~~`_run_in_executor()` uses deprecated `asyncio.get_event_loop()`. Should use `asyncio.get_running_loop()` — the function is only called from async context.~~ **Fixed** — `async_utils.py` uses `asyncio.get_running_loop()`. `_run_in_executor` was moved from `server.py` to `async_utils.py` in PR #89. | ~~`server.py:126-129`~~ → `async_utils.py` |
-| ~~V-T3~~ | ~~Info~~ | ~~Tool return types are `dict[str, Any]` rather than typed dicts.~~ **Fixed in PR #105** — all 12 tool handlers now use specific TypedDicts (`GetModuleDocResult`, `GetRoleDocResult`, `CollectionSearchResult`, etc.) with `| ErrorResponse` unions. Safe because `from __future__ import annotations` makes annotations strings at runtime — FastMCP never sees the TypedDict classes. Note: PR #60 originally reverted TypedDict annotations to `dict[str, Any]` over FastMCP wrapping concerns, but that concern is moot with stringified annotations. | ~~All tool handlers~~ → `types.py`, `server.py` |
+| ~~V-T3~~ | ~~Info~~ | ~~Tool return types are `dict[str, Any]` rather than typed dicts.~~ **Fixed in PR #105** — all tool handlers (18 as of v0.7) use specific TypedDicts (`GetModuleDocResult`, `GetRoleDocResult`, `CollectionSearchResult`, etc.) with `| ErrorResponse` unions. Safe because `from __future__ import annotations` makes annotations strings at runtime — FastMCP never sees the TypedDict classes. Note: PR #60 originally reverted TypedDict annotations to `dict[str, Any]` over FastMCP wrapping concerns, but that concern is moot with stringified annotations. | ~~All tool handlers~~ → `types.py`, `server.py` |
 
 ---
 
@@ -144,7 +144,7 @@ business logic. Domain modules are imported lazily to avoid loading
 | ~~V-D3~~ | ~~Warning~~ | ~~`skills.py` does not define `__all__`.~~ **Fixed** — `skills.py` now defines `__all__`. | ~~`skills.py`~~ |
 | ~~V-D4~~ | ~~Warning~~ | ~~`collection_manifest.py` does not define `__all__`.~~ **Fixed** — `collection_manifest.py` now defines `__all__`. | ~~`collection_manifest.py`~~ |
 | ~~V-D5~~ | ~~Warning~~ | ~~`docs.py` does not define `__all__`.~~ **Fixed** — `docs.py` now defines `__all__`. | ~~`docs.py`~~ |
-| V-D6 | Info | Several Domain functions return `dict[str, Any]` where TypedDicts exist. Partially addressed in PR #60 (`EnsureCollectionResult` now typed on `collections.ensure_collection()`, plus `ErrorResponse`, `SkillEntry`, `CollectionSearchResult` TypedDicts added) but not all return sites use them yet. | `parser.py:214-223`, `server.py:195-240` |
+| ~~V-D6~~ | ~~Info~~ | ~~Several Domain functions return `dict[str, Any]` where TypedDicts exist.~~ **Resolved across PRs #60, #87, #104, #105, #106** — tool handlers and key Domain returns use TypedDicts (`ParamDict`, `EntryPointInfo`, `EnsureCollectionResult`, etc.). Residual untyped internals may remain; not tracked as an open contract violation. | ~~`parser.py`, `server.py`~~ → `types.py` |
 | ~~V-D7~~ | ~~Warning~~ | ~~`_resolve_module_doc()` and `_resolve_role_doc()` in `server.py` contain significant business logic (Galaxy fallback, missing-collection caching). This logic belongs in the Domain layer, not Orchestration. The Orchestration layer should delegate to a domain-level resolution function.~~ **Fixed in PR #66** — Resolution logic moved to `resolution.py`. | ~~`server.py:195-301`~~ |
 | ~~V-D8~~ | ~~Warning~~ | ~~`collection_manifest.generate_manifest()` writes to disk as a side effect.~~ **Fixed** — Split into `generate_manifest()` (pure computation) and `write_manifest()` (I/O). Callers in `server.py` call both, wrapping `write_manifest` in `run_in_executor`. | ~~`collection_manifest.py:113-117`~~ |
 

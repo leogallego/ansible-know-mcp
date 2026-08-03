@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Date
 
@@ -15,16 +15,17 @@ the emerging standard for AI agent skills, supported by 40+ coding agents
 including Claude Code, Cursor, GitHub Copilot, VS Code, Gemini CLI, OpenAI
 Codex, Junie (JetBrains), and others.
 
-Our generated SKILL.md packages do not comply with the spec:
+Before #148, generated SKILL.md packages did not comply with the spec:
 
-- `name` field uses Ansible FQCNs with dots and underscores
+- `name` field used Ansible FQCNs with dots and underscores
   (`netbox.netbox.netbox_device`) — the spec requires lowercase + hyphens only
-- Directory names don't match the `name` field
+- Directory names didn't match the `name` field
 - Missing metadata fields (`compatibility`, `metadata.fqcn`, etc.)
 
-Non-compliance blocks interoperability with the agent ecosystem and with
+That blocked interoperability with the agent ecosystem and with
 distribution tools like [Lola](https://github.com/LobsterTrap/lola) and
 the [vscode-ansible skill registry](https://github.com/ansible/vscode-ansible).
+#148 implemented the decisions below; this ADR is Accepted.
 
 The [client implementation guide](https://agentskills.io/client-implementation/adding-skills-support)
 recommends 4-6 levels of scan depth. Our nested output (collection/skill/SKILL.md
@@ -129,8 +130,9 @@ No special output mode needed.
   and load our skills.
 - **Lola distribution**: spec-compliant skills can be packaged into Lola
   modules for cross-agent installation.
-- **next-mcp registry**: skills work with GitHub sources (Lola format,
-  2-level scan) today, and with local sources once scan depth is expanded.
+- **next-mcp registry**: local dual-config works for collection-level skills;
+  nested module skills need scan-depth expansion (#200). GitHub Lola loading
+  requires Lola packaging (#149), not raw nested trees.
 - **Validation**: generated skills can be validated with `skills-ref validate`.
 - **One format**: no configuration, no layout modes, no confusion.
 
@@ -140,24 +142,23 @@ No special output mode needed.
   underscore directories. Regeneration required.
 - **Plugin type prefix verbosity**: `lookup-nb-lookup` is longer than
   `nb_lookup`. Trade-off for collision avoidance.
-- **Consumer limitations**: 1-level scanners miss module-level skills until
-  they expand their scan depth. Mitigated by the proposed next-mcp patch
-  and by the GitHub source path (which already scans 2 levels).
+- **Consumer limitations**: 1-level scanners (next-mcp local/Vercel) miss
+  module-level skills until scan depth expands (#200). Lola/GitHub Lola
+  paths need packaging (#149).
 
 ## Implementation Notes
 
 Issue [#148](https://github.com/leogallego/ansible-know-mcp/issues/148)
-tracks the implementation. Changes required:
+**closed** — implemented:
 
 - **Templates**: `SKILL.md.j2`, `PLUGIN_SKILL.md.j2`, `ROLE_SKILL.md.j2`,
-  `COLLECTION_SKILL.md.j2` — add `compatibility`, `metadata` block
+  `COLLECTION_SKILL.md.j2` — `compatibility`, `metadata` block
 - **Code**: `skills.py` — FQCN-to-kebab-case name generation, plugin type
   prefix logic, directory naming, metadata context building
 - **Validation**: frontmatter validation against spec constraints (name
   format, length, required fields)
-- **Tests**: update all skill generation tests for new naming/metadata
-- **Validator**: `pip install skills-ref`, CLI `agentskills validate` —
-  confirmed passing with proposed format
+- **Tests**: skill generation tests updated for naming/metadata
+- **Validator**: `skills-ref` / `agentskills validate` confirmed with the format
 
 ## Related Decisions
 
@@ -173,3 +174,4 @@ tracks the implementation. Changes required:
 | Date | Author | Change |
 |------|--------|--------|
 | 2026-06-26 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Initial proposal |
+| 2026-08-03 | Leonardo Gallego (Assisted-by: Cursor) | Accepted after #148; consumer gaps point to #200 / #149 |
