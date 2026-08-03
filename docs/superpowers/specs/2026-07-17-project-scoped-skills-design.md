@@ -196,12 +196,20 @@ Add VS Code example to README:
 }
 ```
 
+## Alignment addendum
+
+Discoverability across host agents, next-mcp `SkillRegistry`, and Lola is
+specified in
+[2026-08-02-skill-discoverability-alignment.md](2026-08-02-skill-discoverability-alignment.md).
+That addendum supersedes follow-up item 3 below (AGENTS.md is Layer 1 host
+discovery, not Layer 2) and defines dual-config with `ANSIBLE_SKILL_SOURCES`.
+
 ## Follow-Up Issues
 
-1. **Multi-path search for `list_skills`/`get_skill`** (#182): search both project-local and a secondary path (e.g., pre-baked devcontainer skills). Enables shared + project-specific skill coexistence.
+1. **Multi-path search for `list_skills`/`get_skill`** (#182): search both project-local and a secondary path (e.g., pre-baked devcontainer skills). Enables shared + project-specific skill coexistence. Blocked on this design landing first.
 2. **`generate_collection_skills` AGENTS.md for single-module generators**: if users frequently call `generate_skill` directly (not via collection batch), consider updating AGENTS.md from those tools too.
-3. **Update ADR-0008**: add AGENTS.md as a third Layer 2 consumption path (alongside next-mcp `type: "github"` and Lola).
-4. **Validate `SKILLS_DIR` against sensitive prefixes**: pre-existing gap — `ANSIBLE_KNOW_SKILLS_DIR` env var is not validated through `validate_install_path()`. Low risk but worth hardening.
+3. ~~**Update ADR-0008**: add AGENTS.md as a third Layer 2 consumption path~~ — **Superseded** by the alignment addendum: AGENTS.md is Layer 1; ADR-0008 revision is tracked under #196.
+4. **Validate `SKILLS_DIR` against sensitive prefixes**: pre-existing gap — `ANSIBLE_KNOW_SKILLS_DIR` env var is not validated through `validate_install_path()`. Include in #181 implementation (see alignment addendum).
 
 ## References
 
