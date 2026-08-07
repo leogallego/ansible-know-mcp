@@ -11,7 +11,7 @@ import pytest
 
 import ansible_know.docs as docs_mod
 from ansible_know.docs import _search_rtd_api, clear_cache, fetch_doc_content, search_docs
-from ansible_know.text_utils import clean_rtd_markdown
+from ansible_know.text_utils import clean_rtd_markdown, html_to_markdown
 
 MOCK_MANIFEST = {
     "version": "2.0",
@@ -857,53 +857,94 @@ class TestFetchDocRetry:
         assert mock_client.get.call_count == docs_mod.MAX_RETRY_ATTEMPTS
 
 
+def _make_cf_challenge_response() -> MagicMock:
+    """Build a mock Cloudflare managed-challenge response."""
+    cf_resp = MagicMock()
+    cf_resp.status_code = 429
+    cf_resp.headers = {"cf-mitigated": "challenge", "content-type": "text/html"}
+    cf_resp.raise_for_status = MagicMock()
+    cf_resp.url = _mock_url("https://docs.ansible.com/projects/ansible/latest/guide.html")
+    cf_resp.content = b"<html>challenge</html>"
+    return cf_resp
+
+
+def _make_embed_response(
+    html: str = "<div role='main'><h1>Embed Title</h1><p>From RTD Embed.</p></div>",
+    status_code: int = 200,
+    error: str | None = None,
+) -> MagicMock:
+    """Build a mock RTD Embed API JSON response."""
+    resp = MagicMock()
+    resp.status_code = status_code
+    payload: dict[str, str] = {
+        "url": "https://ansible.readthedocs.io/x",
+        "content": html,
+    }
+    if error is not None:
+        payload = {"error": error}
+    body = json.dumps(payload).encode()
+    resp.content = body
+    resp.text = body.decode()
+    resp.json = MagicMock(return_value=payload)
+    resp.headers = {"content-type": "application/json"}
+    embed_url = MagicMock()
+    embed_url.host = "app.readthedocs.org"
+    embed_url.__str__ = lambda self: docs_mod.RTD_EMBED_URL
+    resp.url = embed_url
+    resp.raise_for_status = MagicMock()
+    return resp
+
+
 class TestFetchDocCfChallenge:
     @pytest.mark.asyncio
-    async def test_cf_challenge_raises_immediately(self):
-        from ansible_know.errors import AnsibleKnowError
-
-        cf_resp = MagicMock()
-        cf_resp.status_code = 429
-        cf_resp.headers = {"cf-mitigated": "challenge", "content-type": "text/html"}
-        cf_resp.raise_for_status = MagicMock()
+    async def test_cf_challenge_falls_back_to_rtd_embed(self):
+        """CF challenge should not surface when RTD Embed succeeds."""
+        cf_resp = _make_cf_challenge_response()
+        embed_resp = _make_embed_response()
 
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=cf_resp)
+        mock_client.get = AsyncMock(side_effect=[cf_resp, embed_resp])
 
-        with pytest.raises(AnsibleKnowError, match="Cloudflare managed challenge"):
-            await fetch_doc_content(
-                "https://docs.ansible.com/projects/ansible/latest/guide.html",
-                http_client=mock_client,
-            )
+        result = await fetch_doc_content(
+            "https://docs.ansible.com/projects/ansible/latest/guide.html",
+            http_client=mock_client,
+        )
+
+        assert "Embed Title" in result["title"] or "Embed Title" in result["content"]
+        assert "From RTD Embed" in result["content"]
+        assert result["source_url"] == (
+            "https://docs.ansible.com/projects/ansible/latest/guide.html"
+        )
+        assert mock_client.get.call_count == 2
+        embed_call = mock_client.get.call_args_list[1]
+        assert embed_call.args[0] == docs_mod.RTD_EMBED_URL
+        assert embed_call.kwargs["params"]["url"] == (
+            "https://ansible.readthedocs.io/projects/ansible/latest/guide.html"
+        )
 
     @pytest.mark.asyncio
-    async def test_cf_challenge_no_retry(self):
+    async def test_cf_challenge_no_retry_before_embed(self):
+        """CF challenge must not retry docs.ansible.com; one primary + one Embed."""
         from ansible_know.errors import AnsibleKnowError
 
-        cf_resp = MagicMock()
-        cf_resp.status_code = 429
-        cf_resp.headers = {"cf-mitigated": "challenge", "content-type": "text/html"}
-        cf_resp.raise_for_status = MagicMock()
+        cf_resp = _make_cf_challenge_response()
+        embed_resp = _make_embed_response(error="Can't find content", status_code=404)
 
         mock_client = AsyncMock()
-        mock_client.get = AsyncMock(return_value=cf_resp)
+        mock_client.get = AsyncMock(side_effect=[cf_resp, embed_resp])
 
-        with pytest.raises(AnsibleKnowError):
+        with pytest.raises(AnsibleKnowError, match="RTD Embed fallback also failed"):
             await fetch_doc_content(
                 "https://docs.ansible.com/projects/ansible/latest/guide.html",
                 http_client=mock_client,
             )
 
-        assert mock_client.get.call_count == 1
+        assert mock_client.get.call_count == 2
 
     @pytest.mark.asyncio
     async def test_regular_429_retries_but_cf_429_does_not(self):
-        from ansible_know.errors import AnsibleKnowError
-
-        cf_resp = MagicMock()
-        cf_resp.status_code = 429
-        cf_resp.headers = {"cf-mitigated": "challenge", "content-type": "text/html"}
-        cf_resp.raise_for_status = MagicMock()
+        cf_resp = _make_cf_challenge_response()
+        embed_resp = _make_embed_response()
 
         regular_429 = MagicMock()
         regular_429.status_code = 429
@@ -913,17 +954,18 @@ class TestFetchDocCfChallenge:
         ok_resp = _make_ok_response()
 
         mock_client_cf = AsyncMock()
-        mock_client_cf.get = AsyncMock(return_value=cf_resp)
+        mock_client_cf.get = AsyncMock(side_effect=[cf_resp, embed_resp])
 
         mock_client_regular = AsyncMock()
         mock_client_regular.get = AsyncMock(side_effect=[regular_429, ok_resp])
 
-        with pytest.raises(AnsibleKnowError, match="Cloudflare"):
-            await fetch_doc_content(
-                "https://docs.ansible.com/projects/ansible/latest/guide.html",
-                http_client=mock_client_cf,
-            )
-        assert mock_client_cf.get.call_count == 1
+        result_cf = await fetch_doc_content(
+            "https://docs.ansible.com/projects/ansible/latest/guide.html",
+            http_client=mock_client_cf,
+        )
+        assert "From RTD Embed" in result_cf["content"]
+        # One CF probe + one Embed — no docs.ansible.com retries on challenge
+        assert mock_client_cf.get.call_count == 2
 
         docs_mod._page_cache.clear()
         docs_mod._doc_last_request = 0.0
@@ -935,6 +977,124 @@ class TestFetchDocCfChallenge:
             )
         assert result["title"] == "Test Page"
         assert mock_client_regular.get.call_count == 2
+
+
+class TestFetchDocRtdEmbedFallback:
+    @pytest.mark.asyncio
+    async def test_persistent_429_falls_back_to_embed(self):
+        """After exhausting 429 retries, fall back to RTD Embed."""
+        regular_429 = MagicMock()
+        regular_429.status_code = 429
+        regular_429.headers = {"retry-after": "0"}
+        regular_429.content = b""
+        regular_429.raise_for_status = MagicMock(
+            side_effect=httpx.HTTPStatusError(
+                "429 Too Many Requests",
+                request=MagicMock(),
+                response=MagicMock(status_code=429),
+            )
+        )
+
+        embed_resp = _make_embed_response(
+            html="<h1>After 429</h1><p>Embed recovered.</p>",
+        )
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(
+            side_effect=[regular_429, regular_429, regular_429, embed_resp],
+        )
+
+        with patch("ansible_know.docs.asyncio.sleep", new_callable=AsyncMock):
+            result = await fetch_doc_content(
+                "https://docs.ansible.com/projects/ansible/latest/guide.html",
+                http_client=mock_client,
+            )
+
+        assert "Embed recovered" in result["content"]
+        assert mock_client.get.call_count == docs_mod.MAX_RETRY_ATTEMPTS + 1
+
+    @pytest.mark.asyncio
+    async def test_embed_failure_surfaces_clean_combined_error(self):
+        from ansible_know.errors import AnsibleKnowError
+
+        cf_resp = _make_cf_challenge_response()
+        embed_resp = _make_embed_response(error="External domain not allowed", status_code=400)
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=[cf_resp, embed_resp])
+
+        with pytest.raises(AnsibleKnowError, match="Cloudflare managed challenge") as exc_info:
+            await fetch_doc_content(
+                "https://docs.ansible.com/projects/ansible/latest/guide.html",
+                http_client=mock_client,
+            )
+
+        message = str(exc_info.value)
+        assert "RTD Embed fallback also failed" in message
+        assert "External domain not allowed" in message
+        # No filesystem paths leaked
+        assert "/home/" not in message
+        assert "/tmp/" not in message
+
+    def test_map_docs_url_to_rtd(self):
+        mapped = docs_mod._map_docs_url_to_rtd(
+            "https://docs.ansible.com/projects/lint/rules/yaml.html#details",
+        )
+        assert mapped == (
+            "https://ansible.readthedocs.io/projects/lint/rules/yaml.html#details"
+        )
+
+    def test_html_to_markdown_skips_script_and_keeps_headings(self):
+        md = html_to_markdown(
+            '<div role="main"><script>banner()</script>'
+            "<h1>Loops</h1><p>Use <code>loop</code>.</p></div>"
+            "<footer>Do not include</footer>",
+        )
+        assert "# Loops" in md
+        assert "`loop`" in md
+        assert "banner" not in md
+        assert "Do not include" not in md
+
+    @pytest.mark.asyncio
+    async def test_embed_uses_rtd_token_when_set(self, monkeypatch):
+        monkeypatch.setenv("ANSIBLE_KNOW_RTD_TOKEN", "secret-token")
+        cf_resp = _make_cf_challenge_response()
+        embed_resp = _make_embed_response()
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=[cf_resp, embed_resp])
+
+        await fetch_doc_content(
+            "https://docs.ansible.com/projects/ansible/latest/guide.html",
+            http_client=mock_client,
+        )
+
+        embed_headers = mock_client.get.call_args_list[1].kwargs["headers"]
+        assert embed_headers["Authorization"] == "Token secret-token"
+
+    @pytest.mark.asyncio
+    async def test_non_429_http_error_does_not_use_embed(self):
+        """Exhausted 503 must not trigger Embed fallback."""
+        error_resp = MagicMock()
+        error_resp.status_code = 503
+        error_resp.headers = {}
+        error_resp.raise_for_status = MagicMock(
+            side_effect=httpx.HTTPStatusError(
+                "503 Service Unavailable",
+                request=MagicMock(),
+                response=error_resp,
+            )
+        )
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=error_resp)
+
+        with patch("ansible_know.docs.asyncio.sleep", new_callable=AsyncMock):
+            with pytest.raises(httpx.HTTPStatusError):
+                await fetch_doc_content(
+                    "https://docs.ansible.com/projects/ansible/latest/guide.html",
+                    http_client=mock_client,
+                )
+
+        assert mock_client.get.call_count == docs_mod.MAX_RETRY_ATTEMPTS
 
 
 class TestFetchDocRedhat:
