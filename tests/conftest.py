@@ -128,6 +128,13 @@ SAMPLE_MODULE_LIST = {
     "community.general.redis": "Various redis commands, replica and flush",
 }
 
+
+def sample_batch_module_docs(module_names: list[str] | None = None) -> dict:
+    """Build a multi-FQCN ansible-doc --json payload for batch-fetch tests."""
+    names = module_names if module_names is not None else list(SAMPLE_MODULE_LIST)
+    template = SAMPLE_MODULE_DOC["ansible.builtin.package"]
+    return dict.fromkeys(names, template)
+
 SAMPLE_ROLE_DOC = {
     "fedora.linux_system_roles.gfs2": {
         "collection": "fedora.linux_system_roles",

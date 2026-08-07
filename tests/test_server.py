@@ -10,8 +10,11 @@ import pytest
 from tests.conftest import (
     SAMPLE_MODULE_DOC,
     SAMPLE_MODULE_LIST,
+    SAMPLE_PLUGIN_DOC,
+    SAMPLE_PLUGIN_LIST,
     SAMPLE_ROLE_DOC,
     SAMPLE_ROLE_LIST,
+    sample_batch_module_docs,
 )
 
 
@@ -316,15 +319,15 @@ class TestGenerateSkillTool:
 class TestGenerateCollectionSkillsTool:
     @pytest.mark.asyncio
     async def test_generates_collection_skills(self, tmp_path, mock_ansible_doc, monkeypatch):
-        # Module list, role list (empty), 14x plugin list (empty), then 4x module docs
+        # Module list, role list (empty), 14x plugin list (empty), then 1 batch module docs
         responses = [
             json.dumps(SAMPLE_MODULE_LIST),  # search_modules
             json.dumps({}),  # list_roles
         ]
         # 14 plugin types all return empty
         responses.extend([json.dumps({})] * 14)
-        # 4 module doc fetches
-        responses.extend([json.dumps(SAMPLE_MODULE_DOC)] * 4)
+        # 1 batched module doc fetch (was 4 per-module calls)
+        responses.append(json.dumps(sample_batch_module_docs()))
 
         mock_ansible_doc.side_effect = responses
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
@@ -334,6 +337,30 @@ class TestGenerateCollectionSkillsTool:
         assert result["succeeded"] + result["failed"] == 4
         assert result["collection_skill"] == "ansible.builtin"
         assert (tmp_path / "ansible-builtin" / "SKILL.md").exists()
+
+    @pytest.mark.asyncio
+    async def test_batches_module_doc_fetches(self, tmp_path, mock_ansible_doc, monkeypatch):
+        """N modules must not trigger N ansible-doc subprocesses for docs."""
+        responses = [
+            json.dumps(SAMPLE_MODULE_LIST),
+            json.dumps({}),
+        ]
+        responses.extend([json.dumps({})] * 14)
+        responses.append(json.dumps(sample_batch_module_docs()))
+        mock_ansible_doc.side_effect = responses
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+
+        from ansible_know.server import generate_collection_skills
+        result = await generate_collection_skills("ansible.builtin", install_to=str(tmp_path))
+
+        assert result["succeeded"] == 4
+        doc_calls = [
+            c for c in mock_ansible_doc.call_args_list
+            if "--list" not in c.args and "-t" not in c.args
+        ]
+        assert len(doc_calls) == 1
+        # All four FQCNs in a single ansible-doc argv
+        assert set(SAMPLE_MODULE_LIST).issubset(set(doc_calls[0].args))
 
     @pytest.mark.asyncio
     async def test_galaxy_batch_fallback(self, tmp_path, mock_ansible_doc, monkeypatch):
@@ -388,7 +415,7 @@ class TestGenerateCollectionSkillsTool:
             json.dumps({}),
         ]
         responses.extend([json.dumps({})] * 14)
-        responses.extend([json.dumps(SAMPLE_MODULE_DOC)] * 4)
+        responses.append(json.dumps(sample_batch_module_docs()))
 
         mock_ansible_doc.side_effect = responses
         skills_dir = tmp_path / "skills"
@@ -418,7 +445,7 @@ class TestGenerateCollectionSkillsTool:
             json.dumps({}),
         ]
         responses.extend([json.dumps({})] * 14)
-        responses.extend([json.dumps(SAMPLE_MODULE_DOC)] * 4)
+        responses.append(json.dumps(sample_batch_module_docs()))
         mock_ansible_doc.side_effect = responses
 
         skills_dir = tmp_path / "skills"
@@ -446,7 +473,7 @@ class TestGenerateCollectionSkillsTool:
             json.dumps({}),
         ]
         responses.extend([json.dumps({})] * 14)
-        responses.extend([json.dumps(SAMPLE_MODULE_DOC)] * 4)
+        responses.append(json.dumps(sample_batch_module_docs()))
         mock_ansible_doc.side_effect = responses
 
         other_dir = tmp_path / "elsewhere"
@@ -463,6 +490,52 @@ class TestGenerateCollectionSkillsTool:
 
         assert "error" not in result
         mock_update.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_batches_plugin_doc_fetches(self, tmp_path, mock_ansible_doc, monkeypatch):
+        """Plugins of one type share a single ansible-doc -t <type> call."""
+        lookup_plugins = {
+            "ansible.builtin.env": SAMPLE_PLUGIN_LIST["ansible.builtin.env"],
+            "ansible.builtin.file": SAMPLE_PLUGIN_LIST["ansible.builtin.file"],
+        }
+        batch_plugin_docs = dict.fromkeys(
+            lookup_plugins, SAMPLE_PLUGIN_DOC["netbox.netbox.nb_lookup"],
+        )
+
+        def side_effect(*args, **kwargs):
+            if "--list" in args and "-t" in args:
+                # Only the lookup type has plugins; others empty.
+                idx = args.index("-t")
+                if args[idx + 1] == "lookup":
+                    return json.dumps(lookup_plugins)
+                return json.dumps({})
+            if "--list" in args:
+                return json.dumps({})  # no modules
+            if "-t" in args and "lookup" in args:
+                return json.dumps(batch_plugin_docs)
+            return json.dumps({})
+
+        mock_ansible_doc.side_effect = side_effect
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+
+        with patch(
+            "ansible_know.resolution.resolve_collection_module_docs",
+            new_callable=AsyncMock,
+            return_value={"error": "not installed"},
+        ):
+            from ansible_know.server import generate_collection_skills
+            result = await generate_collection_skills(
+                "ansible.builtin", install_to=str(tmp_path),
+            )
+
+        assert result["total"] == 2
+        assert result["succeeded"] == 2
+        plugin_doc_calls = [
+            c for c in mock_ansible_doc.call_args_list
+            if "--list" not in c.args and "-t" in c.args
+        ]
+        assert len(plugin_doc_calls) == 1
+        assert set(lookup_plugins).issubset(set(plugin_doc_calls[0].args))
 
 
 class TestFQCNValidation:
@@ -1964,7 +2037,7 @@ class TestGetCollectionManifestWithRoles:
                 return json.dumps(SAMPLE_ROLE_LIST)
             if "--list" in args:
                 return json.dumps(SAMPLE_MODULE_LIST)
-            return json.dumps(SAMPLE_MODULE_DOC)
+            return json.dumps(sample_batch_module_docs())
 
         mock_ansible_doc.side_effect = side_effect
 
@@ -1974,6 +2047,32 @@ class TestGetCollectionManifestWithRoles:
 
         assert "roles" in result
         assert "role_count" in result
+
+    @pytest.mark.asyncio
+    async def test_manifest_batches_module_doc_fetches(self, mock_ansible_doc):
+        """Manifest generation must use one ansible-doc call for N modules."""
+
+        def side_effect(*args, **kwargs):
+            if "-t" in args and "role" in args and "--list" in args:
+                return json.dumps({})
+            if "--list" in args:
+                return json.dumps(SAMPLE_MODULE_LIST)
+            return json.dumps(sample_batch_module_docs())
+
+        mock_ansible_doc.side_effect = side_effect
+
+        with patch("ansible_know.collection_manifest.load_cached_manifest", return_value=None):
+            from ansible_know.server import get_collection_manifest
+            result = await get_collection_manifest("ansible.builtin")
+
+        assert "error" not in result
+        assert result["module_count"] == 4
+        doc_calls = [
+            c for c in mock_ansible_doc.call_args_list
+            if "--list" not in c.args and "-t" not in c.args
+        ]
+        assert len(doc_calls) == 1
+        assert set(SAMPLE_MODULE_LIST).issubset(set(doc_calls[0].args))
 
     @pytest.mark.asyncio
     async def test_search_collections_has_role_count(self):

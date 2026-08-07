@@ -35,6 +35,8 @@ from ansible_know.types import (
     GetPluginDocResult,
     GetRoleDocResult,
     ManifestResult,
+    ModuleMetadata,
+    PluginMetadata,
     SearchDocsEntry,
     SkillEntry,
     VersionInfo,
@@ -701,15 +703,20 @@ async def get_collection_manifest(
                 + collection_hint(collection_namespace)
             )}
 
-        metadata_list = []
-        for module_name in sorted(modules):
-            try:
-                raw_doc = await run_in_executor(
-                    parser.get_module_doc, module_name, collections_path=cpath,
-                )
-                metadata_list.append(parser.extract_module_metadata(raw_doc))
-            except AnsibleDocError:
-                continue
+        # One (chunked) ansible-doc call instead of N per-module subprocesses.
+        try:
+            module_metadata_by_fqcn = await run_in_executor(
+                parser.load_module_metadata_batch,
+                sorted(modules),
+                collections_path=cpath,
+            )
+        except AnsibleDocError as exc:
+            logger.warning(
+                "Batch module doc fetch failed for %s: %s",
+                collection_namespace, exc,
+            )
+            module_metadata_by_fqcn = {}
+        metadata_list = list(module_metadata_by_fqcn.values())
 
         roles_metadata = []
         for role_fqcn, role_data in sorted(roles_raw.items()):
@@ -1209,16 +1216,31 @@ async def generate_collection_skills(
 
         installed_version = state.collection_manager.list_installed().get(collection_namespace)
 
-        # Generate module skills
+        # Generate module skills — batch ansible-doc, then write packages.
+        module_metadata_by_fqcn: dict[str, ModuleMetadata] = {}
+        if modules:
+            try:
+                module_metadata_by_fqcn = await run_in_executor(
+                    parser.load_module_metadata_batch,
+                    sorted(modules),
+                    collections_path=cpath,
+                )
+            except AnsibleDocError as exc:
+                logger.warning(
+                    "Batch module doc fetch failed for %s: %s",
+                    collection_namespace, exc,
+                )
+
         for module_name in sorted(modules):
             if ctx:
                 await ctx.report_progress(progress=current, total=total)
             current += 1
             try:
-                raw_doc = await run_in_executor(
-                    parser.get_module_doc, module_name, collections_path=cpath,
-                )
-                metadata = parser.extract_module_metadata(raw_doc)
+                metadata = module_metadata_by_fqcn.get(module_name)
+                if metadata is None:
+                    logger.warning("No ansible-doc output for module %s", module_name)
+                    failed += 1
+                    continue
                 metadata_list.append(metadata)
 
                 output_dir = base_dir / collection_dir_name / skills.fqcn_to_skill_name(module_name)
@@ -1283,19 +1305,37 @@ async def generate_collection_skills(
                 logger.warning("Role skill generation failed for %s: %s", role_fqcn, exc)
                 failed += 1
 
-        # Generate plugin skills
+        # Generate plugin skills — one (chunked) ansible-doc call per plugin type.
         plugins_metadata = []
         for ptype, type_plugins in plugin_list_results:
-            for pfqcn in sorted(type_plugins):
+            sorted_plugins = sorted(type_plugins)
+            plugin_metadata_by_fqcn: dict[str, PluginMetadata] = {}
+            if sorted_plugins:
+                try:
+                    plugin_metadata_by_fqcn = await run_in_executor(
+                        parser.load_plugin_metadata_batch,
+                        sorted_plugins,
+                        ptype,
+                        collections_path=cpath,
+                    )
+                except AnsibleDocError as exc:
+                    logger.warning(
+                        "Batch plugin doc fetch failed for %s type=%s: %s",
+                        collection_namespace, ptype, exc,
+                    )
+
+            for pfqcn in sorted_plugins:
                 if ctx:
                     await ctx.report_progress(progress=current, total=total)
                 current += 1
                 try:
-                    raw_doc = await run_in_executor(
-                        parser.get_plugin_doc, pfqcn, ptype,
-                        collections_path=cpath,
-                    )
-                    meta = parser.extract_plugin_metadata(raw_doc, ptype)
+                    meta = plugin_metadata_by_fqcn.get(pfqcn)
+                    if meta is None:
+                        logger.warning(
+                            "No ansible-doc output for plugin %s (%s)", pfqcn, ptype,
+                        )
+                        failed += 1
+                        continue
                     plugins_metadata.append({
                         "fqcn": pfqcn,
                         "plugin_type": ptype,

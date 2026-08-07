@@ -1,11 +1,13 @@
 """Tests for ansible_know.parser."""
 
-from unittest.mock import MagicMock, patch
+import json
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 
 from ansible_know.errors import AnsibleDocError, CollectionNotFoundError, ValidationError
 from ansible_know.parser import (
+    _ANSIBLE_DOC_BATCH_SIZE,
     extract_examples,
     extract_module_metadata,
     extract_params,
@@ -13,12 +15,16 @@ from ansible_know.parser import (
     extract_role_metadata,
     extract_short_description,
     get_module_doc,
+    get_module_docs,
     get_plugin_doc,
+    get_plugin_docs,
     get_role_doc,
     is_api_module,
     list_modules,
     list_plugins,
     list_roles,
+    load_module_metadata_batch,
+    load_plugin_metadata_batch,
     search_modules,
     search_plugins,
     transform_galaxy_to_ansible_doc_format,
@@ -35,6 +41,85 @@ class TestGetModuleDoc:
         with patch("ansible_know.parser._run_ansible_doc", return_value="not json"):
             with pytest.raises(AnsibleDocError, match="Failed to parse"):
                 get_module_doc("ansible.builtin.package")
+
+
+class TestGetModuleDocs:
+    def test_batches_names_in_one_call(self, sample_module_doc_json):
+        names = ["ansible.builtin.package", "ansible.builtin.apt"]
+        with patch(
+            "ansible_know.parser._run_ansible_doc", return_value=sample_module_doc_json,
+        ) as mock:
+            get_module_docs(names)
+        mock.assert_called_once_with(
+            "ansible.builtin.package", "ansible.builtin.apt", "--json",
+            collections_path=None, timeout=ANY,
+        )
+
+    def test_empty_names_skips_subprocess(self):
+        with patch("ansible_know.parser._run_ansible_doc") as mock:
+            assert get_module_docs([]) == {}
+        mock.assert_not_called()
+
+    def test_chunks_large_name_lists(self, sample_module_doc_json):
+        names = [f"ns.col.mod{i}" for i in range(_ANSIBLE_DOC_BATCH_SIZE + 3)]
+        with patch(
+            "ansible_know.parser._run_ansible_doc", return_value=sample_module_doc_json,
+        ) as mock:
+            get_module_docs(names)
+        assert mock.call_count == 2
+        # args are (*chunk, "--json"); collections_path is a kwarg
+        first_args = mock.call_args_list[0].args
+        second_args = mock.call_args_list[1].args
+        assert first_args[-1] == "--json"
+        assert len(first_args) - 1 == _ANSIBLE_DOC_BATCH_SIZE
+        assert second_args[-1] == "--json"
+        assert len(second_args) - 1 == 3
+
+    def test_deduplicates_names(self, sample_module_doc_json):
+        with patch(
+            "ansible_know.parser._run_ansible_doc", return_value=sample_module_doc_json,
+        ) as mock:
+            get_module_docs(["a.b.c", "a.b.c", "a.b.d"])
+        mock.assert_called_once_with(
+            "a.b.c", "a.b.d", "--json", collections_path=None, timeout=ANY,
+        )
+
+    def test_chunk_failure_falls_back_per_module(self, sample_module_doc):
+        names = ["ns.col.a", "ns.col.b"]
+        batch_error = AnsibleDocError("batch boom")
+        per_name = {
+            "ns.col.a": json.dumps({"ns.col.a": sample_module_doc["ansible.builtin.package"]}),
+            "ns.col.b": json.dumps({"ns.col.b": sample_module_doc["ansible.builtin.package"]}),
+        }
+
+        def side_effect(*args, **kwargs):
+            # Multi-name batch: (...names, "--json")
+            name_args = [a for a in args if a != "--json"]
+            if len(name_args) > 1:
+                raise batch_error
+            return per_name[name_args[0]]
+
+        with patch("ansible_know.parser._run_ansible_doc", side_effect=side_effect) as mock:
+            result = get_module_docs(names)
+        assert set(result) == set(names)
+        assert mock.call_count == 3  # 1 failed batch + 2 singles
+
+
+class TestLoadModuleMetadataBatch:
+    def test_extracts_metadata_for_present_modules(self, sample_module_doc):
+        docs = {
+            "ansible.builtin.package": sample_module_doc["ansible.builtin.package"],
+            "ansible.builtin.apt": sample_module_doc["ansible.builtin.package"],
+        }
+        with patch(
+            "ansible_know.parser.get_module_docs", return_value=docs,
+        ) as mock_docs:
+            result = load_module_metadata_batch(
+                ["ansible.builtin.package", "ansible.builtin.apt", "missing.mod"],
+            )
+        mock_docs.assert_called_once()
+        assert set(result) == {"ansible.builtin.package", "ansible.builtin.apt"}
+        assert result["ansible.builtin.package"]["module_name"] == "ansible.builtin.package"
 
 
 class TestListModules:
@@ -417,12 +502,43 @@ class TestGetPluginDoc:
             get_plugin_doc("netbox.netbox.nb_lookup", "lookup")
         mock.assert_called_once_with(
             "-t", "lookup", "netbox.netbox.nb_lookup", "--json",
-            collections_path=None,
+            collections_path=None, timeout=ANY,
         )
 
     def test_rejects_invalid_plugin_type(self):
         with pytest.raises(ValidationError, match="Invalid plugin type"):
             get_plugin_doc("foo.bar.baz", "bogus")
+
+
+class TestGetPluginDocs:
+    def test_batches_names_with_type_flag(self, sample_plugin_doc_json):
+        names = ["ansible.builtin.env", "ansible.builtin.file"]
+        with patch(
+            "ansible_know.parser._run_ansible_doc", return_value=sample_plugin_doc_json,
+        ) as mock:
+            get_plugin_docs(names, "lookup")
+        mock.assert_called_once_with(
+            "-t", "lookup", "ansible.builtin.env", "ansible.builtin.file", "--json",
+            collections_path=None, timeout=ANY,
+        )
+
+    def test_empty_names_skips_subprocess(self):
+        with patch("ansible_know.parser._run_ansible_doc") as mock:
+            assert get_plugin_docs([], "lookup") == {}
+        mock.assert_not_called()
+
+
+class TestLoadPluginMetadataBatch:
+    def test_extracts_metadata_for_present_plugins(self, sample_plugin_doc):
+        docs = {
+            "netbox.netbox.nb_lookup": sample_plugin_doc["netbox.netbox.nb_lookup"],
+        }
+        with patch("ansible_know.parser.get_plugin_docs", return_value=docs):
+            result = load_plugin_metadata_batch(
+                ["netbox.netbox.nb_lookup", "missing.lookup"], "lookup",
+            )
+        assert set(result) == {"netbox.netbox.nb_lookup"}
+        assert result["netbox.netbox.nb_lookup"]["plugin_type"] == "lookup"
 
 
 class TestSearchPlugins:

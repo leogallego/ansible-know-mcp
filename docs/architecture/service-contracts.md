@@ -104,7 +104,7 @@ business logic. Domain modules are imported lazily to avoid loading
 
 | Domain Module | Functions Called | File |
 |---------------|----------------|------|
-| `parser` | `search_modules()`, `get_module_doc()`, `get_role_doc()`, `list_roles()`, `extract_module_metadata()`, `extract_role_metadata()` | `parser.py` |
+| `parser` | `search_modules()`, `get_module_doc()`, `get_module_docs()`, `load_module_metadata_batch()`, `get_plugin_doc()`, `get_plugin_docs()`, `load_plugin_metadata_batch()`, `get_role_doc()`, `list_roles()`, `extract_module_metadata()`, `extract_role_metadata()` | `parser.py` |
 | `skills` | `render_skill()`, `write_skill_package()`, `render_role_skill()`, `write_role_skill_package()`, `_module_to_skill_name()` | `skills.py` |
 | `collection_manifest` | `generate_manifest()`, `load_cached_manifest()` | `collection_manifest.py` |
 | `docs` | `search_docs()`, `fetch_doc_content()` | `docs.py` |
