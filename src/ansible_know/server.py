@@ -36,6 +36,7 @@ from ansible_know.types import (
     GetRoleDocResult,
     ManifestResult,
     ModuleMetadata,
+    PluginManifestInput,
     PluginMetadata,
     SearchDocsEntry,
     SkillEntry,
@@ -653,6 +654,10 @@ async def get_collection_manifest(
     Returns cached MANIFEST.json if available, otherwise generates on-demand
     (metadata extraction only, no skill generation).
     On failure returns {"error": str}.
+
+    Module docs are fetched in batched ansible-doc calls. If the entire batch
+    fails hard, the manifest is written with zero module entries (roles/plugins
+    from list discovery are still included when present).
     """
     logger.info("get_collection_manifest namespace=%r", collection_namespace)
     try:
@@ -1147,6 +1152,10 @@ async def generate_collection_skills(
     listing available collections for cross-agent discovery.
     Returns {"succeeded": int, "failed": int, "total": int, "manifest": dict, "collection_skill": str},
     or {"error": str} on failure.
+
+    Module/plugin docs use batched ansible-doc calls. Names missing from a
+    batch (or a hard batch failure) are counted in ``failed``; partial batch
+    success still writes skills for resolved names.
     """
     logger.info("generate_collection_skills namespace=%r install_to=%r", collection_namespace, install_to)
     await _maybe_warn_upgrade(ctx)
@@ -1306,7 +1315,7 @@ async def generate_collection_skills(
                 failed += 1
 
         # Generate plugin skills — one (chunked) ansible-doc call per plugin type.
-        plugins_metadata = []
+        plugins_metadata: list[PluginManifestInput] = []
         for ptype, type_plugins in plugin_list_results:
             sorted_plugins = sorted(type_plugins)
             plugin_metadata_by_fqcn: dict[str, PluginMetadata] = {}
@@ -1336,12 +1345,13 @@ async def generate_collection_skills(
                         )
                         failed += 1
                         continue
-                    plugins_metadata.append({
+                    entry: PluginManifestInput = {
                         "fqcn": pfqcn,
                         "plugin_type": ptype,
                         "description": meta["short_description"],
                         "param_count": len(meta["params"]),
-                    })
+                    }
+                    plugins_metadata.append(entry)
 
                     output_dir = base_dir / collection_dir_name / skills.plugin_skill_name(pfqcn, ptype)
                     await run_in_executor(

@@ -53,7 +53,6 @@ __all__ = [
 ]
 
 
-
 def _find_ansible_doc() -> str:
     """Locate the ansible-doc binary, preferring the current Python environment."""
     env_bin = Path(sys.executable).parent / "ansible-doc"
@@ -125,7 +124,7 @@ def _fetch_docs_batched(
         return {}
 
     merged: dict[str, Any] = {}
-    chunk_errors: list[str] = []
+    last_exc: AnsibleDocError | None = None
     for start in range(0, len(unique_names), _ANSIBLE_DOC_BATCH_SIZE):
         chunk = unique_names[start:start + _ANSIBLE_DOC_BATCH_SIZE]
         try:
@@ -140,7 +139,7 @@ def _fetch_docs_batched(
                 "falling back per-%s",
                 label, len(chunk), exc, label,
             )
-            chunk_errors.append(str(exc))
+            last_exc = exc
             for name in chunk:
                 try:
                     merged.update(_fetch_docs_chunk(
@@ -148,13 +147,17 @@ def _fetch_docs_batched(
                         plugin_type=plugin_type,
                         collections_path=collections_path,
                     ))
-                except AnsibleDocError:
-                    continue
-    if not merged and chunk_errors:
+                except AnsibleDocError as name_exc:
+                    last_exc = name_exc
+                    logger.debug(
+                        "Per-%s doc fallback failed for %s: %s",
+                        label, name, name_exc,
+                    )
+    if not merged and last_exc is not None:
         raise AnsibleDocError(
             f"Batch {label} doc fetch failed for all chunks. "
-            f"Last error: {chunk_errors[-1]}"
-        )
+            f"Last error: {last_exc}"
+        ) from last_exc
     return merged
 
 
@@ -232,21 +235,29 @@ def get_module_docs(
 
     Args:
         module_names: FQCNs to document. Empty sequence returns ``{}`` without
-            invoking ansible-doc. Duplicates are preserved in the request order
-            of first occurrence only when building chunks from a de-duplicated
-            list.
+            invoking ansible-doc. Duplicates are removed; first-occurrence
+            order is kept when building chunks.
         collections_path: Optional path prepended to ``ANSIBLE_COLLECTIONS_PATH``.
 
     Returns:
         Parsed ansible-doc ``--json`` object keyed by FQCN. Modules that
         ansible-doc cannot resolve are omitted (warnings go to stderr).
 
-    Raises:
-        AnsibleDocError: On subprocess failure, timeout, or invalid JSON.
-            Multi-name chunk failures fall back per-module before raising
-            only when every name in every chunk failed.
-        CollectionNotFoundError: When ansible-doc reports a missing collection
-            for a single-name request (re-raised; not swallowed by fallback).
+    Contract:
+        Preconditions:
+            - ``module_names`` may be empty; returns ``{}`` with no subprocess.
+        Raises:
+            AnsibleDocError: Subprocess/timeout/JSON failure when no names
+                succeed after chunking and per-name fallback.
+            CollectionNotFoundError: Re-raised when the request dedupes to
+                exactly one name and that call reports a missing collection.
+        Silences:
+            - Unresolved FQCNs omitted from ansible-doc JSON (see Returns).
+            - Per-name ``AnsibleDocError`` (including
+              ``CollectionNotFoundError``) during multi-name chunk fallback;
+              those names are omitted from the result (logged at debug).
+            - Partial success: if any name succeeds, returns the merged dict
+              without raising even when other names failed.
     """
     return _fetch_docs_batched(
         module_names,
@@ -273,8 +284,15 @@ def load_module_metadata_batch(
         Mapping of FQCN → ``ModuleMetadata`` for modules present in the
         ansible-doc response. Missing modules are skipped (logged at debug).
 
-    Raises:
-        AnsibleDocError: Propagated from ``get_module_docs`` on hard failures.
+    Contract:
+        Preconditions:
+            - Same as ``get_module_docs`` for ``module_names``.
+        Raises:
+            AnsibleDocError: Propagated from ``get_module_docs`` when every
+                name fails hard (no docs returned).
+        Silences:
+            - Names missing from the ansible-doc response (debug log, skip).
+            - ``extract_module_metadata`` ``AnsibleDocError`` (warning log, skip).
     """
     docs = get_module_docs(module_names, collections_path=collections_path)
     result: dict[str, ModuleMetadata] = {}
@@ -610,6 +628,7 @@ def get_plugin_docs(
 
     Args:
         plugin_names: Plugin FQCNs of ``plugin_type``. Empty returns ``{}``.
+            Duplicates are removed; first-occurrence order is kept.
         plugin_type: One of ``PLUGIN_TYPES`` (validated).
         collections_path: Optional path prepended to ``ANSIBLE_COLLECTIONS_PATH``.
 
@@ -617,13 +636,21 @@ def get_plugin_docs(
         Parsed ansible-doc ``--json`` object keyed by FQCN. Unresolved plugins
         are omitted.
 
-    Raises:
-        ValidationError: When ``plugin_type`` is not a known plugin type.
-        AnsibleDocError: On subprocess failure, timeout, or invalid JSON.
-            Multi-name chunk failures fall back per-plugin before raising
-            only when every name in every chunk failed.
-        CollectionNotFoundError: When ansible-doc reports a missing collection
-            for a single-name request (re-raised; not swallowed by fallback).
+    Contract:
+        Preconditions:
+            - ``plugin_type`` must be a known plugin type (validated first).
+            - ``plugin_names`` may be empty; returns ``{}`` with no subprocess.
+        Raises:
+            ValidationError: When ``plugin_type`` is not a known plugin type.
+            AnsibleDocError: Subprocess/timeout/JSON failure when no names
+                succeed after chunking and per-name fallback.
+            CollectionNotFoundError: Re-raised when the request dedupes to
+                exactly one name and that call reports a missing collection.
+        Silences:
+            - Unresolved FQCNs omitted from ansible-doc JSON (see Returns).
+            - Per-name ``AnsibleDocError`` during multi-name chunk fallback;
+              those names are omitted (logged at debug).
+            - Partial success returns the merged dict without raising.
     """
     validate_plugin_type(plugin_type)
     return _fetch_docs_batched(
@@ -651,9 +678,16 @@ def load_plugin_metadata_batch(
         Mapping of FQCN → ``PluginMetadata`` for plugins present in the
         ansible-doc response. Missing plugins are skipped (logged at debug).
 
-    Raises:
-        ValidationError: When ``plugin_type`` is not a known plugin type.
-        AnsibleDocError: Propagated from ``get_plugin_docs`` on hard failures.
+    Contract:
+        Preconditions:
+            - Same as ``get_plugin_docs`` for ``plugin_names`` / ``plugin_type``.
+        Raises:
+            ValidationError: When ``plugin_type`` is not a known plugin type.
+            AnsibleDocError: Propagated from ``get_plugin_docs`` when every
+                name fails hard (no docs returned).
+        Silences:
+            - Names missing from the ansible-doc response (debug log, skip).
+            - ``extract_plugin_metadata`` ``AnsibleDocError`` (warning log, skip).
     """
     docs = get_plugin_docs(
         plugin_names, plugin_type, collections_path=collections_path,
