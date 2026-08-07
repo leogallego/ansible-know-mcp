@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -1389,11 +1389,24 @@ class TestSearchCollectionsTool:
 
     @pytest.mark.asyncio
     async def test_with_tags(self):
+        # Patch at the resolution boundary: search_galaxy_collections queries
+        # every configured Galaxy server (default config has 2), so a class-level
+        # GalaxyClient.search_collections mock fires once per server.
         mock_result = {"query": "network", "count": 0, "collections": []}
-        with patch("ansible_know.galaxy.GalaxyClient.search_collections", return_value=mock_result) as mock_search:
+        with patch(
+            "ansible_know.resolution.search_galaxy_collections",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ) as mock_search:
             from ansible_know.server import search_collections
             result = await search_collections("network", tags="networking,cloud")
-        mock_search.assert_called_once_with("network", tags="networking,cloud")
+        mock_search.assert_called_once_with(
+            "network",
+            tags="networking,cloud",
+            http_client=ANY,
+            galaxy_servers=ANY,
+            client_factory=ANY,
+        )
         assert result["count"] == 0
 
     @pytest.mark.asyncio
