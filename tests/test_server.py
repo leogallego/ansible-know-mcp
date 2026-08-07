@@ -1363,6 +1363,12 @@ class TestServerVersionResource:
 
 
 class TestSearchCollectionsTool:
+    """Tool-level tests mock resolution.search_galaxy_collections.
+
+    Default config has multiple Galaxy servers, so a class-level
+    GalaxyClient.search_collections mock fires once per server.
+    """
+
     @pytest.mark.asyncio
     async def test_returns_results(self):
         mock_result = {
@@ -1381,7 +1387,11 @@ class TestSearchCollectionsTool:
                 }
             ],
         }
-        with patch("ansible_know.galaxy.GalaxyClient.search_collections", return_value=mock_result):
+        with patch(
+            "ansible_know.resolution.search_galaxy_collections",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ):
             from ansible_know.server import search_collections
             result = await search_collections("netbox")
         assert result["count"] == 1
@@ -1389,9 +1399,6 @@ class TestSearchCollectionsTool:
 
     @pytest.mark.asyncio
     async def test_with_tags(self):
-        # Patch at the resolution boundary: search_galaxy_collections queries
-        # every configured Galaxy server (default config has 2), so a class-level
-        # GalaxyClient.search_collections mock fires once per server.
         mock_result = {"query": "network", "count": 0, "collections": []}
         with patch(
             "ansible_know.resolution.search_galaxy_collections",
@@ -1436,7 +1443,11 @@ class TestSearchCollectionsTool:
     @pytest.mark.asyncio
     async def test_handles_galaxy_error(self):
         from ansible_know.errors import GalaxyError
-        with patch("ansible_know.galaxy.GalaxyClient.search_collections", side_effect=GalaxyError("timeout")):
+        with patch(
+            "ansible_know.resolution.search_galaxy_collections",
+            new_callable=AsyncMock,
+            side_effect=GalaxyError("timeout"),
+        ):
             from ansible_know.server import search_collections
             result = await search_collections("netbox")
         assert "error" in result
@@ -1757,7 +1768,11 @@ class TestGetCollectionManifestWithRoles:
                 }
             ],
         }
-        with patch("ansible_know.galaxy.GalaxyClient.search_collections", return_value=mock_result):
+        with patch(
+            "ansible_know.resolution.search_galaxy_collections",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ):
             from ansible_know.server import search_collections
             result = await search_collections("linux")
         assert result["collections"][0]["role_count"] == 43
