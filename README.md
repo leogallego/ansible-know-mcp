@@ -68,6 +68,7 @@ Together with [Ansible Devtools MCP](https://github.com/ansible/ansible-dev-tool
  | generate_plugin_skill      |  |                          |  |              |
  | generate_collection_skills |  |                          |  |              |
  | list_skills / get_skill    |  |                          |  |              |
+ | package_for_lola           |  |                          |  |              |
  | clear_cache                |  |                          |  |              |
  |                            |  |                          |  |              |
  | LEARN                      |  | CREATE + TEST            |  | DEPLOY       |
@@ -261,6 +262,7 @@ claude mcp add ansible-know --transport http https://know.ansible.ar/mcp
 | `generate_role_skill(role_name, install_to?)` | Generate a skill package for one role |
 | `generate_plugin_skill(plugin_name, plugin_type, install_to?)` | Generate a skill package for one plugin |
 | `generate_collection_skills(collection_namespace, install_to?)` | Batch generate skills for an entire collection |
+| `package_for_lola(collection, output_dir, source_dir?, module_name?, write_market_yml?)` | Wrap generated skills into a Lola module directory (Layer 2 packaging; does not change `generate_*` layout) |
 
 ### Maintenance
 

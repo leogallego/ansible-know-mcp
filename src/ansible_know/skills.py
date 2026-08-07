@@ -7,8 +7,10 @@ Generates SKILL.md skill packages from Ansible module, role, and collection meta
 from __future__ import annotations
 
 import functools
+import json
 import logging
 import re
+import shutil
 import stat
 import threading
 from collections import Counter
@@ -16,12 +18,15 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import yaml
+
 from ansible_know.config import TEMPLATE_DIR
 from ansible_know.tagging import derive_tags
 from ansible_know.validation import (
     split_collection_fqcn,
     truncate_response,
     validate_install_path,
+    validate_lola_module_name,
     validate_path_containment,
 )
 
@@ -30,6 +35,7 @@ if TYPE_CHECKING:
         CollectionSkillContext,
         ModuleMetadata,
         ModuleTagEntry,
+        PackageForLolaResult,
         ParamDict,
         PluginManifestInput,
         SkillEntry,
@@ -45,12 +51,15 @@ _agents_md_lock = threading.Lock()
 __all__ = [
     "PLUGIN_SKILL_DIR_RE",
     "collection_skill_name",
+    "default_lola_module_name",
     "extract_skill_description",
     "fqcn_to_skill_name",
     "get_skill_sync",
     "list_skills_sync",
     "module_to_skill_name",
+    "package_collection_for_lola",
     "plugin_skill_name",
+    "resolve_collection_skills_dir",
     "skill_dir_to_collection_fqcn",
     "skill_dir_to_short_fqcn",
     "render_collection_skill",
@@ -693,3 +702,204 @@ def write_collection_skill_package(
         collection_fqcn, metadata_list, collection_version, plugins_metadata,
     )
     (output_dir / "SKILL.md").write_text(content)
+
+
+# --- Lola packaging (Layer 2 distribution wrap; does not change generate_* layout) ---
+
+
+def default_lola_module_name(collection_fqcn: str) -> str:
+    """Return the default Lola module directory name for a collection FQCN."""
+    return f"ansible-{collection_skill_name(collection_fqcn)}"
+
+
+def resolve_collection_skills_dir(
+    skills_dirs: Path | Sequence[Path],
+    collection_fqcn: str,
+) -> Path:
+    """Locate a generated collection skills directory across skills roots.
+
+    Callers MUST validate *collection_fqcn* with ``validate_namespace()`` first.
+
+    Raises:
+        FileNotFoundError: If no matching collection directory exists.
+        ValidationError: If a resolved path escapes its skills root.
+    """
+    collection_dir_name = collection_skill_name(collection_fqcn)
+    for skills_dir in _normalize_skills_dirs(skills_dirs):
+        if not skills_dir.is_dir():
+            continue
+        collection_dir = (skills_dir / collection_dir_name).resolve()
+        validate_path_containment(collection_dir, skills_dir)
+        if collection_dir.is_dir():
+            return collection_dir
+    raise FileNotFoundError(
+        f"No generated skills found for collection '{collection_fqcn}'."
+    )
+
+
+def _copy_skill_tree(src: Path, dest: Path, module_root: Path) -> None:
+    """Copy one skill directory into the Lola module, replacing any prior copy."""
+    validate_path_containment(dest.resolve(), module_root)
+    if dest.exists():
+        shutil.rmtree(dest)
+    shutil.copytree(src, dest, symlinks=False)
+
+
+def _read_collection_version(collection_dir: Path) -> str | None:
+    """Read ``collection_version`` from MANIFEST.json when present."""
+    manifest_path = collection_dir / "MANIFEST.json"
+    if not manifest_path.is_file():
+        return None
+    try:
+        data = json.loads(manifest_path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("Ignoring unreadable MANIFEST.json at %s: %s", manifest_path, exc)
+        return None
+    if not isinstance(data, dict):
+        return None
+    version = data.get("collection_version")
+    return version if isinstance(version, str) and version else None
+
+
+def _write_lola_market_yml(
+    module_root: Path,
+    *,
+    module_name: str,
+    collection_fqcn: str,
+    description: str,
+    version: str | None,
+    skill_count: int,
+) -> Path:
+    """Write optional marketplace metadata beside the Lola module skills tree."""
+    namespace, collection_name = split_collection_fqcn(collection_fqcn)
+    payload = {
+        "name": module_name,
+        "description": description
+        or f"Ansible skills for the {collection_fqcn} collection",
+        "version": version or "0.0.0",
+        "collection": collection_fqcn,
+        "skill_count": skill_count,
+        "tags": sorted({"ansible", namespace, collection_name.replace("_", "-")}),
+    }
+    market_path = module_root / "lola-market.yml"
+    validate_path_containment(market_path.resolve(), module_root)
+    market_path.write_text(
+        yaml.safe_dump(payload, default_flow_style=False, sort_keys=False),
+    )
+    return market_path
+
+
+def package_collection_for_lola(
+    skills_dirs: Path | Sequence[Path],
+    collection_fqcn: str,
+    output_dir: Path,
+    *,
+    write_market_yml: bool = True,
+    module_name: str | None = None,
+) -> PackageForLolaResult:
+    """Wrap generated collection skills into a Lola module directory.
+
+    Source layout (unchanged)::
+
+        {skills_dir}/{collection-kebab}/{skill}/SKILL.md
+
+    Target Lola layout::
+
+        {output_dir}/{module_name}/skills/{skill}/SKILL.md
+        {output_dir}/{module_name}/lola-market.yml   # optional
+
+    Nested skill directories that contain ``SKILL.md`` are copied with supporting
+    files. A collection-level ``SKILL.md`` is packaged as
+    ``skills/{collection-kebab}/SKILL.md``. ``MANIFEST.json`` is not copied.
+
+    Callers MUST validate *collection_fqcn* with ``validate_namespace()`` and
+    *output_dir* / *module_name* with the matching validators first.
+
+    Raises:
+        FileNotFoundError: If the collection has no generated skills, or none
+            of those skills contain a ``SKILL.md``.
+        ValidationError: On path escape or invalid module name.
+        OSError: On filesystem permission or I/O errors.
+    """
+    resolved_output = validate_install_path(str(output_dir))
+    lola_name = module_name or default_lola_module_name(collection_fqcn)
+    validate_lola_module_name(lola_name)
+
+    collection_dir = resolve_collection_skills_dir(skills_dirs, collection_fqcn)
+    module_root = (resolved_output / lola_name).resolve()
+    validate_path_containment(module_root, resolved_output)
+    module_root.mkdir(parents=True, exist_ok=True)
+
+    skills_out = module_root / "skills"
+    if skills_out.exists():
+        validate_path_containment(skills_out.resolve(), module_root)
+        shutil.rmtree(skills_out)
+    skills_out.mkdir(parents=True)
+    validate_path_containment(skills_out.resolve(), module_root)
+
+    packaged: list[str] = []
+    collection_dir_name = collection_dir.name
+    collection_skill_md = collection_dir / "SKILL.md"
+    if collection_skill_md.is_file():
+        dest = skills_out / collection_dir_name
+        dest.mkdir(parents=True, exist_ok=True)
+        validate_path_containment(dest.resolve(), module_root)
+        shutil.copy2(collection_skill_md, dest / "SKILL.md")
+        packaged.append(collection_dir_name)
+
+    for entry in sorted(collection_dir.iterdir()):
+        try:
+            if not entry.is_dir() or entry.is_symlink():
+                continue
+            if not (entry / "SKILL.md").is_file():
+                continue
+            dest = skills_out / entry.name
+            _copy_skill_tree(entry, dest, module_root)
+            packaged.append(entry.name)
+        except OSError as exc:
+            logger.warning("Skipping unreadable skill dir %s: %s", entry.name, exc)
+            continue
+
+    if not packaged:
+        raise FileNotFoundError(
+            f"Collection '{collection_fqcn}' has no SKILL.md packages to wrap."
+        )
+
+    description = ""
+    if collection_skill_md.is_file():
+        try:
+            description = extract_skill_description(collection_skill_md)
+        except OSError as exc:
+            logger.warning("Could not read collection skill description: %s", exc)
+
+    market_path = module_root / "lola-market.yml"
+    market_yml_path: str | None = None
+    if write_market_yml:
+        market_yml_path = str(
+            _write_lola_market_yml(
+                module_root,
+                module_name=lola_name,
+                collection_fqcn=collection_fqcn,
+                description=description,
+                version=_read_collection_version(collection_dir),
+                skill_count=len(packaged),
+            )
+        )
+    elif market_path.is_file():
+        validate_path_containment(market_path.resolve(), module_root)
+        market_path.unlink()
+
+    logger.info(
+        "Packaged %d skills for %s into Lola module %s",
+        len(packaged),
+        collection_fqcn,
+        module_root,
+    )
+    return {
+        "collection": collection_fqcn,
+        "module_name": lola_name,
+        "module_dir": str(module_root),
+        "skill_count": len(packaged),
+        "skills": packaged,
+        "market_yml": market_yml_path,
+    }

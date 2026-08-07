@@ -126,7 +126,9 @@ would break. Spec compliance makes the layers possible.
   Alignment details:
   [`docs/superpowers/specs/2026-08-02-skill-discoverability-alignment.md`](../../superpowers/specs/2026-08-02-skill-discoverability-alignment.md)
 - **Layer 2** (repository): generated skills pushed to a GitHub repo;
-  Lola packaging is a separate user concern (#149).
+  Lola packaging via MCP tool ``package_for_lola`` / Domain
+  ``package_collection_for_lola`` (#149) — wrap only; does not change
+  ``generate_*`` layout (ADR-0007).
 - **Layer 3** (remote): FastMCP HTTP/SSE transport (see ADR-0001). Not
   yet implemented — requires hosting, auth, and monitoring infrastructure
   (#71).

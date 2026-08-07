@@ -57,7 +57,7 @@ decorated tool, resource, and prompt handler functions. FastMCP manages:
 
 | Element | File | Registration |
 |---------|------|--------------|
-| 18 tool handlers | `server.py` | `@mcp.tool(annotations=ToolAnnotations(...))` |
+| 19 tool handlers | `server.py` | `@mcp.tool(annotations=ToolAnnotations(...))` |
 | 6 resource handlers | `server.py` | `@mcp.resource(uri, ...)` |
 | 5 prompt handlers | `server.py` | `@mcp.prompt` |
 | Lifespan hook | `server.py` | `@lifespan` decorator on `app_lifespan()` |

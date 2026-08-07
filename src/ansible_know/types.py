@@ -335,6 +335,17 @@ class ClearCacheResult(TypedDict):
     cleared: list[str]
 
 
+class PackageForLolaResult(TypedDict):
+    """Result of package_for_lola tool / package_collection_for_lola."""
+
+    collection: str
+    module_name: str
+    module_dir: str
+    skill_count: int
+    skills: list[str]
+    market_yml: str | None
+
+
 class _CollectionDocsResultBase(TypedDict):
     """Required fields for batch collection docs result."""
 

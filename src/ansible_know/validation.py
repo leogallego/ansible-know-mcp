@@ -20,6 +20,7 @@ __all__ = [
     "validate_fqcn",
     "validate_install_path",
     "validate_keyword",
+    "validate_lola_module_name",
     "validate_namespace",
     "validate_path_containment",
     "validate_plugin_type",
@@ -42,8 +43,10 @@ _NAMESPACE_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$")
 _SKILL_NAME_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)?$")
 _VERSION_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
 _TAGS_RE = re.compile(r"^[a-zA-Z0-9_,-]+$")
+_LOLA_MODULE_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")
 _SENSITIVE_PREFIXES = ("/etc", "/usr", "/bin", "/sbin", "/boot", "/proc", "/sys", "/dev")
 _PATH_RE = re.compile(r"/(?:home|tmp|usr|etc|var|opt)/\S+")
+MAX_LOLA_MODULE_NAME_LENGTH = 128
 
 
 def validate_fqcn(name: str) -> None:
@@ -70,6 +73,26 @@ def validate_namespace(ns: str) -> None:
         raise ValidationError(
             "Invalid collection namespace: expected format 'namespace.collection' "
             "with alphanumeric/underscore segments."
+        )
+
+
+def validate_lola_module_name(name: str) -> None:
+    """Validate a Lola module directory / market ``name`` field.
+
+    Rejects empty values, path separators, and names that are not safe as a
+    single path segment under the packaging output directory.
+    """
+    if (
+        not name
+        or len(name) > MAX_LOLA_MODULE_NAME_LENGTH
+        or "/" in name
+        or "\\" in name
+        or name in {".", ".."}
+        or not _LOLA_MODULE_NAME_RE.match(name)
+    ):
+        raise ValidationError(
+            "Invalid Lola module name: use 1-128 alphanumeric characters, "
+            "dots, underscores, or hyphens (no path separators)."
         )
 
 
