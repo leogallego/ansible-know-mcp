@@ -965,6 +965,37 @@ class TestResourceFunctions:
         assert "ansible.builtin" in result
 
     @pytest.mark.asyncio
+    async def test_resource_skills_list_resolves_dirs_via_executor(self, tmp_path, monkeypatch):
+        """get_skills_dirs() must not run on the event loop (async drops FastMCP offload)."""
+        import threading
+
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+        import ansible_know.config as config
+        import ansible_know.server as srv
+
+        main_thread = threading.current_thread()
+        real_get_dirs = config.get_skills_dirs
+
+        def tracking_get_dirs():
+            assert threading.current_thread() is not main_thread, (
+                "get_skills_dirs ran on the event-loop thread"
+            )
+            return real_get_dirs()
+
+        with (
+            patch(
+                "ansible_know.server.run_in_executor",
+                wraps=srv.run_in_executor,
+            ) as mock_rie,
+            patch("ansible_know.config.get_skills_dirs", side_effect=tracking_get_dirs),
+        ):
+            result = json.loads(await srv.resource_skills_list())
+
+        mock_rie.assert_called_once()
+        assert mock_rie.call_args.args[0].__name__ == "_list_skill_names"
+        assert result == []
+
+    @pytest.mark.asyncio
     async def test_resource_skill_content_not_found(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
         from ansible_know.server import resource_skill_content
