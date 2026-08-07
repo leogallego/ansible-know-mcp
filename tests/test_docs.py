@@ -1046,11 +1046,13 @@ class TestFetchDocRtdEmbedFallback:
     def test_html_to_markdown_skips_script_and_keeps_headings(self):
         md = html_to_markdown(
             '<div role="main"><script>banner()</script>'
-            "<h1>Loops</h1><p>Use <code>loop</code>.</p></div>",
+            "<h1>Loops</h1><p>Use <code>loop</code>.</p></div>"
+            "<footer>Do not include</footer>",
         )
         assert "# Loops" in md
         assert "`loop`" in md
         assert "banner" not in md
+        assert "Do not include" not in md
 
     @pytest.mark.asyncio
     async def test_embed_uses_rtd_token_when_set(self, monkeypatch):

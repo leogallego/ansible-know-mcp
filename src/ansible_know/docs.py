@@ -11,7 +11,6 @@ import asyncio
 import json
 import logging
 import math
-import os
 import time
 from itertools import zip_longest
 from pathlib import Path
@@ -27,6 +26,7 @@ from ansible_know.config import (
     SEARCH_DOCS_LIMIT,
     USER_AGENT,
     get_doc_sources,
+    get_rtd_api_token,
 )
 from ansible_know.errors import AnsibleKnowError
 from ansible_know.text_utils import clean_rtd_markdown, html_to_markdown
@@ -431,18 +431,20 @@ def _map_docs_url_to_rtd(url: str) -> str:
 
 
 def _rtd_embed_headers() -> dict[str, str]:
-    """Build Embed API headers; optional token raises unauthenticated rate limits."""
+    """Build Embed API headers; optional RTD token increases rate limits."""
     headers = {
         "Accept": "application/json",
         "User-Agent": USER_AGENT,
     }
-    token = os.environ.get("ANSIBLE_KNOW_RTD_TOKEN", "").strip()
+    token = get_rtd_api_token()
     if token:
         headers["Authorization"] = f"Token {token}"
     return headers
 
 
-def _is_embed_fallback_error(exc: Exception) -> bool:
+def _is_embed_fallback_error(
+    exc: AnsibleKnowError | httpx.HTTPStatusError,
+) -> bool:
     """Return True for CF challenge or persistent HTTP 429 from docs.ansible.com."""
     if isinstance(exc, AnsibleKnowError) and CF_CHALLENGE_MARKER in str(exc):
         return True
@@ -553,6 +555,8 @@ async def fetch_doc_content(
     Args:
         url: Full docs.ansible.com URL (caller must validate first).
         max_tokens: If set, raise when page exceeds this token count.
+            Primary path uses Cloudflare ``x-markdown-tokens``; Embed
+            fallback estimates ``len(content) // 4`` (no token header).
         http_client: Optional shared httpx client.
 
     Returns:
@@ -630,7 +634,7 @@ async def fetch_doc_content(
         content, title = clean_rtd_markdown(resp.text)
         content = truncate_response(content)
 
-        result = {
+        result: FetchDocResult = {
             "content": content,
             "title": title,
             "tokens": tokens,

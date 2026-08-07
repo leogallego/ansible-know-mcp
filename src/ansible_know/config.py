@@ -290,6 +290,13 @@ REDHAT_DOCS_MCP_URL = os.environ.get(
     "https://docs-mcp.api.redhat.com/mcp",
 )
 
+def get_rtd_api_token() -> str:
+    """Optional Read the Docs API token (Embed/Search).
+
+    When set, increases unauthenticated rate limits from 5 req/min to 60 req/min.
+    """
+    return os.environ.get("ANSIBLE_KNOW_RTD_TOKEN", "").strip()
+
 PLUGIN_TYPES: tuple[str, ...] = (
     "become", "cache", "callback", "cliconf", "connection",
     "filter", "httpapi", "inventory", "lookup", "netconf",

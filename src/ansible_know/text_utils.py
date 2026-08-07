@@ -139,19 +139,51 @@ def _extract_tagged_region(raw_html: str, tag: str) -> str | None:
         return raw_html[start:end + len(close_token)]
 
 
+def _extract_role_main_div(raw_html: str) -> str | None:
+    """Extract the closed ``<div role="main">...</div>`` region, if present."""
+    match = re.search(
+        r'(?is)<div\b[^>]*\brole\s*=\s*["\']main["\'][^>]*>',
+        raw_html,
+    )
+    if not match:
+        return None
+    start = match.start()
+    # Depth-count div tags from the opening role=main tag to its closer.
+    lower = raw_html.lower()
+    pos = match.end()
+    depth = 1
+    while pos < len(lower) and depth > 0:
+        next_open = lower.find("<div", pos)
+        next_close = lower.find("</div>", pos)
+        if next_close < 0:
+            return None
+        if next_open >= 0 and next_open < next_close:
+            after = next_open + 4
+            if after < len(raw_html) and raw_html[after] in " \t\r\n/>":
+                gt = lower.find(">", next_open)
+                if gt < 0:
+                    return None
+                depth += 1
+                pos = gt + 1
+            else:
+                pos = after
+            continue
+        depth -= 1
+        pos = next_close + len("</div>")
+    if depth != 0:
+        return None
+    return raw_html[start:pos]
+
+
 def _extract_content_html(raw_html: str) -> str:
     """Prefer ``<article>`` / ``<main>`` / ``role=main``; else full document."""
     for tag in ("article", "main"):
         region = _extract_tagged_region(raw_html, tag)
         if region:
             return region
-    # RTD Embed often wraps content in <div role="main" …>
-    role_main = re.search(
-        r'(?is)<div\b[^>]*\brole\s*=\s*["\']main["\'][^>]*>',
-        raw_html,
-    )
-    if role_main:
-        return raw_html[role_main.start():]
+    role_main = _extract_role_main_div(raw_html)
+    if role_main is not None:
+        return role_main
     return raw_html
 
 
@@ -318,8 +350,11 @@ class _HtmlToMarkdownParser(HTMLParser):
 def html_to_markdown(raw_html: str) -> str:
     """Convert HTML documentation fragments to markdown (stdlib, no extra deps).
 
-    Used by RTD Embed fallback and available as a Foundation helper for other
-    doc fetchers. Prefer ``<article>`` / ``<main>`` / ``role=main`` regions.
+    Contract:
+        Prefers ``<article>`` / ``<main>`` / closed ``role=main`` regions.
+        On HTMLParser failure (malformed markup), falls back to tag-stripped
+        plain text rather than raising — callers treat this as best-effort
+        conversion for untrusted upstream HTML.
     """
     if not raw_html:
         return ""
@@ -328,7 +363,8 @@ def html_to_markdown(raw_html: str) -> str:
     try:
         parser.feed(fragment)
         parser.close()
-    except Exception:
+    except (ValueError, TypeError, AssertionError, RecursionError):
+        # HTMLParser has no stable public error type for broken markup.
         logger.debug(
             "HTML→markdown parse failed; using stripped text fallback",
             exc_info=True,
