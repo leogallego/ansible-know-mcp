@@ -1264,7 +1264,11 @@ class TestUnicodeQueries:
     @pytest.mark.asyncio
     async def test_unicode_search_collections(self):
         mock_result = {"query": "réseau", "count": 0, "collections": []}
-        with patch("ansible_know.galaxy.GalaxyClient.search_collections", return_value=mock_result):
+        with patch(
+            "ansible_know.resolution.search_galaxy_collections",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ):
             from ansible_know.server import search_collections as search_collections_tool
             result = await search_collections_tool("réseau")
         assert result["count"] == 0
