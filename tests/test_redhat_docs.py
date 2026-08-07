@@ -447,6 +447,21 @@ class TestFetchRedhatDocFallback:
         mock_http.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_generic_invalid_url_error_does_not_fallback(self):
+        """Bare 'Invalid URL' must not trigger HTTP fallback (too broad)."""
+        mock_client = AsyncMock()
+        mock_client.fetch = AsyncMock(side_effect=AnsibleKnowError("Invalid URL"))
+
+        with patch(
+            "ansible_know.redhat_docs.fetch_redhat_doc_http",
+            new_callable=AsyncMock,
+        ) as mock_http:
+            with pytest.raises(AnsibleKnowError, match="Invalid URL"):
+                await fetch_redhat_doc(self.AAP27_URL, client=mock_client)
+
+        mock_http.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_http_fallback_rejects_redirect_off_docs_redhat(self):
         mock_http = AsyncMock(spec=httpx.AsyncClient)
         mock_http.get = AsyncMock(
@@ -459,6 +474,20 @@ class TestFetchRedhatDocFallback:
         )
 
         with pytest.raises(AnsibleKnowError, match="unexpected domain"):
+            await fetch_redhat_doc_http(self.AAP27_URL, http_client=mock_http)
+
+    @pytest.mark.asyncio
+    async def test_http_fallback_rejects_soft_404_page(self):
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.get = AsyncMock(
+            return_value=_html_response(
+                "<html><main><h1>404: Page not found</h1><p>missing</p></main></html>",
+                url=self.AAP27_URL,
+                status_code=200,
+            )
+        )
+
+        with pytest.raises(AnsibleKnowError, match="not-found page"):
             await fetch_redhat_doc_http(self.AAP27_URL, http_client=mock_http)
 
     @pytest.mark.asyncio

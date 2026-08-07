@@ -41,20 +41,21 @@ __all__ = [
 _MCP_PROTOCOL_VERSION = "2024-11-05"
 _MAX_RETRIES = 3
 _MAX_RESPONSE_SIZE = 2_000_000  # 2MB
-_MAX_DOC_FETCH_SIZE = 2_000_000  # 2MB — aligned with docs.fetch_doc_content
+# HTML pages are larger than Cloudflare markdown; modular AAP guides are ~1MB,
+# but some html-single books exceed 2MB. Cap below manifests (5MB).
+_MAX_DOC_FETCH_SIZE = 5_000_000
 _RH_DOC_HOST = "docs.redhat.com"
 
 # Narrow trigger for HTTP fallback: upstream URL validator rejections only.
-# Do not match generic transport/timeouts — MCP-down should surface as error.
+# Do not match generic "Invalid URL" / transport errors — MCP-down must surface.
 _MCP_URL_REJECTION_RE = re.compile(
-    r"not a valid\b.{0,80}\blink"
-    r"|invalid\s+(?:red\s+hat\s+)?(?:documentation\s+)?(?:url|link)",
+    r"not a valid\b.{0,80}\blink\b"
+    r"|invalid\s+(?:red\s+hat\s+)?documentation\s+(?:url|link)\b",
     re.IGNORECASE,
 )
 _HTML_SEGMENT_RE = re.compile(r"/(html(?:-single)?)/")
 _INDEX_SUFFIX_RE = re.compile(r"/index/?$")
-_ARTICLE_RE = re.compile(r"<article\b[^>]*>.*?</article>", re.IGNORECASE | re.DOTALL)
-_MAIN_RE = re.compile(r"<main\b[^>]*>.*?</main>", re.IGNORECASE | re.DOTALL)
+_SOFT_404_RE = re.compile(r"\b404\b.{0,20}\bpage not found\b", re.IGNORECASE)
 
 
 def parse_mcp_sse(body: str) -> dict[str, Any] | None:
@@ -258,15 +259,33 @@ def _alternate_redhat_doc_url(url: str) -> str | None:
     return urlunparse(parsed._replace(path=path or "/"))
 
 
+def _extract_tagged_region(raw_html: str, tag: str) -> str | None:
+    """Extract first ``<tag>...</tag>`` region without catastrophic backtracking."""
+    lower = raw_html.lower()
+    start_token = f"<{tag}"
+    close_token = f"</{tag}>"
+    search_from = 0
+    while True:
+        start = lower.find(start_token, search_from)
+        if start < 0:
+            return None
+        after = start + len(start_token)
+        if after < len(raw_html) and raw_html[after] not in " \t\r\n/>":
+            search_from = after
+            continue
+        end = lower.find(close_token, after)
+        if end < 0:
+            return None
+        return raw_html[start:end + len(close_token)]
+
+
 def _extract_content_html(raw_html: str) -> str:
     """Prefer ``<article>`` (then ``<main>``) for conversion; else full document."""
-    match = _ARTICLE_RE.search(raw_html)
-    if match:
-        return match.group(0)
-    match = _MAIN_RE.search(raw_html)
-    if match:
-        return match.group(0)
-    return raw_html
+    return (
+        _extract_tagged_region(raw_html, "article")
+        or _extract_tagged_region(raw_html, "main")
+        or raw_html
+    )
 
 
 class _HtmlToMarkdownParser(HTMLParser):
@@ -408,12 +427,14 @@ class _HtmlToMarkdownParser(HTMLParser):
     def _ensure_blank_line(self) -> None:
         if not self._parts:
             return
-        text = "".join(self._parts)
-        if not text.endswith("\n\n"):
-            if text.endswith("\n"):
-                self._parts.append("\n")
-            else:
-                self._parts.append("\n\n")
+        # Inspect a short suffix only — avoid O(n²) joins on large pages.
+        suffix = "".join(self._parts[-3:])
+        if suffix.endswith("\n\n"):
+            return
+        if suffix.endswith("\n"):
+            self._parts.append("\n")
+        else:
+            self._parts.append("\n\n")
 
     def get_markdown(self) -> str:
         return "".join(self._parts)
@@ -552,6 +573,10 @@ async def fetch_redhat_doc_http(
     markdown = html_to_markdown(resp.text)
     if not markdown.strip():
         raise AnsibleKnowError(f"No convertible documentation content found at {url}")
+    if _SOFT_404_RE.search(markdown[:500]):
+        raise AnsibleKnowError(
+            f"docs.redhat.com returned a not-found page for {url}"
+        )
 
     return _finalize_doc_result(markdown, str(resp.url), max_tokens)
 
