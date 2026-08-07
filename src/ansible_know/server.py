@@ -865,7 +865,12 @@ async def list_skills(
         from ansible_know.config import get_skills_dirs
         from ansible_know.skills import list_skills_sync
 
-        return await run_in_executor(list_skills_sync, get_skills_dirs(), collection)
+        # Include get_skills_dirs() in the executor: async tools always run on
+        # the event loop (FastMCP run_in_thread applies to sync tools only).
+        def _list_skills() -> list[SkillEntry]:
+            return list_skills_sync(get_skills_dirs(), collection)
+
+        return await run_in_executor(_list_skills)
     except Exception as exc:
         logger.warning("list_skills failed: %s", exc)
         return {"error": sanitize_error(str(exc))}
@@ -896,7 +901,11 @@ async def get_skill(
         from ansible_know.config import get_skills_dirs
         from ansible_know.skills import get_skill_sync
 
-        return await run_in_executor(get_skill_sync, get_skills_dirs(), skill_name)
+        # Path resolution (get_skills_dirs) + FS read must stay off the event loop.
+        def _read_skill() -> str:
+            return get_skill_sync(get_skills_dirs(), skill_name)
+
+        return await run_in_executor(_read_skill)
     except FileNotFoundError as exc:
         return {"error": str(exc)}
     except ValidationError as exc:

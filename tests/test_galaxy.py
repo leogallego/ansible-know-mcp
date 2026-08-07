@@ -1175,7 +1175,7 @@ class TestSearchCollectionsEdgeCases:
             return {"download_count": 100, "highest_version": {"version": "1.0.0"}}
 
         with _mock_search_context(mock_api_get):
-            client = GalaxyClient()
+            client = _skip_discovery(GalaxyClient())
             result = await client.search_collections("test")
 
         assert result["count"] == 1
@@ -1207,7 +1207,7 @@ class TestSearchCollectionsEdgeCases:
             return {"download_count": 0, "highest_version": {"version": "1.0.0"}}
 
         with _mock_search_context(mock_api_get):
-            client = GalaxyClient()
+            client = _skip_discovery(GalaxyClient())
             result = await client.search_collections("test")
 
         assert result["collections"][0]["tags"] == ["valid"]
