@@ -579,6 +579,7 @@ class TestSkillToolsExecutorAffinity:
 
     @pytest.mark.asyncio
     async def test_list_skills_resolves_dirs_via_executor(self, tmp_path, monkeypatch):
+        """get_skills_dirs() must not run on the event loop (async tools skip FastMCP offload)."""
         import threading
 
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
@@ -609,6 +610,7 @@ class TestSkillToolsExecutorAffinity:
 
     @pytest.mark.asyncio
     async def test_get_skill_resolves_dirs_via_executor(self, tmp_path, monkeypatch):
+        """get_skills_dirs() must not run on the event loop (async tools skip FastMCP offload)."""
         import threading
 
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
