@@ -1472,9 +1472,10 @@ async def resource_galaxy_servers() -> str:
 
     # Prefer SharedState populated at lifespan; avoid re-parsing ansible.cfg
     # on the event loop. Fall back via executor when state is unavailable.
-    servers = _shared_state.galaxy_servers if _shared_state else None
-    if not servers:
+    if _shared_state is None:
         servers = await run_in_executor(load_galaxy_servers)
+    else:
+        servers = _shared_state.galaxy_servers
     return json.dumps([
         {
             "name": s.name,

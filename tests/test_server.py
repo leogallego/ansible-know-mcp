@@ -1106,11 +1106,16 @@ class TestResourceFunctions:
         old = srv._shared_state
         try:
             srv._shared_state = shared
-            with patch(
-                "ansible_know.galaxy_config.load_galaxy_servers",
-            ) as mock_load:
+            with (
+                patch(
+                    "ansible_know.server.run_in_executor",
+                    wraps=srv.run_in_executor,
+                ) as mock_rie,
+                patch("ansible_know.galaxy_config.load_galaxy_servers") as mock_load,
+            ):
                 result = json.loads(await srv.resource_galaxy_servers())
             mock_load.assert_not_called()
+            mock_rie.assert_not_called()
         finally:
             srv._shared_state = old
 
@@ -1146,11 +1151,19 @@ class TestResourceFunctions:
         old = srv._shared_state
         try:
             srv._shared_state = None
-            with patch(
-                "ansible_know.galaxy_config.load_galaxy_servers",
-                return_value=fallback,
-            ) as mock_load:
+            with (
+                patch(
+                    "ansible_know.server.run_in_executor",
+                    wraps=srv.run_in_executor,
+                ) as mock_rie,
+                patch(
+                    "ansible_know.galaxy_config.load_galaxy_servers",
+                    return_value=fallback,
+                ) as mock_load,
+            ):
                 result = json.loads(await srv.resource_galaxy_servers())
+            mock_rie.assert_called_once()
+            assert mock_rie.call_args.args[0] is mock_load
             mock_load.assert_called_once_with()
         finally:
             srv._shared_state = old
