@@ -1396,14 +1396,19 @@ async def clear_cache(
 
 
 @mcp.resource("skills://list", name="Available Skills", description="List all generated skill packages")
-def resource_skills_list() -> str:
+async def resource_skills_list() -> str:
     import json
 
     from ansible_know.config import get_skills_dirs
     from ansible_know.skills import list_skills_sync
 
-    entries = list_skills_sync(get_skills_dirs(), collection=None)
-    return json.dumps([e["name"] for e in entries], indent=2)
+    # Include get_skills_dirs() in the executor: making this handler async
+    # disables FastMCP's sync-handler threadpool offload for static resources.
+    def _list_skill_names() -> list[str]:
+        return [e["name"] for e in list_skills_sync(get_skills_dirs(), None)]
+
+    names = await run_in_executor(_list_skill_names)
+    return json.dumps(names, indent=2)
 
 
 @mcp.resource(
@@ -1411,7 +1416,7 @@ def resource_skills_list() -> str:
     name="Skill Content",
     description="Read a generated skill's SKILL.md by FQCN or collection namespace",
 )
-def resource_skill_content(skill_name: str) -> str:
+async def resource_skill_content(skill_name: str) -> str:
     from ansible_know.config import get_skills_dirs
     from ansible_know.skills import get_skill_sync
 
@@ -1420,8 +1425,13 @@ def resource_skill_content(skill_name: str) -> str:
     except ValidationError as exc:
         return str(exc)
 
-    try:
+    # Path resolution (get_skills_dirs) + FS read must stay off the event loop.
+    # Templates do not auto-threadpool sync handlers the way static resources do.
+    def _read_skill() -> str:
         return get_skill_sync(get_skills_dirs(), skill_name)
+
+    try:
+        return await run_in_executor(_read_skill)
     except FileNotFoundError as exc:
         return str(exc)
     except ValidationError as exc:
@@ -1468,10 +1478,15 @@ def resource_server_version() -> str:
         "Shows auth type (token/basic/none) for debugging; credentials are never exposed."
     ),
 )
-def resource_galaxy_servers() -> str:
+async def resource_galaxy_servers() -> str:
     from ansible_know.galaxy_config import load_galaxy_servers
 
-    servers = (_shared_state.galaxy_servers if _shared_state else None) or load_galaxy_servers()
+    # Prefer SharedState populated at lifespan; avoid re-parsing ansible.cfg
+    # on the event loop. Fall back via executor when state is unavailable.
+    if _shared_state is None:
+        servers = await run_in_executor(load_galaxy_servers)
+    else:
+        servers = _shared_state.galaxy_servers
     return json.dumps([
         {
             "name": s.name,
