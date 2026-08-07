@@ -47,15 +47,24 @@ _MAX_DOC_FETCH_SIZE = 5_000_000
 _RH_DOC_HOST = "docs.redhat.com"
 
 # Narrow trigger for HTTP fallback: upstream URL validator rejections only.
-# Do not match generic "Invalid URL" / transport errors — MCP-down must surface.
+# Do not match generic "Invalid URL" / unrelated "not a valid … link" text.
 _MCP_URL_REJECTION_RE = re.compile(
-    r"not a valid\b.{0,80}\blink\b"
+    r"not a valid(?:\s+red\s+hat)?\s+documentation\s+link\b"
     r"|invalid\s+(?:red\s+hat\s+)?documentation\s+(?:url|link)\b",
     re.IGNORECASE,
 )
 _HTML_SEGMENT_RE = re.compile(r"/(html(?:-single)?)/")
 _INDEX_SUFFIX_RE = re.compile(r"/index/?$")
-_SOFT_404_RE = re.compile(r"\b404\b.{0,20}\bpage not found\b", re.IGNORECASE)
+# Soft-404 title/H1 only — must not match troubleshooting prose mentioning 404.
+_SOFT_404_TITLE_RE = re.compile(
+    r"^#\s*404\b.{0,40}\bpage not found\b",
+    re.IGNORECASE,
+)
+_HTML_TITLE_RE = re.compile(r"<title[^>]*>([^<]+)</title>", re.IGNORECASE)
+_HTML_SOFT_404_H1_RE = re.compile(
+    r"<h1[^>]*>\s*404\b.{0,40}page\s+not\s+found",
+    re.IGNORECASE,
+)
 
 
 def parse_mcp_sse(body: str) -> dict[str, Any] | None:
@@ -242,6 +251,20 @@ def _is_url_rejection_message(text: str) -> bool:
     return bool(_MCP_URL_REJECTION_RE.search(stripped))
 
 
+def _is_soft_404_markdown(markdown: str) -> bool:
+    """Return True when markdown starts with a not-found H1 (not prose mentions)."""
+    return bool(_SOFT_404_TITLE_RE.match(markdown.lstrip()))
+
+
+def _html_looks_soft_404(html: str) -> bool:
+    """Cheap pre-convert check for RH SPA / soft not-found pages."""
+    head = html[:50_000]
+    title = _HTML_TITLE_RE.search(head)
+    if title and re.search(r"page\s+not\s+found", title.group(1), re.IGNORECASE):
+        return True
+    return bool(_HTML_SOFT_404_H1_RE.search(head))
+
+
 def _alternate_redhat_doc_url(url: str) -> str | None:
     """Return a rewritten docs.redhat.com URL without /html/ or /html-single/.
 
@@ -349,14 +372,14 @@ class _HtmlToMarkdownParser(HTMLParser):
                 self._parts.append(f"{indent}- ")
         elif tag == "pre":
             self._ensure_blank_line()
-            self._parts.append("```\n")
+            self._emit("```\n")
             self._in_pre = True
         elif tag == "code" and not self._in_pre:
-            self._parts.append("`")
+            self._emit("`")
         elif tag in {"strong", "b"}:
-            self._parts.append("**")
+            self._emit("**")
         elif tag in {"em", "i"}:
-            self._parts.append("*")
+            self._emit("*")
         elif tag == "a":
             href = attr_map.get("href", "")
             if href and not href.startswith("#"):
@@ -365,7 +388,7 @@ class _HtmlToMarkdownParser(HTMLParser):
         elif tag == "img":
             alt = attr_map.get("alt", "")
             if alt:
-                self._parts.append(alt)
+                self._emit(alt)
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
@@ -375,26 +398,29 @@ class _HtmlToMarkdownParser(HTMLParser):
             return
 
         if tag in {"h1", "h2", "h3", "h4", "h5", "h6", "p"}:
-            self._parts.append("\n\n")
+            self._emit("\n\n")
         elif tag in {"ul", "ol"}:
             if self._list_stack:
                 self._list_stack.pop()
             if self._ol_index:
                 self._ol_index.pop()
-            self._parts.append("\n")
+            self._emit("\n")
         elif tag == "li":
-            self._parts.append("\n")
+            self._emit("\n")
         elif tag == "pre":
-            if not self._parts or not self._parts[-1].endswith("\n"):
-                self._parts.append("\n")
-            self._parts.append("```\n\n")
+            if self._href is not None:
+                if not "".join(self._pending_href_text).endswith("\n"):
+                    self._emit("\n")
+            elif not self._parts or not self._parts[-1].endswith("\n"):
+                self._emit("\n")
+            self._emit("```\n\n")
             self._in_pre = False
         elif tag == "code" and not self._in_pre:
-            self._parts.append("`")
+            self._emit("`")
         elif tag in {"strong", "b"}:
-            self._parts.append("**")
+            self._emit("**")
         elif tag in {"em", "i"}:
-            self._parts.append("*")
+            self._emit("*")
         elif tag == "a" and self._href is not None:
             label = "".join(self._pending_href_text).strip() or self._href
             self._parts.append(f"[{label}]({self._href})")
@@ -406,19 +432,28 @@ class _HtmlToMarkdownParser(HTMLParser):
     def handle_data(self, data: str) -> None:
         if self._skip_depth:
             return
-        if self._href is not None:
-            self._pending_href_text.append(data)
-            return
         if self._in_pre:
-            self._parts.append(data)
+            self._emit(data)
             return
         # Collapse runs of whitespace outside pre/code blocks
         if not data.strip():
+            if self._href is not None:
+                pending = "".join(self._pending_href_text)
+                if data and pending and not pending.endswith(("\n", " ", "\t")):
+                    self._emit(" ")
+                return
             if data and self._parts and not self._parts[-1].endswith(("\n", " ", "\t")):
-                self._parts.append(" ")
+                self._emit(" ")
             return
         collapsed = re.sub(r"[ \t\r\n]+", " ", data)
-        self._parts.append(collapsed)
+        self._emit(collapsed)
+
+    def _emit(self, text: str) -> None:
+        """Append to link buffer while inside ``<a>``, else to output parts."""
+        if self._href is not None:
+            self._pending_href_text.append(text)
+        else:
+            self._parts.append(text)
 
     def _ensure_newline(self) -> None:
         if self._parts and not self._parts[-1].endswith("\n"):
@@ -492,59 +527,51 @@ def _finalize_doc_result(
     }
 
 
+def _assert_redhat_host(resp: httpx.Response) -> None:
+    if resp.url.host != _RH_DOC_HOST:
+        raise AnsibleKnowError(f"Redirect to unexpected domain: {resp.url.host}")
+
+
+async def _http_get_once(
+    client: httpx.AsyncClient,
+    url: str,
+    headers: dict[str, str],
+) -> httpx.Response:
+    resp = await client.get(url, headers=headers, follow_redirects=True, timeout=30.0)
+    _assert_redhat_host(resp)
+    return resp
+
+
 async def _http_get_redhat_doc(
     client: httpx.AsyncClient,
     url: str,
 ) -> httpx.Response:
-    """GET a docs.redhat.com page, rewriting /html/ paths on 404 when needed."""
+    """GET a docs.redhat.com page, rewriting /html/ on status or soft 404."""
     headers = {
         "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
         "User-Agent": USER_AGENT,
     }
-    resp = await client.get(url, headers=headers, follow_redirects=True, timeout=30.0)
-    if resp.url.host != _RH_DOC_HOST:
-        raise AnsibleKnowError(f"Redirect to unexpected domain: {resp.url.host}")
+    resp = await _http_get_once(client, url, headers)
 
-    if resp.status_code == 404:
-        alternate = _alternate_redhat_doc_url(url)
-        if alternate and alternate != str(resp.url) and alternate != url:
-            logger.info(
-                "docs.redhat.com returned 404 for %s; retrying rewritten URL %s",
-                url, alternate,
-            )
-            resp = await client.get(
-                alternate, headers=headers, follow_redirects=True, timeout=30.0,
-            )
-            if resp.url.host != _RH_DOC_HOST:
-                raise AnsibleKnowError(f"Redirect to unexpected domain: {resp.url.host}")
+    needs_rewrite = resp.status_code == 404 or (
+        resp.status_code == 200 and _html_looks_soft_404(resp.text)
+    )
+    if not needs_rewrite:
+        return resp
 
-    return resp
+    alternate = _alternate_redhat_doc_url(url)
+    if not alternate or alternate == url or alternate == str(resp.url):
+        return resp
+
+    logger.info(
+        "docs.redhat.com returned not-found for %s; retrying rewritten URL %s",
+        url, alternate,
+    )
+    return await _http_get_once(client, alternate, headers)
 
 
-async def fetch_redhat_doc_http(
-    url: str,
-    max_tokens: int | None = None,
-    http_client: httpx.AsyncClient | None = None,
-) -> FetchDocResult:
-    """Fetch a docs.redhat.com page over HTTP and convert HTML to markdown.
-
-    Used as a workaround when the Red Hat Documentation MCP server rejects
-    a URL (AAP 2.6/2.7 modular slugs). Stays on docs.redhat.com only.
-    """
-    client = http_client
-    should_close = False
-    if client is None:
-        client = httpx.AsyncClient(timeout=httpx.Timeout(30.0))
-        should_close = True
-
-    try:
-        resp = await _http_get_redhat_doc(client, url)
-    finally:
-        if should_close:
-            await client.aclose()
-
-    if resp.url.host != _RH_DOC_HOST:
-        raise AnsibleKnowError(f"Redirect to unexpected domain: {resp.url.host}")
+def _validate_redhat_http_response(resp: httpx.Response, url: str) -> None:
+    _assert_redhat_host(resp)
 
     if len(resp.content) > _MAX_DOC_FETCH_SIZE:
         raise AnsibleKnowError(
@@ -570,15 +597,39 @@ async def fetch_redhat_doc_http(
             f"Expected HTML from docs.redhat.com but got {content_type!r} for {url}"
         )
 
-    markdown = html_to_markdown(resp.text)
-    if not markdown.strip():
-        raise AnsibleKnowError(f"No convertible documentation content found at {url}")
-    if _SOFT_404_RE.search(markdown[:500]):
-        raise AnsibleKnowError(
-            f"docs.redhat.com returned a not-found page for {url}"
-        )
 
-    return _finalize_doc_result(markdown, str(resp.url), max_tokens)
+async def fetch_redhat_doc_http(
+    url: str,
+    max_tokens: int | None = None,
+    http_client: httpx.AsyncClient | None = None,
+) -> FetchDocResult:
+    """Fetch a docs.redhat.com page over HTTP and convert HTML to markdown.
+
+    Used as a workaround when the Red Hat Documentation MCP server rejects
+    a URL (AAP 2.6/2.7 modular slugs). Stays on docs.redhat.com only.
+    """
+    client = http_client
+    should_close = False
+    if client is None:
+        client = httpx.AsyncClient(timeout=httpx.Timeout(30.0))
+        should_close = True
+
+    try:
+        resp = await _http_get_redhat_doc(client, url)
+        _validate_redhat_http_response(resp, url)
+
+        markdown = html_to_markdown(resp.text)
+        if not markdown.strip():
+            raise AnsibleKnowError(f"No convertible documentation content found at {url}")
+        if _is_soft_404_markdown(markdown):
+            raise AnsibleKnowError(
+                f"docs.redhat.com returned a not-found page for {url}"
+            )
+
+        return _finalize_doc_result(markdown, str(resp.url), max_tokens)
+    finally:
+        if should_close:
+            await client.aclose()
 
 
 async def fetch_redhat_doc(

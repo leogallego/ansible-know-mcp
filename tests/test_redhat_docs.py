@@ -317,6 +317,18 @@ class TestHtmlToMarkdown:
         assert "Skip me" not in md
         assert "Copy link" not in md
 
+    def test_inline_tags_inside_anchor_stay_in_link_label(self):
+        html = (
+            '<article><p>See '
+            '<a href="https://docs.redhat.com/en/docs">'
+            'the <code>install</code> <strong>guide</strong>'
+            "</a>.</p></article>"
+        )
+        md = html_to_markdown(html)
+        assert "[the `install` **guide**](https://docs.redhat.com/en/docs)" in md
+        assert md.count("`") == 2
+        assert "`](" not in md
+
     def test_empty_input(self):
         assert html_to_markdown("") == ""
 
@@ -462,6 +474,22 @@ class TestFetchRedhatDocFallback:
         mock_http.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_unrelated_not_a_valid_link_does_not_fallback(self):
+        mock_client = AsyncMock()
+        mock_client.fetch = AsyncMock(
+            side_effect=AnsibleKnowError("not a valid temporary download link")
+        )
+
+        with patch(
+            "ansible_know.redhat_docs.fetch_redhat_doc_http",
+            new_callable=AsyncMock,
+        ) as mock_http:
+            with pytest.raises(AnsibleKnowError, match="temporary download"):
+                await fetch_redhat_doc(self.AAP27_URL, client=mock_client)
+
+        mock_http.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_http_fallback_rejects_redirect_off_docs_redhat(self):
         mock_http = AsyncMock(spec=httpx.AsyncClient)
         mock_http.get = AsyncMock(
@@ -477,18 +505,63 @@ class TestFetchRedhatDocFallback:
             await fetch_redhat_doc_http(self.AAP27_URL, http_client=mock_http)
 
     @pytest.mark.asyncio
-    async def test_http_fallback_rejects_soft_404_page(self):
+    async def test_http_fallback_soft_404_rewrites_html_segment(self):
+        """HTTP 200 soft-404 on /html/ must retry rewritten slug (AAP 2.7)."""
+        soft_404 = _html_response(
+            "<html><head><title>Page not found | Red Hat Documentation</title></head>"
+            "<main><h1>404: Page not found</h1></main></html>",
+            url=self.AAP27_URL + "/index",
+            status_code=200,
+        )
+        rewritten = (
+            "https://docs.redhat.com/en/documentation/"
+            "red_hat_ansible_automation_platform/2.7/"
+            "install-proc_installing_containerized_aap"
+        )
+        ok = _html_response(
+            "<article><h1>Install containerized AAP</h1>"
+            "<p>Prepared host steps.</p></article>",
+            url=rewritten,
+            status_code=200,
+        )
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.get = AsyncMock(side_effect=[soft_404, ok])
+
+        result = await fetch_redhat_doc_http(self.AAP27_URL, http_client=mock_http)
+
+        assert result["title"] == "Install containerized AAP"
+        assert "Prepared host steps" in result["content"]
+        assert mock_http.get.await_count == 2
+        assert "/html/" not in mock_http.get.await_args_list[1].args[0]
+
+    @pytest.mark.asyncio
+    async def test_http_fallback_rejects_soft_404_without_alternate(self):
+        url = (
+            "https://docs.redhat.com/en/documentation/"
+            "red_hat_ansible_automation_platform/2.7/"
+            "install-proc_installing_containerized_aap"
+        )
         mock_http = AsyncMock(spec=httpx.AsyncClient)
         mock_http.get = AsyncMock(
             return_value=_html_response(
-                "<html><main><h1>404: Page not found</h1><p>missing</p></main></html>",
-                url=self.AAP27_URL,
+                "<html><head><title>Page not found | Red Hat Documentation</title></head>"
+                "<main><h1>404: Page not found</h1></main></html>",
+                url=url,
                 status_code=200,
             )
         )
 
         with pytest.raises(AnsibleKnowError, match="not-found page"):
-            await fetch_redhat_doc_http(self.AAP27_URL, http_client=mock_http)
+            await fetch_redhat_doc_http(url, http_client=mock_http)
+        assert mock_http.get.await_count == 1
+
+    def test_soft_404_detector_ignores_troubleshooting_titles(self):
+        from ansible_know.redhat_docs import _is_soft_404_markdown
+
+        assert _is_soft_404_markdown("# 404: Page not found\n\nMissing.")
+        assert not _is_soft_404_markdown(
+            "# Troubleshooting HTTP 404 page not found errors\n\nDetails."
+        )
 
     @pytest.mark.asyncio
     async def test_http_fallback_rewrites_html_segment_on_404(self):
