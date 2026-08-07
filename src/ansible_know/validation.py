@@ -43,10 +43,11 @@ _NAMESPACE_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$")
 _SKILL_NAME_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)?$")
 _VERSION_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
 _TAGS_RE = re.compile(r"^[a-zA-Z0-9_,-]+$")
-_LOLA_MODULE_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$")
+_LOLA_MODULE_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
 _SENSITIVE_PREFIXES = ("/etc", "/usr", "/bin", "/sbin", "/boot", "/proc", "/sys", "/dev")
 _PATH_RE = re.compile(r"/(?:home|tmp|usr|etc|var|opt)/\S+")
-MAX_LOLA_MODULE_NAME_LENGTH = 128
+# Allow "ansible-" + full kebab collection name (namespace max is 128).
+MAX_LOLA_MODULE_NAME_LENGTH = MAX_NAMESPACE_LENGTH + len("ansible-")
 
 
 def validate_fqcn(name: str) -> None:
@@ -81,6 +82,15 @@ def validate_lola_module_name(name: str) -> None:
 
     Rejects empty values, path separators, and names that are not safe as a
     single path segment under the packaging output directory.
+
+    Contract:
+        Preconditions:
+            - ``name`` must be a non-empty single path segment (1–
+              ``MAX_LOLA_MODULE_NAME_LENGTH`` chars).
+            - Allowed characters: alphanumeric, ``.``, ``_``, ``-``;
+              first character alphanumeric. No ``/``, ``\\``, ``.``, or ``..``.
+        Raises:
+            ValidationError: If any precondition fails (explicit check).
     """
     if (
         not name
@@ -91,7 +101,8 @@ def validate_lola_module_name(name: str) -> None:
         or not _LOLA_MODULE_NAME_RE.match(name)
     ):
         raise ValidationError(
-            "Invalid Lola module name: use 1-128 alphanumeric characters, "
+            "Invalid Lola module name: use 1-"
+            f"{MAX_LOLA_MODULE_NAME_LENGTH} alphanumeric characters, "
             "dots, underscores, or hyphens (no path separators)."
         )
 

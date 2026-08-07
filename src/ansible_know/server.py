@@ -1418,7 +1418,7 @@ async def generate_collection_skills(
         return {"error": maybe_add_hint(sanitize_error(str(exc)), collection_namespace)}
 
 
-@mcp.tool(annotations=ToolAnnotations(idempotentHint=True, readOnlyHint=False, destructiveHint=False))
+@mcp.tool(annotations=ToolAnnotations(idempotentHint=True, readOnlyHint=False, destructiveHint=True))
 async def package_for_lola(
     collection: Annotated[
         str,
@@ -1448,8 +1448,10 @@ async def package_for_lola(
     """Wrap already-generated skills into a Lola-compatible module directory.
 
     Does not change ``generate_*`` output layout. Copies
-    ``skills/{collection}/{skill}/`` into ``{output_dir}/{module}/skills/{skill}/``
-    for marketplace / ``lola mod add`` use.
+    ``skills/{collection-kebab}/{skill}/`` into
+    ``{output_dir}/{module}/skills/{skill}/`` for marketplace /
+    ``lola mod add`` use. Replaces any existing ``skills/`` tree under the
+    target module directory (destructive but idempotent).
 
     Returns: {"collection", "module_name", "module_dir", "skill_count", "skills",
     "market_yml"} or {"error": str} on failure.
@@ -1464,9 +1466,9 @@ async def package_for_lola(
     try:
         validate_namespace(collection)
         validate_install_path(output_dir)
-        if source_dir:
+        if source_dir is not None:
             validate_install_path(source_dir)
-        if module_name:
+        if module_name is not None:
             validate_lola_module_name(module_name)
     except ValidationError as exc:
         return {"error": str(exc)}
@@ -1477,7 +1479,9 @@ async def package_for_lola(
 
         def _package() -> PackageForLolaResult:
             skills_dirs = (
-                [validate_install_path(source_dir)] if source_dir else get_skills_dirs()
+                [validate_install_path(source_dir)]
+                if source_dir is not None
+                else get_skills_dirs()
             )
             return package_collection_for_lola(
                 skills_dirs,
@@ -1489,7 +1493,7 @@ async def package_for_lola(
 
         return await run_in_executor(_package)
     except FileNotFoundError as exc:
-        return {"error": str(exc)}
+        return {"error": sanitize_error(str(exc))}
     except ValidationError as exc:
         return {"error": str(exc)}
     except Exception as exc:

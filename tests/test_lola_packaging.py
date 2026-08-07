@@ -60,6 +60,12 @@ class TestValidateLolaModuleName:
         with pytest.raises(ValidationError, match="Invalid Lola module name"):
             validate_lola_module_name("")
 
+    def test_accepts_ansible_prefix_at_namespace_max(self) -> None:
+        # ansible- (8) + 128-char kebab collection name
+        name = "ansible-" + ("a" * 60) + "-" + ("b" * 67)
+        assert len(name) == 136
+        validate_lola_module_name(name)
+
 
 class TestDefaultLolaModuleName:
     def test_prefixes_ansible(self) -> None:
@@ -192,6 +198,62 @@ class TestPackageCollectionForLola:
 
         with pytest.raises(FileNotFoundError, match="no SKILL.md"):
             package_collection_for_lola(skills, "netbox.netbox", tmp_path / "out")
+
+    def test_skips_nested_symlinks(self, tmp_path: Path) -> None:
+        skills = tmp_path / "skills"
+        collection_dir = _write_skill_tree(skills, "netbox-netbox")
+        secret = tmp_path / "secret.txt"
+        secret.write_text("do-not-copy")
+        link = collection_dir / "netbox-device" / "leak"
+        link.symlink_to(secret)
+
+        result = package_collection_for_lola(skills, "netbox.netbox", tmp_path / "out")
+        packaged = (
+            Path(result["module_dir"]) / "skills" / "netbox-device" / "leak"
+        )
+        assert not packaged.exists()
+
+    def test_rejects_empty_module_name(self, tmp_path: Path) -> None:
+        skills = tmp_path / "skills"
+        _write_skill_tree(skills, "netbox-netbox")
+        with pytest.raises(ValidationError, match="Invalid Lola module name"):
+            package_collection_for_lola(
+                skills, "netbox.netbox", tmp_path / "out", module_name="",
+            )
+
+    def test_failed_repackage_preserves_existing_skills(self, tmp_path: Path) -> None:
+        skills = tmp_path / "skills"
+        collection_dir = _write_skill_tree(skills, "netbox-netbox")
+        first = package_collection_for_lola(skills, "netbox.netbox", tmp_path / "out")
+        module_skills = Path(first["module_dir"]) / "skills"
+        assert (module_skills / "netbox-device" / "SKILL.md").is_file()
+
+        # Empty the source of all SKILL.md packages, then re-package.
+        (collection_dir / "SKILL.md").unlink()
+        shutil.rmtree(collection_dir / "netbox-device")
+        shutil.rmtree(collection_dir / "lookup-nb-lookup")
+
+        with pytest.raises(FileNotFoundError, match="no SKILL.md"):
+            package_collection_for_lola(skills, "netbox.netbox", tmp_path / "out")
+
+        assert (module_skills / "netbox-device" / "SKILL.md").is_file()
+
+    def test_skips_nested_dir_colliding_with_collection_name(self, tmp_path: Path) -> None:
+        skills = tmp_path / "skills"
+        collection_dir = _write_skill_tree(skills, "netbox-netbox")
+        collide = collection_dir / "netbox-netbox"
+        collide.mkdir()
+        (collide / "SKILL.md").write_text(
+            "---\nname: collide\ndescription: should be skipped\n---\n"
+        )
+
+        result = package_collection_for_lola(skills, "netbox.netbox", tmp_path / "out")
+        assert result["skills"].count("netbox-netbox") == 1
+        overview = (
+            Path(result["module_dir"]) / "skills" / "netbox-netbox" / "SKILL.md"
+        ).read_text()
+        assert "Collection overview" in overview
+        assert "should be skipped" not in overview
 
 
 @pytest.mark.asyncio

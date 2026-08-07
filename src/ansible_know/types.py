@@ -346,6 +346,17 @@ class PackageForLolaResult(TypedDict):
     market_yml: str | None
 
 
+class LolaMarketYml(TypedDict):
+    """Shape written to ``lola-market.yml`` beside a packaged Lola module."""
+
+    name: str
+    description: str
+    version: str
+    collection: str
+    skill_count: int
+    tags: list[str]
+
+
 class _CollectionDocsResultBase(TypedDict):
     """Required fields for batch collection docs result."""
 

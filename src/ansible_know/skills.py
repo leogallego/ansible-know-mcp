@@ -33,6 +33,7 @@ from ansible_know.validation import (
 if TYPE_CHECKING:
     from ansible_know.types import (
         CollectionSkillContext,
+        LolaMarketYml,
         ModuleMetadata,
         ModuleTagEntry,
         PackageForLolaResult,
@@ -737,12 +738,18 @@ def resolve_collection_skills_dir(
     )
 
 
+def _ignore_symlinks(directory: str, names: list[str]) -> list[str]:
+    """Exclude symlink entries so copytree never follows link targets."""
+    base = Path(directory)
+    return [name for name in names if (base / name).is_symlink()]
+
+
 def _copy_skill_tree(src: Path, dest: Path, module_root: Path) -> None:
     """Copy one skill directory into the Lola module, replacing any prior copy."""
     validate_path_containment(dest.resolve(), module_root)
     if dest.exists():
         shutil.rmtree(dest)
-    shutil.copytree(src, dest, symlinks=False)
+    shutil.copytree(src, dest, symlinks=False, ignore=_ignore_symlinks)
 
 
 def _read_collection_version(collection_dir: Path) -> str | None:
@@ -772,7 +779,7 @@ def _write_lola_market_yml(
 ) -> Path:
     """Write optional marketplace metadata beside the Lola module skills tree."""
     namespace, collection_name = split_collection_fqcn(collection_fqcn)
-    payload = {
+    payload: LolaMarketYml = {
         "name": module_name,
         "description": description
         or f"Ansible skills for the {collection_fqcn} collection",
@@ -809,23 +816,67 @@ def package_collection_for_lola(
         {output_dir}/{module_name}/lola-market.yml   # optional
 
     Nested skill directories that contain ``SKILL.md`` are copied with supporting
-    files. A collection-level ``SKILL.md`` is packaged as
-    ``skills/{collection-kebab}/SKILL.md``. ``MANIFEST.json`` is not copied.
+    files (symlink members are skipped). A collection-level ``SKILL.md`` is
+    packaged as ``skills/{collection-kebab}/SKILL.md``. ``MANIFEST.json`` is
+    not copied. Existing ``skills/`` under the module root is replaced.
 
-    Callers MUST validate *collection_fqcn* with ``validate_namespace()`` and
-    *output_dir* / *module_name* with the matching validators first.
-
-    Raises:
-        FileNotFoundError: If the collection has no generated skills, or none
-            of those skills contain a ``SKILL.md``.
-        ValidationError: On path escape or invalid module name.
-        OSError: On filesystem permission or I/O errors.
+    Contract:
+        Preconditions:
+            - Callers MUST validate *collection_fqcn* with
+              ``validate_namespace()`` first.
+            - *output_dir* must be an allowed install path (validated here via
+              ``validate_install_path``).
+            - When *module_name* is not ``None``, it must already be a valid
+              Lola module name (or it is validated here). Empty string is
+              invalid — pass ``None`` for the default name.
+        Raises:
+            FileNotFoundError: If the collection has no generated skills, or
+                none of those skills contain a ``SKILL.md``.
+            ValidationError: On path escape or invalid module name.
+            OSError: On filesystem permission or I/O errors during mkdir,
+                copy, or market-yml write (not silenced).
+        Silences:
+            - Unreadable nested skill dirs (``OSError`` while iterating /
+              copying): logged and skipped; ``skill_count`` may omit them.
+            - Unreadable ``MANIFEST.json`` or collection skill description:
+              logged; version/description fall back to defaults.
     """
     resolved_output = validate_install_path(str(output_dir))
-    lola_name = module_name or default_lola_module_name(collection_fqcn)
+    if module_name is None:
+        lola_name = default_lola_module_name(collection_fqcn)
+    else:
+        lola_name = module_name
     validate_lola_module_name(lola_name)
 
     collection_dir = resolve_collection_skills_dir(skills_dirs, collection_fqcn)
+    collection_dir_name = collection_dir.name
+    collection_skill_md = collection_dir / "SKILL.md"
+
+    # Plan packable skills before mutating any existing Lola module output.
+    nested_skill_dirs: list[Path] = []
+    for entry in sorted(collection_dir.iterdir()):
+        try:
+            if not entry.is_dir() or entry.is_symlink():
+                continue
+            if entry.name == collection_dir_name:
+                # Would collide with the collection-level skill dirname.
+                logger.warning(
+                    "Skipping nested skill %r: name collides with collection dir",
+                    entry.name,
+                )
+                continue
+            if (entry / "SKILL.md").is_file():
+                nested_skill_dirs.append(entry)
+        except OSError as exc:
+            logger.warning("Skipping unreadable skill dir %s: %s", entry.name, exc)
+            continue
+
+    has_collection_skill = collection_skill_md.is_file()
+    if not has_collection_skill and not nested_skill_dirs:
+        raise FileNotFoundError(
+            f"Collection '{collection_fqcn}' has no SKILL.md packages to wrap."
+        )
+
     module_root = (resolved_output / lola_name).resolve()
     validate_path_containment(module_root, resolved_output)
     module_root.mkdir(parents=True, exist_ok=True)
@@ -838,21 +889,15 @@ def package_collection_for_lola(
     validate_path_containment(skills_out.resolve(), module_root)
 
     packaged: list[str] = []
-    collection_dir_name = collection_dir.name
-    collection_skill_md = collection_dir / "SKILL.md"
-    if collection_skill_md.is_file():
+    if has_collection_skill:
         dest = skills_out / collection_dir_name
         dest.mkdir(parents=True, exist_ok=True)
         validate_path_containment(dest.resolve(), module_root)
         shutil.copy2(collection_skill_md, dest / "SKILL.md")
         packaged.append(collection_dir_name)
 
-    for entry in sorted(collection_dir.iterdir()):
+    for entry in nested_skill_dirs:
         try:
-            if not entry.is_dir() or entry.is_symlink():
-                continue
-            if not (entry / "SKILL.md").is_file():
-                continue
             dest = skills_out / entry.name
             _copy_skill_tree(entry, dest, module_root)
             packaged.append(entry.name)

@@ -69,8 +69,8 @@ Two consumption paths:
   (`skills/{collection}/{module}/SKILL.md`) is **not** Lola layout —
   wrap via #149 (or equivalent) before relying on GitHub Lola loading.
   Vercel/generic GitHub loaders remain 1-level.
-- **Lola:** Users wrap skills into a Lola module and distribute to
-  40+ agents via `lola install` (#149).
+- **Lola:** Wrap generated skills with ``package_for_lola`` (#149), then
+  distribute to 40+ agents via `lola install` / marketplace.
 
 **Value:** Persistence, sharing, version control, cross-agent reach.
 
