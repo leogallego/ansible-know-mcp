@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -59,6 +60,21 @@ class TestCandidateUrls:
 
     def test_already_bare_returns_single_candidate(self):
         assert build_aap._candidate_urls(AAP26_BARE, "2.6") == [AAP26_BARE]
+
+
+class TestParseLandingJson:
+    def test_plain_object(self):
+        assert build_aap._parse_landing_json('{"product": "aap"}') == {"product": "aap"}
+
+    def test_wrapped_result_string(self):
+        inner = '{"product": "aap", "version": "2.7"}'
+        raw = json.dumps({"result": inner})
+        assert build_aap._parse_landing_json(raw)["version"] == "2.7"
+
+    def test_invalid_nested_result_raises_value_error(self):
+        raw = json.dumps({"result": "not-json{"})
+        with pytest.raises(ValueError, match="not valid JSON"):
+            build_aap._parse_landing_json(raw)
 
 
 class TestTitleMatchesName:
@@ -181,6 +197,33 @@ class TestResolveHttpCanonicalUrl:
             asyncio.Semaphore(1),
         )
         assert result == AAP26_HTML
+
+    @pytest.mark.asyncio
+    async def test_title_mismatched_bare_keeps_original_when_html_unusable(self):
+        """Bare wrong-title must not rewrite when original is soft-404."""
+        client = AsyncMock()
+        client.get = AsyncMock(
+            side_effect=[
+                _mock_response(
+                    url="https://docs.redhat.com/en/documentation/"
+                    "red_hat_ansible_automation_platform/2.6/whats_new-aap_26",
+                    title=(
+                        "Red Hat Ansible Automation Platform | 2.6 | "
+                        "New features and enhancements | Red Hat Documentation"
+                    ),
+                ),
+                _mock_response(url=AAP26_HTML, soft_404=True),
+            ]
+        )
+        result = await build_aap._resolve_http_canonical_url(
+            client,
+            AAP26_HTML,
+            "2.6",
+            "Get started as an administrator",
+            asyncio.Semaphore(1),
+        )
+        assert result == AAP26_HTML
+        assert client.get.await_count == 2
 
     @pytest.mark.asyncio
     async def test_25_skips_network_via_canonicalize_entries(self):

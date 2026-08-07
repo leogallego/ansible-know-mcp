@@ -1,10 +1,10 @@
 {
   "version": "2.0",
-  "generated": "2026-08-07T20:10:42.636644+00:00",
+  "generated": "2026-08-07T21:45:24.517277+00:00",
   "base_url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6",
   "files": [
     {
-      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/whats_new-aap_26",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/whats_new-aap_26",
       "topic": "whats_new",
       "title": "Release notes",
       "audience": "admin",
@@ -367,7 +367,7 @@
       "aap_version": "2.6"
     },
     {
-      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/upgrade-ref_upgrade_scenarios_container",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/upgrade-ref_upgrade_scenarios_container",
       "topic": "upgrade",
       "title": "Containerized upgrade on RHEL",
       "audience": "admin",
@@ -389,7 +389,7 @@
       "aap_version": "2.6"
     },
     {
-      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/upgrade-ansible_automation_platform_upgrade",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/upgrade-ansible_automation_platform_upgrade",
       "topic": "upgrade",
       "title": "RPM-based upgrade on RHEL",
       "audience": "admin",

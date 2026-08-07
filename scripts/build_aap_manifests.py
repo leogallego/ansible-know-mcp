@@ -94,10 +94,10 @@ def _parse_landing_json(raw: str) -> dict:
     """Parse landing page MCP response into structured data."""
     try:
         obj = json.loads(raw)
+        if isinstance(obj, dict) and isinstance(obj.get("result"), str):
+            obj = json.loads(obj["result"])
     except json.JSONDecodeError:
         raise ValueError("Landing page response is not valid JSON") from None
-    if isinstance(obj, dict) and isinstance(obj.get("result"), str):
-        obj = json.loads(obj["result"])
     return obj
 
 
@@ -129,8 +129,8 @@ def _title_matches_name(title: str, name: str) -> bool:
     """Return True when enough significant name tokens appear in the title.
 
     Used to reject mis-redirects (seen on some AAP 2.6 ``/html/`` links)
-    where HTTP 200 is not enough. Catalog names that simply disagree with
-    the page title still soft-accept via the caller.
+    where HTTP 200 is not enough. Title-mismatched bare slugs are never
+    preferred over the original MCP URL (see ``_resolve_http_canonical_url``).
     """
     if not title or not name:
         return False
@@ -189,9 +189,15 @@ async def _resolve_http_canonical_url(
     name: str,
     sem: asyncio.Semaphore,
 ) -> str:
-    """Pick the first verified candidate; prefer title≈name when available."""
+    """Pick the first title-matched candidate; else keep the MCP URL.
+
+    Bare slugs are stored only when HTTP-usable *and* title≈landing name.
+    Title-mismatched bare URLs are never preferred over the original MCP
+    URL (avoids shipping mis-redirect targets as "canonical").
+    """
+    original = url.strip()
     candidates = _candidate_urls(url, version)
-    soft_accept: str | None = None
+    soft_accept_original: str | None = None
 
     async with sem:
         for candidate in candidates:
@@ -199,34 +205,28 @@ async def _resolve_http_canonical_url(
             if not usable:
                 continue
             if title_ok:
-                if candidate != url:
-                    logger.info(
-                        "Canonicalized %s -> %s",
-                        url,
-                        candidate,
-                    )
+                if candidate != original:
+                    logger.info("Canonicalized %s -> %s", original, candidate)
                 return candidate
-            if soft_accept is None:
-                soft_accept = candidate
+            if candidate == original:
+                soft_accept_original = candidate
 
-    if soft_accept is not None:
-        if soft_accept != url:
-            logger.info(
-                "Canonicalized %s -> %s (title mismatch soft-accept)",
-                url,
-                soft_accept,
-            )
-        return soft_accept
+    if soft_accept_original is not None:
+        return soft_accept_original
 
-    logger.warning("Keeping unverified MCP URL for %s: %s", name or "?", url)
-    return url.strip()
+    logger.warning("Keeping unverified MCP URL for %s: %s", name or "?", original)
+    return original
 
 
 async def _canonicalize_entries(
     entries: list[dict],
     version: str,
 ) -> list[dict]:
-    """Resolve each entry URL to an HTTP-canonical form (in place copy)."""
+    """Resolve each entry URL to an HTTP-canonical form.
+
+    For AAP 2.6/2.7, returns a new list of entry dicts with verified URLs.
+    For other versions, returns *entries* unchanged (no network).
+    """
     if version not in _BARE_SLUG_VERSIONS:
         return entries
 
@@ -286,7 +286,7 @@ def _build_manifest_entries(landing: dict, version: str) -> list[dict]:
                 "title": name,
                 "audience": "admin",
                 "core": topic in CORE_TOPICS,
-                "summary": description if description else name,
+                "summary": description or name,
                 "lines": 0,
                 "tokens": 0,
                 "aap_version": version,

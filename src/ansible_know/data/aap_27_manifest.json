@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "generated": "2026-08-07T20:11:00.089634+00:00",
+  "generated": "2026-08-07T21:45:55.148483+00:00",
   "base_url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.7",
   "files": [
     {
@@ -1016,7 +1016,7 @@
       "aap_version": "2.7"
     },
     {
-      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.7/configure-assembly_gw_settings",
+      "url": "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.7/html/configure-assembly_gw_settings",
       "topic": "security",
       "title": "Manage firewall policies and rules with security automation",
       "audience": "admin",
