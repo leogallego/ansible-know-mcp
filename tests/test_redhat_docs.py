@@ -4,13 +4,20 @@ from __future__ import annotations
 
 import json
 import uuid
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
 
 from ansible_know.errors import AnsibleKnowError
-from ansible_know.redhat_docs import RedHatDocsClient, parse_mcp_sse
+from ansible_know.redhat_docs import (
+    RedHatDocsClient,
+    _format_markdown_link,
+    fetch_redhat_doc,
+    fetch_redhat_doc_http,
+    html_to_markdown,
+    parse_mcp_sse,
+)
 from ansible_know.text_utils import clean_redhat_markdown
 
 
@@ -276,3 +283,425 @@ class TestCleanRedhatMarkdown:
         content, title = clean_redhat_markdown(raw)
         assert title == ""
         assert "Some content" in content
+
+
+class TestHtmlToMarkdown:
+    """Tests for stdlib HTML→markdown conversion used by HTTP fallback."""
+
+    def test_converts_article_headings_lists_and_code(self):
+        html = """
+        <html><body>
+        <nav>Skip me</nav>
+        <article>
+          <h1>Install containerized AAP</h1>
+          <p>Run the <code>install</code> playbook.</p>
+          <h2>Procedure</h2>
+          <ol>
+            <li>Go to the install directory</li>
+            <li>Run:
+              <pre><code>ansible-playbook -i inventory install</code></pre>
+            </li>
+          </ol>
+          <p>See <a href="https://docs.redhat.com/en/docs">more docs</a>.</p>
+          <button>Copy link</button>
+        </article>
+        </body></html>
+        """
+        md = html_to_markdown(html)
+        assert "# Install containerized AAP" in md
+        assert "## Procedure" in md
+        assert "`install`" in md
+        assert "1. Go to the install directory" in md
+        assert "```" in md
+        assert "ansible-playbook -i inventory install" in md
+        assert "[more docs](https://docs.redhat.com/en/docs)" in md
+        assert "Skip me" not in md
+        assert "Copy link" not in md
+
+    def test_inline_tags_inside_anchor_stay_in_link_label(self):
+        html = (
+            '<article><p>See '
+            '<a href="https://docs.redhat.com/en/docs">'
+            'the <code>install</code> <strong>guide</strong>'
+            "</a>.</p></article>"
+        )
+        md = html_to_markdown(html)
+        assert "[the `install` **guide**](https://docs.redhat.com/en/docs)" in md
+        assert md.count("`") == 2
+        assert "`](" not in md
+
+    def test_escapes_parens_in_href_and_brackets_in_label(self):
+        html = (
+            '<article><a href="https://docs.redhat.com/path_(copy)">'
+            "see [notes]</a></article>"
+        )
+        md = html_to_markdown(html)
+        assert r"[see \[notes\]](https://docs.redhat.com/path_(copy\))" in md
+
+    def test_drops_javascript_href_keeps_label(self):
+        html = '<article><a href="javascript:alert(1)">click</a></article>'
+        md = html_to_markdown(html)
+        assert "javascript:" not in md
+        assert "click" in md
+        assert "](" not in md
+
+    def test_keeps_relative_https_style_paths(self):
+        assert _format_markdown_link("Guide", "/en/documentation/foo") == (
+            "[Guide](/en/documentation/foo)"
+        )
+        assert _format_markdown_link("Guide", "https://docs.redhat.com/x") == (
+            "[Guide](https://docs.redhat.com/x)"
+        )
+
+    def test_empty_input(self):
+        assert html_to_markdown("") == ""
+
+
+def _html_response(
+    body: str,
+    url: str = "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.7/install-proc_installing_containerized_aap",
+    status_code: int = 200,
+) -> httpx.Response:
+    return httpx.Response(
+        status_code,
+        text=body,
+        headers={"content-type": "text/html;charset=utf-8"},
+        request=httpx.Request("GET", url),
+    )
+
+
+class TestFetchRedhatDocFallback:
+    """MCP-first fetch with narrow HTTP fallback on URL validation rejection."""
+
+    AAP25_URL = (
+        "https://docs.redhat.com/en/documentation/"
+        "red_hat_ansible_automation_platform/2.5/html-single/release_notes"
+    )
+    AAP27_URL = (
+        "https://docs.redhat.com/en/documentation/"
+        "red_hat_ansible_automation_platform/2.7/html/"
+        "install-proc_installing_containerized_aap"
+    )
+
+    @pytest.mark.asyncio
+    async def test_mcp_success_does_not_invoke_http_fallback(self):
+        """AAP 2.5-style URLs that MCP accepts must not hit HTTP fallback."""
+        markdown = "# Release notes\n\nAAP 2.5 content."
+        mock_client = AsyncMock()
+        mock_client.fetch = AsyncMock(return_value=markdown)
+
+        with patch(
+            "ansible_know.redhat_docs.fetch_redhat_doc_http",
+            new_callable=AsyncMock,
+        ) as mock_http:
+            result = await fetch_redhat_doc(self.AAP25_URL, client=mock_client)
+
+        assert result["title"] == "Release notes"
+        assert "AAP 2.5 content" in result["content"]
+        mock_client.fetch.assert_awaited_once_with(self.AAP25_URL)
+        mock_http.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_mcp_url_rejection_falls_back_to_http(self):
+        """Modular AAP 2.7 URL rejected by MCP should use HTTP→markdown path."""
+        mock_client = AsyncMock()
+        mock_client.fetch = AsyncMock(
+            side_effect=AnsibleKnowError(
+                "MCP tool redhat_docs_fetch error: "
+                "Not a valid Red Hat Documentation link"
+            )
+        )
+        article_html = """
+        <article>
+          <h1>Install containerized Ansible Automation Platform</h1>
+          <p>Run the install playbook after preparing the host.</p>
+          <h2>Legal Notice</h2>
+          <p>Copyright boilerplate.</p>
+          <h2>Procedure</h2>
+          <p>Real steps here.</p>
+        </article>
+        """
+        rewritten = (
+            "https://docs.redhat.com/en/documentation/"
+            "red_hat_ansible_automation_platform/2.7/"
+            "install-proc_installing_containerized_aap"
+        )
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.get = AsyncMock(
+            return_value=_html_response(article_html, url=rewritten),
+        )
+
+        result = await fetch_redhat_doc(
+            self.AAP27_URL, client=mock_client, http_client=mock_http,
+        )
+
+        assert result["title"] == "Install containerized Ansible Automation Platform"
+        assert "Real steps here" in result["content"]
+        assert "Legal Notice" not in result["content"]
+        assert "Copyright boilerplate" not in result["content"]
+        mock_client.fetch.assert_awaited_once_with(self.AAP27_URL)
+        mock_http.get.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_mcp_rejection_content_also_triggers_fallback(self):
+        """URL rejection returned as tool text (not JSON-RPC error) still falls back."""
+        mock_client = AsyncMock()
+        mock_client.fetch = AsyncMock(
+            return_value="Not a valid Red Hat Documentation link"
+        )
+        fallback_result = {
+            "content": "# Guide\n\nBody.",
+            "title": "Guide",
+            "tokens": 3,
+            "source_url": self.AAP27_URL,
+        }
+        with patch(
+            "ansible_know.redhat_docs.fetch_redhat_doc_http",
+            new_callable=AsyncMock,
+            return_value=fallback_result,
+        ) as mock_http:
+            result = await fetch_redhat_doc(self.AAP27_URL, client=mock_client)
+
+        assert result == fallback_result
+        mock_http.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_non_url_mcp_errors_do_not_fallback(self):
+        """Transport / generic MCP failures must not silently fall back to HTTP."""
+        mock_client = AsyncMock()
+        mock_client.fetch = AsyncMock(
+            side_effect=AnsibleKnowError("MCP fetch failed after 3 retries")
+        )
+
+        with patch(
+            "ansible_know.redhat_docs.fetch_redhat_doc_http",
+            new_callable=AsyncMock,
+        ) as mock_http:
+            with pytest.raises(AnsibleKnowError, match="MCP fetch failed"):
+                await fetch_redhat_doc(self.AAP27_URL, client=mock_client)
+
+        mock_http.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_generic_invalid_url_error_does_not_fallback(self):
+        """Bare 'Invalid URL' must not trigger HTTP fallback (too broad)."""
+        mock_client = AsyncMock()
+        mock_client.fetch = AsyncMock(side_effect=AnsibleKnowError("Invalid URL"))
+
+        with patch(
+            "ansible_know.redhat_docs.fetch_redhat_doc_http",
+            new_callable=AsyncMock,
+        ) as mock_http:
+            with pytest.raises(AnsibleKnowError, match="Invalid URL"):
+                await fetch_redhat_doc(self.AAP27_URL, client=mock_client)
+
+        mock_http.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unrelated_not_a_valid_link_does_not_fallback(self):
+        mock_client = AsyncMock()
+        mock_client.fetch = AsyncMock(
+            side_effect=AnsibleKnowError("not a valid temporary download link")
+        )
+
+        with patch(
+            "ansible_know.redhat_docs.fetch_redhat_doc_http",
+            new_callable=AsyncMock,
+        ) as mock_http:
+            with pytest.raises(AnsibleKnowError, match="temporary download"):
+                await fetch_redhat_doc(self.AAP27_URL, client=mock_client)
+
+        mock_http.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_http_fallback_rejects_redirect_off_docs_redhat(self):
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.get = AsyncMock(
+            return_value=httpx.Response(
+                200,
+                text="<html><article><h1>Nope</h1></article></html>",
+                headers={"content-type": "text/html"},
+                request=httpx.Request("GET", "https://evil.example/doc"),
+            )
+        )
+
+        with pytest.raises(AnsibleKnowError, match="unexpected domain"):
+            await fetch_redhat_doc_http(self.AAP27_URL, http_client=mock_http)
+
+    @pytest.mark.asyncio
+    async def test_http_fallback_revalidates_url_before_get(self):
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.get = AsyncMock()
+
+        with pytest.raises(AnsibleKnowError, match="docs.redhat.com|docs.ansible.com"):
+            await fetch_redhat_doc_http(
+                "https://evil.example/doc", http_client=mock_http,
+            )
+        mock_http.get.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_http_fallback_rejects_ansible_com_url(self):
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.get = AsyncMock()
+
+        with pytest.raises(AnsibleKnowError, match="docs.redhat.com"):
+            await fetch_redhat_doc_http(
+                "https://docs.ansible.com/projects/ansible/latest/",
+                http_client=mock_http,
+            )
+        mock_http.get.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_http_fallback_soft_404_rewrites_html_segment(self):
+        """HTTP 200 soft-404 on /html/ must retry rewritten slug (AAP 2.7)."""
+        soft_404 = _html_response(
+            "<html><head><title>Page not found | Red Hat Documentation</title></head>"
+            "<main><h1>404: Page not found</h1></main></html>",
+            url=self.AAP27_URL + "/index",
+            status_code=200,
+        )
+        rewritten = (
+            "https://docs.redhat.com/en/documentation/"
+            "red_hat_ansible_automation_platform/2.7/"
+            "install-proc_installing_containerized_aap"
+        )
+        ok = _html_response(
+            "<article><h1>Install containerized AAP</h1>"
+            "<p>Prepared host steps.</p></article>",
+            url=rewritten,
+            status_code=200,
+        )
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.get = AsyncMock(side_effect=[soft_404, ok])
+
+        result = await fetch_redhat_doc_http(self.AAP27_URL, http_client=mock_http)
+
+        assert result["title"] == "Install containerized AAP"
+        assert "Prepared host steps" in result["content"]
+        assert mock_http.get.await_count == 2
+        assert "/html/" not in mock_http.get.await_args_list[1].args[0]
+
+    @pytest.mark.asyncio
+    async def test_http_fallback_rejects_soft_404_without_alternate(self):
+        url = (
+            "https://docs.redhat.com/en/documentation/"
+            "red_hat_ansible_automation_platform/2.7/"
+            "install-proc_installing_containerized_aap"
+        )
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.get = AsyncMock(
+            return_value=_html_response(
+                "<html><head><title>Page not found | Red Hat Documentation</title></head>"
+                "<main><h1>404: Page not found</h1></main></html>",
+                url=url,
+                status_code=200,
+            )
+        )
+
+        with pytest.raises(AnsibleKnowError, match="not-found page"):
+            await fetch_redhat_doc_http(url, http_client=mock_http)
+        assert mock_http.get.await_count == 1
+
+    def test_soft_404_detector_ignores_troubleshooting_titles(self):
+        from ansible_know.redhat_docs import _is_soft_404_markdown
+
+        assert _is_soft_404_markdown("# 404: Page not found\n\nMissing.")
+        assert _is_soft_404_markdown(
+            "Cloud Image\n\n# 404: Page not found\n\nMissing."
+        )
+        assert not _is_soft_404_markdown(
+            "# Troubleshooting HTTP 404 page not found errors\n\nDetails."
+        )
+
+    @pytest.mark.asyncio
+    async def test_http_fallback_rejects_soft_404_with_leading_img_alt(self):
+        """RH soft-404 pages often emit img alt text before the 404 H1."""
+        url = (
+            "https://docs.redhat.com/en/documentation/"
+            "red_hat_ansible_automation_platform/2.7/"
+            "install-proc_installing_containerized_aap"
+        )
+        html = (
+            "<html><head><title>Page not found | Red Hat Documentation</title></head>"
+            '<body><img alt="Cloud Image">'
+            "<main><h1>404: Page not found</h1><p>missing</p></main></body></html>"
+        )
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.get = AsyncMock(
+            return_value=_html_response(html, url=url, status_code=200)
+        )
+
+        with pytest.raises(AnsibleKnowError, match="not-found page"):
+            await fetch_redhat_doc_http(url, http_client=mock_http)
+
+    @pytest.mark.asyncio
+    async def test_http_fallback_rewrites_html_segment_on_404(self):
+        """Manifest /html/ URLs that 404 should retry without the segment."""
+        article_html = (
+            "<article><h1>Install containerized AAP</h1>"
+            "<p>Prepared host steps.</p></article>"
+        )
+        rewritten = (
+            "https://docs.redhat.com/en/documentation/"
+            "red_hat_ansible_automation_platform/2.7/"
+            "install-proc_installing_containerized_aap"
+        )
+        not_found = _html_response(
+            "<html><h1>404: Page not found</h1></html>",
+            url=self.AAP27_URL + "/index",
+            status_code=404,
+        )
+        ok = _html_response(article_html, url=rewritten, status_code=200)
+
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.get = AsyncMock(side_effect=[not_found, ok])
+
+        result = await fetch_redhat_doc_http(self.AAP27_URL, http_client=mock_http)
+
+        assert result["title"] == "Install containerized AAP"
+        assert "Prepared host steps" in result["content"]
+        assert mock_http.get.await_count == 2
+        second_url = mock_http.get.await_args_list[1].args[0]
+        assert "/html/" not in second_url
+        assert "install-proc_installing_containerized_aap" in second_url
+
+
+class TestCallToolIsError:
+    """MCP tool isError responses should raise AnsibleKnowError."""
+
+    @pytest.mark.asyncio
+    async def test_is_error_raises(self):
+        error_result = {
+            "jsonrpc": "2.0",
+            "id": str(uuid.uuid4()),
+            "result": {
+                "isError": True,
+                "content": [
+                    {"type": "text", "text": "Not a valid Red Hat Documentation link"},
+                ],
+            },
+        }
+        sse = httpx.Response(
+            200,
+            text=f"data: {json.dumps(error_result)}\n\n",
+            headers={"content-type": "text/event-stream", "mcp-session-id": "s"},
+            request=httpx.Request("POST", "https://docs-mcp.api.redhat.com/mcp"),
+        )
+        mock_client = AsyncMock(spec=httpx.AsyncClient)
+        mock_client.post = AsyncMock(side_effect=[
+            _make_init_response(),
+            _make_notification_response(),
+            sse,
+        ])
+        mock_client.aclose = AsyncMock()
+
+        client = RedHatDocsClient()
+        client._client = mock_client
+
+        with pytest.raises(AnsibleKnowError, match="Not a valid Red Hat Documentation link"):
+            await client.fetch(
+                "https://docs.redhat.com/en/documentation/"
+                "red_hat_ansible_automation_platform/2.7/html/"
+                "install-proc_installing_containerized_aap"
+            )
+        await client.close()
