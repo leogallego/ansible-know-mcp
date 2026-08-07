@@ -11,10 +11,12 @@ import asyncio
 import json
 import logging
 import math
+import os
 import time
 from itertools import zip_longest
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 
@@ -27,9 +29,9 @@ from ansible_know.config import (
     get_doc_sources,
 )
 from ansible_know.errors import AnsibleKnowError
-from ansible_know.text_utils import clean_rtd_markdown
+from ansible_know.text_utils import clean_rtd_markdown, html_to_markdown
 from ansible_know.types import FetchDocResult, SearchDocsEntry
-from ansible_know.validation import truncate_response
+from ansible_know.validation import sanitize_error, truncate_response
 
 logger = logging.getLogger("ansible_know")
 
@@ -43,7 +45,10 @@ MAX_MANIFEST_SIZE = 5_000_000  # 5MB
 CACHE_TTL_SECONDS = 3600
 MANIFEST_VERSION_MAJOR = "2"
 RTD_SEARCH_URL = "https://app.readthedocs.org/api/v3/search/"
+RTD_EMBED_URL = "https://app.readthedocs.org/api/v3/embed/"
 RTD_DOCS_DOMAIN = "https://docs.ansible.com"
+RTD_EMBED_DOCS_HOST = "ansible.readthedocs.io"
+CF_CHALLENGE_MARKER = "Cloudflare managed challenge"
 
 _manifest_cache: BoundedCache[str, list[dict[str, Any]]] = BoundedCache(
     max_size=50, ttl=CACHE_TTL_SECONDS,
@@ -406,6 +411,134 @@ def clear_cache() -> None:
 MAX_DOC_FETCH_SIZE = 2_000_000  # 2MB
 
 
+def _estimate_tokens(text: str) -> int:
+    """Rough token estimate (~4 chars/token) when no x-markdown-tokens header."""
+    return len(text) // 4
+
+
+def _map_docs_url_to_rtd(url: str) -> str:
+    """Rewrite docs.ansible.com URLs to ansible.readthedocs.io for Embed API.
+
+    Paths are identical across the custom domain and the RTD project domain.
+    Host is hard-coded after validation — never taken from redirect targets.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or parsed.netloc != "docs.ansible.com":
+        raise AnsibleKnowError(
+            "RTD Embed fallback only supports https://docs.ansible.com/ URLs"
+        )
+    return urlunparse(parsed._replace(netloc=RTD_EMBED_DOCS_HOST))
+
+
+def _rtd_embed_headers() -> dict[str, str]:
+    """Build Embed API headers; optional token raises unauthenticated rate limits."""
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": USER_AGENT,
+    }
+    token = os.environ.get("ANSIBLE_KNOW_RTD_TOKEN", "").strip()
+    if token:
+        headers["Authorization"] = f"Token {token}"
+    return headers
+
+
+def _is_embed_fallback_error(exc: Exception) -> bool:
+    """Return True for CF challenge or persistent HTTP 429 from docs.ansible.com."""
+    if isinstance(exc, AnsibleKnowError) and CF_CHALLENGE_MARKER in str(exc):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        response = exc.response
+        return response is not None and response.status_code == 429
+    return False
+
+
+async def _fetch_via_rtd_embed(
+    client: httpx.AsyncClient,
+    url: str,
+    max_tokens: int | None = None,
+) -> FetchDocResult:
+    """Fetch page content via RTD Embed API (bypasses docs.ansible.com Cloudflare)."""
+    rtd_url = _map_docs_url_to_rtd(url)
+    try:
+        resp = await client.get(
+            RTD_EMBED_URL,
+            params={"url": rtd_url},
+            headers=_rtd_embed_headers(),
+            follow_redirects=False,
+            timeout=30.0,
+        )
+    except httpx.HTTPError as exc:
+        raise AnsibleKnowError(
+            f"RTD Embed API request failed: {sanitize_error(str(exc))}"
+        ) from exc
+
+    if resp.url.host != "app.readthedocs.org":
+        raise AnsibleKnowError(
+            f"RTD Embed redirected to unexpected domain: {resp.url.host}"
+        )
+
+    if len(resp.content) > MAX_DOC_FETCH_SIZE:
+        raise AnsibleKnowError(
+            f"RTD Embed response too large: {len(resp.content)} bytes "
+            f"(max {MAX_DOC_FETCH_SIZE})"
+        )
+
+    if resp.status_code >= 400:
+        detail = ""
+        try:
+            payload = resp.json()
+        except ValueError:
+            payload = None
+        if isinstance(payload, dict) and payload.get("error"):
+            detail = f": {sanitize_error(str(payload['error']))}"
+        raise AnsibleKnowError(
+            f"RTD Embed API returned HTTP {resp.status_code}{detail}"
+        )
+
+    try:
+        data = resp.json()
+    except ValueError as exc:
+        raise AnsibleKnowError("RTD Embed API returned invalid JSON") from exc
+
+    if not isinstance(data, dict):
+        raise AnsibleKnowError("RTD Embed API returned unexpected JSON shape")
+
+    if data.get("error"):
+        raise AnsibleKnowError(
+            f"RTD Embed API error: {sanitize_error(str(data['error']))}"
+        )
+
+    html_content = data.get("content")
+    if not isinstance(html_content, str) or not html_content.strip():
+        raise AnsibleKnowError("RTD Embed API returned empty content")
+
+    html_bytes = len(html_content.encode("utf-8"))
+    if html_bytes > MAX_DOC_FETCH_SIZE:
+        raise AnsibleKnowError(
+            f"RTD Embed content too large: {html_bytes} bytes "
+            f"(max {MAX_DOC_FETCH_SIZE})"
+        )
+
+    markdown = html_to_markdown(html_content)
+    content, title = clean_rtd_markdown(markdown)
+    # Estimate before truncate so max_tokens matches primary-path gating intent.
+    tokens = _estimate_tokens(content)
+    if max_tokens is not None and tokens > max_tokens:
+        raise AnsibleKnowError(
+            f"Page has {tokens} tokens (max_tokens={max_tokens}). "
+            f"Fetch without max_tokens or increase the limit."
+        )
+    content = truncate_response(content)
+
+    result: FetchDocResult = {
+        "content": content,
+        "title": title,
+        "tokens": tokens,
+        "source_url": url,
+    }
+    return result
+
+
 async def fetch_doc_content(
     url: str,
     max_tokens: int | None = None,
@@ -414,6 +547,8 @@ async def fetch_doc_content(
     """Fetch a docs.ansible.com page as clean markdown.
 
     Uses Cloudflare's ``Accept: text/markdown`` content negotiation.
+    On Cloudflare managed challenge or persistent HTTP 429, falls back to
+    the Read the Docs Embed API (different domain, bypasses the CF zone).
 
     Args:
         url: Full docs.ansible.com URL (caller must validate first).
@@ -424,8 +559,8 @@ async def fetch_doc_content(
         FetchDocResult on success.
 
     Raises:
-        httpx.HTTPError: On HTTP request failure after retries.
-        AnsibleKnowError: On CF challenge, content-type mismatch,
+        httpx.HTTPError: On HTTP request failure after retries (non-fallback).
+        AnsibleKnowError: On CF+Embed failure, content-type mismatch,
             size/token limit, or redirect to unexpected domain.
     """
     cached = _page_cache.get(url)
@@ -443,48 +578,69 @@ async def fetch_doc_content(
         should_close = True
 
     try:
-        resp = await _fetch_with_retry(client, url)
+        try:
+            resp = await _fetch_with_retry(client, url)
+        except (AnsibleKnowError, httpx.HTTPStatusError) as primary_exc:
+            if not _is_embed_fallback_error(primary_exc):
+                raise
+            logger.info(
+                "docs.ansible.com blocked (%s); trying RTD Embed fallback",
+                type(primary_exc).__name__,
+            )
+            try:
+                result = await _fetch_via_rtd_embed(
+                    client, url, max_tokens=max_tokens,
+                )
+            except AnsibleKnowError as embed_exc:
+                raise AnsibleKnowError(
+                    f"{sanitize_error(str(primary_exc))} "
+                    f"RTD Embed fallback also failed: "
+                    f"{sanitize_error(str(embed_exc))}"
+                ) from embed_exc
+            _page_cache.put(url, result)
+            return result
+
+        if resp.url.host != "docs.ansible.com":
+            raise AnsibleKnowError(f"Redirect to unexpected domain: {resp.url.host}")
+
+        if len(resp.content) > MAX_DOC_FETCH_SIZE:
+            raise AnsibleKnowError(
+                f"Response too large: {len(resp.content)} bytes "
+                f"(max {MAX_DOC_FETCH_SIZE})"
+            )
+
+        content_type = resp.headers.get("content-type", "")
+        if "text/markdown" not in content_type:
+            raise AnsibleKnowError(
+                f"Expected text/markdown but got {content_type!r} for {url}"
+            )
+
+        tokens_str = resp.headers.get("x-markdown-tokens", "0")
+        try:
+            tokens = int(tokens_str)
+        except ValueError:
+            tokens = 0
+
+        if max_tokens is not None and tokens > max_tokens:
+            raise AnsibleKnowError(
+                f"Page has {tokens} tokens (max_tokens={max_tokens}). "
+                f"Fetch without max_tokens or increase the limit."
+            )
+
+        content, title = clean_rtd_markdown(resp.text)
+        content = truncate_response(content)
+
+        result = {
+            "content": content,
+            "title": title,
+            "tokens": tokens,
+            "source_url": str(resp.url),
+        }
+        _page_cache.put(url, result)
+        return result
     finally:
         if should_close:
             await client.aclose()
-
-    if resp.url.host != "docs.ansible.com":
-        raise AnsibleKnowError(f"Redirect to unexpected domain: {resp.url.host}")
-
-    if len(resp.content) > MAX_DOC_FETCH_SIZE:
-        raise AnsibleKnowError(
-            f"Response too large: {len(resp.content)} bytes (max {MAX_DOC_FETCH_SIZE})"
-        )
-
-    content_type = resp.headers.get("content-type", "")
-    if "text/markdown" not in content_type:
-        raise AnsibleKnowError(
-            f"Expected text/markdown but got {content_type!r} for {url}"
-        )
-
-    tokens_str = resp.headers.get("x-markdown-tokens", "0")
-    try:
-        tokens = int(tokens_str)
-    except ValueError:
-        tokens = 0
-
-    if max_tokens is not None and tokens > max_tokens:
-        raise AnsibleKnowError(
-            f"Page has {tokens} tokens (max_tokens={max_tokens}). "
-            f"Fetch without max_tokens or increase the limit."
-        )
-
-    content, title = clean_rtd_markdown(resp.text)
-    content = truncate_response(content)
-
-    result: FetchDocResult = {
-        "content": content,
-        "title": title,
-        "tokens": tokens,
-        "source_url": str(resp.url),
-    }
-    _page_cache.put(url, result)
-    return result
 
 
 async def _fetch_with_retry(
