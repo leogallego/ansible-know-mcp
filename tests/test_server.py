@@ -574,6 +574,70 @@ class TestSkillNameValidation:
         assert "error" in result
 
 
+class TestSkillToolsExecutorAffinity:
+    """Async tools are not FastMCP-threadpooled; path resolve must stay in executor."""
+
+    @pytest.mark.asyncio
+    async def test_list_skills_resolves_dirs_via_executor(self, tmp_path, monkeypatch):
+        import threading
+
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+        import ansible_know.config as config
+        import ansible_know.server as srv
+
+        main_thread = threading.current_thread()
+        real_get_dirs = config.get_skills_dirs
+
+        def tracking_get_dirs():
+            assert threading.current_thread() is not main_thread, (
+                "get_skills_dirs ran on the event-loop thread"
+            )
+            return real_get_dirs()
+
+        with (
+            patch(
+                "ansible_know.server.run_in_executor",
+                wraps=srv.run_in_executor,
+            ) as mock_rie,
+            patch("ansible_know.config.get_skills_dirs", side_effect=tracking_get_dirs),
+        ):
+            result = await srv.list_skills()
+
+        mock_rie.assert_called_once()
+        assert mock_rie.call_args.args[0].__name__ == "_list_skills"
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_get_skill_resolves_dirs_via_executor(self, tmp_path, monkeypatch):
+        import threading
+
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+        import ansible_know.config as config
+        import ansible_know.server as srv
+
+        main_thread = threading.current_thread()
+        real_get_dirs = config.get_skills_dirs
+
+        def tracking_get_dirs():
+            assert threading.current_thread() is not main_thread, (
+                "get_skills_dirs ran on the event-loop thread"
+            )
+            return real_get_dirs()
+
+        with (
+            patch(
+                "ansible_know.server.run_in_executor",
+                wraps=srv.run_in_executor,
+            ) as mock_rie,
+            patch("ansible_know.config.get_skills_dirs", side_effect=tracking_get_dirs),
+        ):
+            result = await srv.get_skill("ansible.builtin.copy")
+
+        mock_rie.assert_called_once()
+        assert mock_rie.call_args.args[0].__name__ == "_read_skill"
+        assert "error" in result
+
+
 class TestGetSkillSync:
     def test_returns_content_for_namespace_skill(self, tmp_path):
         from ansible_know.skills import get_skill_sync
@@ -994,6 +1058,37 @@ class TestResourceFunctions:
         mock_rie.assert_called_once()
         assert mock_rie.call_args.args[0].__name__ == "_list_skill_names"
         assert result == []
+
+    @pytest.mark.asyncio
+    async def test_resource_skill_content_resolves_dirs_via_executor(self, tmp_path, monkeypatch):
+        """get_skills_dirs() must not run on the event loop (async drops FastMCP offload)."""
+        import threading
+
+        monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
+        import ansible_know.config as config
+        import ansible_know.server as srv
+
+        main_thread = threading.current_thread()
+        real_get_dirs = config.get_skills_dirs
+
+        def tracking_get_dirs():
+            assert threading.current_thread() is not main_thread, (
+                "get_skills_dirs ran on the event-loop thread"
+            )
+            return real_get_dirs()
+
+        with (
+            patch(
+                "ansible_know.server.run_in_executor",
+                wraps=srv.run_in_executor,
+            ) as mock_rie,
+            patch("ansible_know.config.get_skills_dirs", side_effect=tracking_get_dirs),
+        ):
+            result = await srv.resource_skill_content("ansible.builtin.copy")
+
+        mock_rie.assert_called_once()
+        assert mock_rie.call_args.args[0].__name__ == "_read_skill"
+        assert "not found" in result.lower()
 
     @pytest.mark.asyncio
     async def test_resource_skill_content_not_found(self, tmp_path, monkeypatch):
