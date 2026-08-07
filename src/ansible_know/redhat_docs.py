@@ -252,15 +252,26 @@ def _is_url_rejection_message(text: str) -> bool:
 
 
 def _is_soft_404_markdown(markdown: str) -> bool:
-    """Return True when markdown starts with a not-found H1 (not prose mentions)."""
-    return bool(_SOFT_404_TITLE_RE.match(markdown.lstrip()))
+    """Return True when the first markdown H1 is a not-found title.
+
+    Ignores leading non-heading noise (e.g. decorative image alt text that
+    RH soft-404 pages emit before ``# 404: Page not found``).
+    """
+    match = re.search(r"^#\s+.+$", markdown, re.MULTILINE)
+    if match is None:
+        return False
+    return bool(_SOFT_404_TITLE_RE.match(match.group(0)))
 
 
 def _html_looks_soft_404(html: str) -> bool:
-    """Cheap pre-convert check for RH SPA / soft not-found pages."""
+    """Cheap pre-convert check for RH SPA / soft not-found pages.
+
+    Title must *start* with ``Page not found`` (RH soft-404 shape), not merely
+    mention those words in a troubleshooting guide title.
+    """
     head = html[:50_000]
     title = _HTML_TITLE_RE.search(head)
-    if title and re.search(r"page\s+not\s+found", title.group(1), re.IGNORECASE):
+    if title and re.match(r"\s*page\s+not\s+found\b", title.group(1), re.IGNORECASE):
         return True
     return bool(_HTML_SOFT_404_H1_RE.search(head))
 
@@ -621,7 +632,8 @@ async def fetch_redhat_doc_http(
         markdown = html_to_markdown(resp.text)
         if not markdown.strip():
             raise AnsibleKnowError(f"No convertible documentation content found at {url}")
-        if _is_soft_404_markdown(markdown):
+        # Prefer HTML title/H1 check (survives leading img alts); markdown is backup.
+        if _html_looks_soft_404(resp.text) or _is_soft_404_markdown(markdown):
             raise AnsibleKnowError(
                 f"docs.redhat.com returned a not-found page for {url}"
             )

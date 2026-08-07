@@ -559,9 +559,33 @@ class TestFetchRedhatDocFallback:
         from ansible_know.redhat_docs import _is_soft_404_markdown
 
         assert _is_soft_404_markdown("# 404: Page not found\n\nMissing.")
+        assert _is_soft_404_markdown(
+            "Cloud Image\n\n# 404: Page not found\n\nMissing."
+        )
         assert not _is_soft_404_markdown(
             "# Troubleshooting HTTP 404 page not found errors\n\nDetails."
         )
+
+    @pytest.mark.asyncio
+    async def test_http_fallback_rejects_soft_404_with_leading_img_alt(self):
+        """RH soft-404 pages often emit img alt text before the 404 H1."""
+        url = (
+            "https://docs.redhat.com/en/documentation/"
+            "red_hat_ansible_automation_platform/2.7/"
+            "install-proc_installing_containerized_aap"
+        )
+        html = (
+            "<html><head><title>Page not found | Red Hat Documentation</title></head>"
+            '<body><img alt="Cloud Image">'
+            "<main><h1>404: Page not found</h1><p>missing</p></main></body></html>"
+        )
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.get = AsyncMock(
+            return_value=_html_response(html, url=url, status_code=200)
+        )
+
+        with pytest.raises(AnsibleKnowError, match="not-found page"):
+            await fetch_redhat_doc_http(url, http_client=mock_http)
 
     @pytest.mark.asyncio
     async def test_http_fallback_rewrites_html_segment_on_404(self):
