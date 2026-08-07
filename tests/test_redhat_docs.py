@@ -12,6 +12,7 @@ import pytest
 from ansible_know.errors import AnsibleKnowError
 from ansible_know.redhat_docs import (
     RedHatDocsClient,
+    _format_markdown_link,
     fetch_redhat_doc,
     fetch_redhat_doc_http,
     html_to_markdown,
@@ -329,6 +330,29 @@ class TestHtmlToMarkdown:
         assert md.count("`") == 2
         assert "`](" not in md
 
+    def test_escapes_parens_in_href_and_brackets_in_label(self):
+        html = (
+            '<article><a href="https://docs.redhat.com/path_(copy)">'
+            "see [notes]</a></article>"
+        )
+        md = html_to_markdown(html)
+        assert r"[see \[notes\]](https://docs.redhat.com/path_(copy\))" in md
+
+    def test_drops_javascript_href_keeps_label(self):
+        html = '<article><a href="javascript:alert(1)">click</a></article>'
+        md = html_to_markdown(html)
+        assert "javascript:" not in md
+        assert "click" in md
+        assert "](" not in md
+
+    def test_keeps_relative_https_style_paths(self):
+        assert _format_markdown_link("Guide", "/en/documentation/foo") == (
+            "[Guide](/en/documentation/foo)"
+        )
+        assert _format_markdown_link("Guide", "https://docs.redhat.com/x") == (
+            "[Guide](https://docs.redhat.com/x)"
+        )
+
     def test_empty_input(self):
         assert html_to_markdown("") == ""
 
@@ -503,6 +527,29 @@ class TestFetchRedhatDocFallback:
 
         with pytest.raises(AnsibleKnowError, match="unexpected domain"):
             await fetch_redhat_doc_http(self.AAP27_URL, http_client=mock_http)
+
+    @pytest.mark.asyncio
+    async def test_http_fallback_revalidates_url_before_get(self):
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.get = AsyncMock()
+
+        with pytest.raises(AnsibleKnowError, match="docs.redhat.com|docs.ansible.com"):
+            await fetch_redhat_doc_http(
+                "https://evil.example/doc", http_client=mock_http,
+            )
+        mock_http.get.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_http_fallback_rejects_ansible_com_url(self):
+        mock_http = AsyncMock(spec=httpx.AsyncClient)
+        mock_http.get = AsyncMock()
+
+        with pytest.raises(AnsibleKnowError, match="docs.redhat.com"):
+            await fetch_redhat_doc_http(
+                "https://docs.ansible.com/projects/ansible/latest/",
+                http_client=mock_http,
+            )
+        mock_http.get.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_http_fallback_soft_404_rewrites_html_segment(self):

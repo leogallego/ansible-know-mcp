@@ -23,10 +23,10 @@ from urllib.parse import urlparse, urlunparse
 import httpx
 
 from ansible_know.config import REDHAT_DOCS_MCP_URL, USER_AGENT
-from ansible_know.errors import AnsibleKnowError
+from ansible_know.errors import AnsibleKnowError, ValidationError
 from ansible_know.text_utils import clean_redhat_markdown
 from ansible_know.types import FetchDocResult
-from ansible_know.validation import sanitize_error, truncate_response
+from ansible_know.validation import sanitize_error, truncate_response, validate_doc_url
 
 logger = logging.getLogger("ansible_know")
 
@@ -322,6 +322,30 @@ def _extract_content_html(raw_html: str) -> str:
     )
 
 
+def _format_markdown_link(label: str, href: str) -> str:
+    """Build a CommonMark link, escaping delimiters; drop unsafe schemes."""
+    href = href.strip()
+    label = label.strip() or href
+    if not href:
+        return label
+
+    parsed = urlparse(href)
+    scheme = (parsed.scheme or "").lower()
+    if scheme and scheme not in {"http", "https"}:
+        # javascript:/data:/mailto: etc. — keep visible text only
+        return label
+    if href.startswith("//"):
+        return label
+
+    safe_label = (
+        label.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
+    )
+    safe_href = href.replace("\\", "\\\\").replace(")", "\\)")
+    if re.search(r"\s", safe_href):
+        return f"[{safe_label}](<{safe_href}>)"
+    return f"[{safe_label}]({safe_href})"
+
+
 class _HtmlToMarkdownParser(HTMLParser):
     """Minimal HTML→Markdown converter for Red Hat docs article markup."""
 
@@ -434,7 +458,7 @@ class _HtmlToMarkdownParser(HTMLParser):
             self._emit("*")
         elif tag == "a" and self._href is not None:
             label = "".join(self._pending_href_text).strip() or self._href
-            self._parts.append(f"[{label}]({self._href})")
+            self._parts.append(_format_markdown_link(label, self._href))
             self._href = None
             self._pending_href_text = []
         elif tag in self._BLOCK_TAGS:
@@ -619,6 +643,15 @@ async def fetch_redhat_doc_http(
     Used as a workaround when the Red Hat Documentation MCP server rejects
     a URL (AAP 2.6/2.7 modular slugs). Stays on docs.redhat.com only.
     """
+    try:
+        validate_doc_url(url)
+    except ValidationError as exc:
+        raise AnsibleKnowError(str(exc)) from exc
+    if urlparse(url).netloc != _RH_DOC_HOST:
+        raise AnsibleKnowError(
+            "URL must start with https://docs.redhat.com/ for HTTP fallback"
+        )
+
     client = http_client
     should_close = False
     if client is None:
