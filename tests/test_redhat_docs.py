@@ -12,13 +12,15 @@ import pytest
 from ansible_know.errors import AnsibleKnowError
 from ansible_know.redhat_docs import (
     RedHatDocsClient,
-    _format_markdown_link,
     fetch_redhat_doc,
     fetch_redhat_doc_http,
     html_to_markdown,
     parse_mcp_sse,
 )
-from ansible_know.text_utils import clean_redhat_markdown
+from ansible_know.text_utils import (
+    _format_markdown_link,
+    clean_redhat_markdown,
+)
 
 
 class TestParseMcpSse:

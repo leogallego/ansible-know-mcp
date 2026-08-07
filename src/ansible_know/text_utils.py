@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 __all__ = [
     "clean_redhat_markdown",
     "clean_rtd_markdown",
+    "estimate_tokens",
     "html_to_markdown",
 ]
 
@@ -193,6 +194,8 @@ class _HtmlToMarkdownParser(HTMLParser):
     _SKIP_TAGS = frozenset({
         "script", "style", "nav", "header", "footer", "aside",
         "button", "svg", "noscript", "form",
+        # Red Hat / PatternFly chrome (harmless no-ops for Sphinx/RTD HTML)
+        "rh-button", "rh-icon", "rh-surface", "rh-breadcrumb", "pf-popover",
     })
     _BLOCK_TAGS = frozenset({
         "p", "div", "section", "li", "tr", "blockquote", "pre",
@@ -345,6 +348,11 @@ class _HtmlToMarkdownParser(HTMLParser):
 
     def get_markdown(self) -> str:
         return "".join(self._parts)
+
+
+def estimate_tokens(text: str) -> int:
+    """Rough token estimate (~4 chars/token) when no provider token header exists."""
+    return len(text) // 4
 
 
 def html_to_markdown(raw_html: str) -> str:
