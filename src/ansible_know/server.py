@@ -584,6 +584,7 @@ async def fetch_doc(
             return await fetch_redhat_doc(
                 url=url, max_tokens=max_tokens,
                 client=_get_shared(ctx).redhat_client,
+                http_client=_get_http_client(ctx),
             )
         else:
             from ansible_know import docs
