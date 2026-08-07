@@ -947,46 +947,52 @@ class TestGalaxyDocsFallback:
 
 
 class TestResourceFunctions:
-    def test_resource_skills_list_empty(self, tmp_path, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_resource_skills_list_empty(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
         from ansible_know.server import resource_skills_list
-        result = json.loads(resource_skills_list())
+        result = json.loads(await resource_skills_list())
         assert result == []
 
-    def test_resource_skills_list_with_skills(self, tmp_path, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_resource_skills_list_with_skills(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
         skill_dir = tmp_path / "ansible.builtin"
         skill_dir.mkdir()
         (skill_dir / "SKILL.md").write_text("# Codex skill")
         from ansible_know.server import resource_skills_list
-        result = json.loads(resource_skills_list())
+        result = json.loads(await resource_skills_list())
         assert "ansible.builtin" in result
 
-    def test_resource_skill_content_not_found(self, tmp_path, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_resource_skill_content_not_found(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
         from ansible_know.server import resource_skill_content
-        result = resource_skill_content("ansible.builtin.copy")
+        result = await resource_skill_content("ansible.builtin.copy")
         assert "not found" in result.lower()
 
-    def test_resource_skill_content_reads_nested(self, tmp_path, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_resource_skill_content_reads_nested(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
         nested = tmp_path / "ansible-builtin" / "copy"
         nested.mkdir(parents=True)
         (nested / "SKILL.md").write_text("nested content")
         from ansible_know.server import resource_skill_content
-        result = resource_skill_content("ansible.builtin.copy")
+        result = await resource_skill_content("ansible.builtin.copy")
         assert result == "nested content"
 
-    def test_resource_skill_content_reads_collection_skill(self, tmp_path, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_resource_skill_content_reads_collection_skill(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
         coll_dir = tmp_path / "netbox.netbox"
         coll_dir.mkdir()
         (coll_dir / "SKILL.md").write_text("collection skill content")
         from ansible_know.server import resource_skill_content
-        result = resource_skill_content("netbox.netbox")
+        result = await resource_skill_content("netbox.netbox")
         assert result == "collection skill content"
 
-    def test_resource_skills_list_with_nested_skills(self, tmp_path, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_resource_skills_list_with_nested_skills(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
         coll_dir = tmp_path / "netbox-netbox"
         coll_dir.mkdir()
@@ -995,11 +1001,12 @@ class TestResourceFunctions:
         mod_dir.mkdir()
         (mod_dir / "SKILL.md").write_text("# Device skill")
         from ansible_know.server import resource_skills_list
-        result = json.loads(resource_skills_list())
+        result = json.loads(await resource_skills_list())
         assert "netbox.netbox" in result
         assert "netbox.netbox.netbox_device" in result
 
-    def test_resource_skills_list_merges_skills_path(self, tmp_path, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_resource_skills_list_merges_skills_path(self, tmp_path, monkeypatch):
         project = tmp_path / "project"
         bundled = tmp_path / "bundled"
         for root, name in (
@@ -1015,11 +1022,12 @@ class TestResourceFunctions:
             f"{project}:{bundled}",
         )
         from ansible_know.server import resource_skills_list
-        result = json.loads(resource_skills_list())
+        result = json.loads(await resource_skills_list())
         assert result.count("netbox.netbox") == 1
         assert "ansible.builtin" in result
 
-    def test_resource_skill_content_skills_path_first_wins(self, tmp_path, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_resource_skill_content_skills_path_first_wins(self, tmp_path, monkeypatch):
         project = tmp_path / "project"
         bundled = tmp_path / "bundled"
         for root, content in ((project, "from project"), (bundled, "from bundled")):
@@ -1031,21 +1039,23 @@ class TestResourceFunctions:
             f"{project}:{bundled}",
         )
         from ansible_know.server import resource_skill_content
-        assert resource_skill_content("netbox.netbox.netbox_device") == "from project"
+        assert await resource_skill_content("netbox.netbox.netbox_device") == "from project"
 
-    def test_resource_skill_content_flat_fallback(self, tmp_path, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_resource_skill_content_flat_fallback(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
         flat = tmp_path / "ansible.builtin.copy"
         flat.mkdir(parents=True)
         (flat / "SKILL.md").write_text("flat content")
         from ansible_know.server import resource_skill_content
-        result = resource_skill_content("ansible.builtin.copy")
+        result = await resource_skill_content("ansible.builtin.copy")
         assert result == "flat content"
 
-    def test_resource_skill_content_invalid_fqcn(self, tmp_path, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_resource_skill_content_invalid_fqcn(self, tmp_path, monkeypatch):
         monkeypatch.setattr("ansible_know.config.SKILLS_DIR", tmp_path)
         from ansible_know.server import resource_skill_content
-        result = resource_skill_content("../../etc/passwd")
+        result = await resource_skill_content("../../etc/passwd")
         assert "invalid" in result.lower() or "expected" in result.lower()
 
     def test_resource_installed_collections_empty(self):
@@ -1081,6 +1091,81 @@ class TestResourceFunctions:
         result = json.loads(resource_doc_sources())
         assert isinstance(result, dict)
         assert len(result) >= 1
+
+    @pytest.mark.asyncio
+    async def test_resource_galaxy_servers_uses_shared_state(self):
+        import ansible_know.server as srv
+        from ansible_know.galaxy_config import GalaxyServerConfig
+        from ansible_know.state import SharedState
+
+        servers = [
+            GalaxyServerConfig(name="ah", url="https://galaxy.example/api/", token="secret"),
+            GalaxyServerConfig(name="public_galaxy", url="https://galaxy.ansible.com"),
+        ]
+        shared = SharedState(galaxy_servers=servers)
+        old = srv._shared_state
+        try:
+            srv._shared_state = shared
+            with patch(
+                "ansible_know.galaxy_config.load_galaxy_servers",
+            ) as mock_load:
+                result = json.loads(await srv.resource_galaxy_servers())
+            mock_load.assert_not_called()
+        finally:
+            srv._shared_state = old
+
+        assert result == [
+            {
+                "name": "ah",
+                "url": "https://galaxy.example/api/",
+                "auth": "token",
+                "validate_certs": True,
+            },
+            {
+                "name": "public_galaxy",
+                "url": "https://galaxy.ansible.com",
+                "auth": "none",
+                "validate_certs": True,
+            },
+        ]
+        assert "secret" not in json.dumps(result)
+
+    @pytest.mark.asyncio
+    async def test_resource_galaxy_servers_loads_via_executor_when_unshared(self):
+        import ansible_know.server as srv
+        from ansible_know.galaxy_config import GalaxyServerConfig
+
+        fallback = [
+            GalaxyServerConfig(
+                name="galaxy",
+                url="https://galaxy.ansible.com",
+                username="u",
+                password="p",
+            ),
+        ]
+        old = srv._shared_state
+        try:
+            srv._shared_state = None
+            with patch(
+                "ansible_know.galaxy_config.load_galaxy_servers",
+                return_value=fallback,
+            ) as mock_load:
+                result = json.loads(await srv.resource_galaxy_servers())
+            mock_load.assert_called_once_with()
+        finally:
+            srv._shared_state = old
+
+        assert result == [
+            {
+                "name": "galaxy",
+                "url": "https://galaxy.ansible.com",
+                "auth": "basic",
+                "validate_certs": True,
+            },
+        ]
+        assert "username" not in result[0]
+        assert "password" not in result[0]
+        assert "token" not in result[0]
 
 
 class TestPromptFunctions:
@@ -2142,13 +2227,14 @@ class TestListPluginSkills:
 
 
 class TestResourceSkillsListPlugins:
-    def test_returns_fqcn_for_plugin_skills(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_returns_fqcn_for_plugin_skills(self, tmp_path):
         skill_dir = tmp_path / "netbox-netbox" / "lookup-nb-lookup"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text("---\nname: test\n---\n")
         with patch("ansible_know.config.SKILLS_DIR", tmp_path):
             from ansible_know.server import resource_skills_list
-            result = json.loads(resource_skills_list())
+            result = json.loads(await resource_skills_list())
         assert "netbox.netbox.nb_lookup" in result
         assert "lookup-nb-lookup" not in result
 
