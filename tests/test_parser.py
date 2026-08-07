@@ -7,7 +7,7 @@ import pytest
 
 from ansible_know.errors import AnsibleDocError, CollectionNotFoundError, ValidationError
 from ansible_know.parser import (
-    _ANSIBLE_DOC_BATCH_SIZE,
+    _batch_timeout,
     extract_examples,
     extract_module_metadata,
     extract_params,
@@ -61,19 +61,20 @@ class TestGetModuleDocs:
         mock.assert_not_called()
 
     def test_chunks_large_name_lists(self, sample_module_doc_json):
-        names = [f"ns.col.mod{i}" for i in range(_ANSIBLE_DOC_BATCH_SIZE + 3)]
-        with patch(
+        # Patch batch size in-place so the test does not couple to the
+        # production constant's value.
+        names = [f"ns.col.mod{i}" for i in range(5)]
+        with patch("ansible_know.parser._ANSIBLE_DOC_BATCH_SIZE", 2), patch(
             "ansible_know.parser._run_ansible_doc", return_value=sample_module_doc_json,
         ) as mock:
             get_module_docs(names)
-        assert mock.call_count == 2
-        # args are (*chunk, "--json"); collections_path is a kwarg
+        assert mock.call_count == 3  # 2 + 2 + 1
         first_args = mock.call_args_list[0].args
-        second_args = mock.call_args_list[1].args
+        last_args = mock.call_args_list[2].args
         assert first_args[-1] == "--json"
-        assert len(first_args) - 1 == _ANSIBLE_DOC_BATCH_SIZE
-        assert second_args[-1] == "--json"
-        assert len(second_args) - 1 == 3
+        assert len(first_args) - 1 == 2
+        assert last_args[-1] == "--json"
+        assert len(last_args) - 1 == 1
 
     def test_deduplicates_names(self, sample_module_doc_json):
         with patch(
@@ -103,6 +104,17 @@ class TestGetModuleDocs:
             result = get_module_docs(names)
         assert set(result) == set(names)
         assert mock.call_count == 3  # 1 failed batch + 2 singles
+
+
+class TestBatchTimeout:
+    def test_single_name_keeps_historic_budget(self):
+        assert _batch_timeout(1) == 60
+
+    def test_scales_with_chunk_size(self):
+        assert _batch_timeout(50) == 180  # max(60, min(300, 30 + 3*50))
+
+    def test_caps_at_300(self):
+        assert _batch_timeout(1000) == 300
 
 
 class TestLoadModuleMetadataBatch:
