@@ -419,6 +419,22 @@ class TestSearchRtdApi:
         results = await _search_rtd_api("test", limit=5, http_client=mock_client)
         assert len(results) <= 5
 
+    @pytest.mark.asyncio
+    async def test_uses_rtd_token_when_set(self, monkeypatch):
+        monkeypatch.setenv("ANSIBLE_KNOW_RTD_TOKEN", "search-token")
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"count": 0, "results": []}
+        mock_resp.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        await _search_rtd_api("variables", source="ansible-core", http_client=mock_client)
+        headers = mock_client.get.call_args.kwargs["headers"]
+        assert headers["Authorization"] == "Token search-token"
+        assert "User-Agent" in headers
+
 
 LINT_MANIFEST = {
     "version": "2.0",

@@ -29,7 +29,7 @@ from ansible_know.config import (
     get_rtd_api_token,
 )
 from ansible_know.errors import AnsibleKnowError
-from ansible_know.text_utils import clean_rtd_markdown, html_to_markdown
+from ansible_know.text_utils import clean_rtd_markdown, estimate_tokens, html_to_markdown
 from ansible_know.types import FetchDocResult, SearchDocsEntry
 from ansible_know.validation import sanitize_error, truncate_response
 
@@ -255,8 +255,14 @@ async def _search_rtd_api(
             "q": f"project:{slug}/latest {query}",
             "page_size": min(limit, 20),
         }
+        headers = _rtd_api_headers()
         try:
-            resp = await client.get(RTD_SEARCH_URL, params=params, timeout=5.0)
+            resp = await client.get(
+                RTD_SEARCH_URL,
+                params=params,
+                headers=headers,
+                timeout=5.0,
+            )
             resp.raise_for_status()
             data = resp.json()
         except (httpx.HTTPError, ValueError) as exc:
@@ -411,11 +417,6 @@ def clear_cache() -> None:
 MAX_DOC_FETCH_SIZE = 2_000_000  # 2MB
 
 
-def _estimate_tokens(text: str) -> int:
-    """Rough token estimate (~4 chars/token) when no x-markdown-tokens header."""
-    return len(text) // 4
-
-
 def _map_docs_url_to_rtd(url: str) -> str:
     """Rewrite docs.ansible.com URLs to ansible.readthedocs.io for Embed API.
 
@@ -430,8 +431,8 @@ def _map_docs_url_to_rtd(url: str) -> str:
     return urlunparse(parsed._replace(netloc=RTD_EMBED_DOCS_HOST))
 
 
-def _rtd_embed_headers() -> dict[str, str]:
-    """Build Embed API headers; optional RTD token increases rate limits."""
+def _rtd_api_headers() -> dict[str, str]:
+    """Build RTD API headers (Embed/Search); optional token increases rate limits."""
     headers = {
         "Accept": "application/json",
         "User-Agent": USER_AGENT,
@@ -465,7 +466,7 @@ async def _fetch_via_rtd_embed(
         resp = await client.get(
             RTD_EMBED_URL,
             params={"url": rtd_url},
-            headers=_rtd_embed_headers(),
+            headers=_rtd_api_headers(),
             follow_redirects=False,
             timeout=30.0,
         )
@@ -524,7 +525,7 @@ async def _fetch_via_rtd_embed(
     markdown = html_to_markdown(html_content)
     content, title = clean_rtd_markdown(markdown)
     # Estimate before truncate so max_tokens matches primary-path gating intent.
-    tokens = _estimate_tokens(content)
+    tokens = estimate_tokens(content)
     if max_tokens is not None and tokens > max_tokens:
         raise AnsibleKnowError(
             f"Page has {tokens} tokens (max_tokens={max_tokens}). "

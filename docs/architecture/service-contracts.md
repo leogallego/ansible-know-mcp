@@ -229,6 +229,7 @@ dependencies on upper layers.
 | `galaxy_config.py` | Galaxy server config from `ansible.cfg` | `galaxy_config.py` |
 | `state.py` | Session state management (collection install tracking) | `state.py` |
 | `tagging.py` | Tag derivation from module FQCN segments | `tagging.py` |
+| `text_utils.py` | RTD/RH markdown cleaning, HTML→markdown, token estimate | `text_utils.py` |
 | `validation.py` | Input validation, error sanitization, response truncation | `validation.py` |
 | `errors.py` | Exception hierarchy and error helpers | `errors.py` |
 | `types.py` | `TypedDict` definitions, `GalaxyDocClient` Protocol | `types.py` |
