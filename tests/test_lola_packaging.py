@@ -255,6 +255,23 @@ class TestPackageCollectionForLola:
         assert "Collection overview" in overview
         assert "should be skipped" not in overview
 
+    def test_keeps_nested_dir_matching_collection_when_no_overview(self, tmp_path: Path) -> None:
+        skills = tmp_path / "skills"
+        collection_dir = skills / "ns-coll"
+        collection_dir.mkdir(parents=True)
+        nested = collection_dir / "ns-coll"
+        nested.mkdir()
+        (nested / "SKILL.md").write_text(
+            "---\nname: ns-coll\ndescription: module skill\n---\n# Module\n"
+        )
+
+        result = package_collection_for_lola(skills, "ns.coll", tmp_path / "out")
+        assert result["skills"] == ["ns-coll"]
+        content = (
+            Path(result["module_dir"]) / "skills" / "ns-coll" / "SKILL.md"
+        ).read_text()
+        assert "module skill" in content
+
 
 @pytest.mark.asyncio
 class TestPackageForLolaTool:

@@ -852,16 +852,18 @@ def package_collection_for_lola(
     collection_dir_name = collection_dir.name
     collection_skill_md = collection_dir / "SKILL.md"
 
+    has_collection_skill = collection_skill_md.is_file()
+
     # Plan packable skills before mutating any existing Lola module output.
     nested_skill_dirs: list[Path] = []
     for entry in sorted(collection_dir.iterdir()):
         try:
             if not entry.is_dir() or entry.is_symlink():
                 continue
-            if entry.name == collection_dir_name:
-                # Would collide with the collection-level skill dirname.
+            if has_collection_skill and entry.name == collection_dir_name:
+                # Would overwrite the collection-level skill dirname.
                 logger.warning(
-                    "Skipping nested skill %r: name collides with collection dir",
+                    "Skipping nested skill %r: name collides with collection skill",
                     entry.name,
                 )
                 continue
@@ -871,7 +873,6 @@ def package_collection_for_lola(
             logger.warning("Skipping unreadable skill dir %s: %s", entry.name, exc)
             continue
 
-    has_collection_skill = collection_skill_md.is_file()
     if not has_collection_skill and not nested_skill_dirs:
         raise FileNotFoundError(
             f"Collection '{collection_fqcn}' has no SKILL.md packages to wrap."
