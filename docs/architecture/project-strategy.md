@@ -132,8 +132,8 @@ Cross-agent AI skill package manager by Red Hat Product Security.
 
 - **Repo:** `github.com/LobsterTrap/lola`
 - **Marketplace:** `github.com/RedHatProductSecurity/lola-market`
-- **Relationship:** Distribution channel. Users wrap our spec-compliant skills into Lola modules for cross-agent installation (40+ agents).
-- **Not a generation format** — Lola packaging is a user's distribution step, not our output format.
+- **Relationship:** Distribution channel. Wrap our spec-compliant skills with MCP tool ``package_for_lola`` (#149) into Lola modules for cross-agent installation (40+ agents).
+- **Not a generation format** — Lola packaging is a post-generate wrap step, not a `generate_*` output mode.
 
 ### agentskills.io
 

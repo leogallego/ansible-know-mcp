@@ -20,6 +20,7 @@ __all__ = [
     "validate_fqcn",
     "validate_install_path",
     "validate_keyword",
+    "validate_lola_module_name",
     "validate_namespace",
     "validate_path_containment",
     "validate_plugin_type",
@@ -42,8 +43,11 @@ _NAMESPACE_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$")
 _SKILL_NAME_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)?$")
 _VERSION_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
 _TAGS_RE = re.compile(r"^[a-zA-Z0-9_,-]+$")
+_LOLA_MODULE_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
 _SENSITIVE_PREFIXES = ("/etc", "/usr", "/bin", "/sbin", "/boot", "/proc", "/sys", "/dev")
 _PATH_RE = re.compile(r"/(?:home|tmp|usr|etc|var|opt)/\S+")
+# Allow "ansible-" + full kebab collection name (namespace max is 128).
+MAX_LOLA_MODULE_NAME_LENGTH = MAX_NAMESPACE_LENGTH + len("ansible-")
 
 
 def validate_fqcn(name: str) -> None:
@@ -70,6 +74,36 @@ def validate_namespace(ns: str) -> None:
         raise ValidationError(
             "Invalid collection namespace: expected format 'namespace.collection' "
             "with alphanumeric/underscore segments."
+        )
+
+
+def validate_lola_module_name(name: str) -> None:
+    """Validate a Lola module directory / market ``name`` field.
+
+    Rejects empty values, path separators, and names that are not safe as a
+    single path segment under the packaging output directory.
+
+    Contract:
+        Preconditions:
+            - ``name`` must be a non-empty single path segment (1–
+              ``MAX_LOLA_MODULE_NAME_LENGTH`` chars).
+            - Allowed characters: alphanumeric, ``.``, ``_``, ``-``;
+              first character alphanumeric. No ``/``, ``\\``, ``.``, or ``..``.
+        Raises:
+            ValidationError: If any precondition fails (explicit check).
+    """
+    if (
+        not name
+        or len(name) > MAX_LOLA_MODULE_NAME_LENGTH
+        or "/" in name
+        or "\\" in name
+        or name in {".", ".."}
+        or not _LOLA_MODULE_NAME_RE.match(name)
+    ):
+        raise ValidationError(
+            "Invalid Lola module name: use 1-"
+            f"{MAX_LOLA_MODULE_NAME_LENGTH} alphanumeric characters, "
+            "dots, underscores, or hyphens (no path separators)."
         )
 
 

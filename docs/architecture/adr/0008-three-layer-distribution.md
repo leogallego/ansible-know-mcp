@@ -69,8 +69,8 @@ Two consumption paths:
   (`skills/{collection}/{module}/SKILL.md`) is **not** Lola layout —
   wrap via #149 (or equivalent) before relying on GitHub Lola loading.
   Vercel/generic GitHub loaders remain 1-level.
-- **Lola:** Users wrap skills into a Lola module and distribute to
-  40+ agents via `lola install` (#149).
+- **Lola:** Wrap generated skills with ``package_for_lola`` (#149), then
+  distribute to 40+ agents via `lola install` / marketplace.
 
 **Value:** Persistence, sharing, version control, cross-agent reach.
 
@@ -126,7 +126,9 @@ would break. Spec compliance makes the layers possible.
   Alignment details:
   [`docs/superpowers/specs/2026-08-02-skill-discoverability-alignment.md`](../../superpowers/specs/2026-08-02-skill-discoverability-alignment.md)
 - **Layer 2** (repository): generated skills pushed to a GitHub repo;
-  Lola packaging is a separate user concern (#149).
+  Lola packaging via MCP tool ``package_for_lola`` / Domain
+  ``package_collection_for_lola`` (#149) — wrap only; does not change
+  ``generate_*`` layout (ADR-0007).
 - **Layer 3** (remote): FastMCP HTTP/SSE transport (see ADR-0001). Not
   yet implemented — requires hosting, auth, and monitoring infrastructure
   (#71).

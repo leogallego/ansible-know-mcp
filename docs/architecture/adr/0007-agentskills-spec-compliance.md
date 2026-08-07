@@ -116,11 +116,11 @@ gap, not a spec violation on our side.
 We propose patching next-mcp's `_loadLocalSource` to scan 2+ levels,
 citing the spec. This benefits all skill producers that use namespace grouping.
 
-### Lola packaging is a user concern
+### Lola packaging is a packaging concern (not a generation format)
 
 Lola is a distribution channel, not a generation format. Our spec-compliant
-output can be wrapped into a Lola module by the user as a packaging step.
-No special output mode needed.
+output is wrapped into a Lola module as a separate packaging step
+(``package_for_lola`` / #149). No special ``generate_*`` output mode.
 
 ## Consequences
 

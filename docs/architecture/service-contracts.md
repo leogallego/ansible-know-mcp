@@ -57,7 +57,7 @@ decorated tool, resource, and prompt handler functions. FastMCP manages:
 
 | Element | File | Registration |
 |---------|------|--------------|
-| 18 tool handlers | `server.py` | `@mcp.tool(annotations=ToolAnnotations(...))` |
+| 19 tool handlers | `server.py` | `@mcp.tool(annotations=ToolAnnotations(...))` |
 | 6 resource handlers | `server.py` | `@mcp.resource(uri, ...)` |
 | 5 prompt handlers | `server.py` | `@mcp.prompt` |
 | Lifespan hook | `server.py` | `@lifespan` decorator on `app_lifespan()` |
@@ -105,7 +105,7 @@ business logic. Domain modules are imported lazily to avoid loading
 | Domain Module | Functions Called | File |
 |---------------|----------------|------|
 | `parser` | `search_modules()`, `get_module_doc()`, `get_module_docs()`, `load_module_metadata_batch()`, `get_plugin_doc()`, `get_plugin_docs()`, `load_plugin_metadata_batch()`, `get_role_doc()`, `list_roles()`, `extract_module_metadata()`, `extract_role_metadata()` | `parser.py` |
-| `skills` | `render_skill()`, `write_skill_package()`, `render_role_skill()`, `write_role_skill_package()`, `_module_to_skill_name()` | `skills.py` |
+| `skills` | `render_skill()`, `write_skill_package()`, `render_role_skill()`, `write_role_skill_package()`, `package_collection_for_lola()`, `list_skills_sync()`, `get_skill_sync()`, `collection_skill_name()` / `fqcn_to_skill_name()` / related naming helpers | `skills.py` |
 | `collection_manifest` | `generate_manifest()`, `load_cached_manifest()` | `collection_manifest.py` |
 | `docs` | `search_docs()`, `fetch_doc_content()` | `docs.py` |
 | `collections` | `ensure_collection()`, `list_installed()` | `collections.py` |
@@ -118,7 +118,8 @@ business logic. Domain modules are imported lazily to avoid loading
 | Down | `str` (module_name, keyword, namespace) | Primitives, validated by Orchestration |
 | Up | `ModuleMetadata` | `types.py:8-15` — TypedDict |
 | Up | `RoleMetadata` | `types.py:18-23` — TypedDict |
-| Up | `EnsureCollectionResult` | `types.py:43-49` — TypedDict (added in PR #60) |
+| Up | `EnsureCollectionResult` | `types.py` — TypedDict (added in PR #60) |
+| Up | `PackageForLolaResult` | `types.py` — TypedDict (added in #149) |
 | Up | `dict[str, str]` | Search results (module FQCN → description) |
 | Up | `dict[str, Any]` | Raw ansible-doc JSON, manifest dicts |
 | Up | Exceptions | `AnsibleDocError`, `CollectionNotFoundError`, `CollectionInstallError` |

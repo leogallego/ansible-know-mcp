@@ -1,6 +1,6 @@
 """Ansible Know MCP Server.
 
-Provides 17 tools, 6 resources, and 5 prompts for module, role, and plugin discovery,
+Provides 19 tools, 6 resources, and 5 prompts for module, role, and plugin discovery,
 documentation search, Galaxy collection discovery, and skill generation
 via the Model Context Protocol.
 """
@@ -36,6 +36,7 @@ from ansible_know.types import (
     GetRoleDocResult,
     ManifestResult,
     ModuleMetadata,
+    PackageForLolaResult,
     PluginManifestInput,
     PluginMetadata,
     SearchDocsEntry,
@@ -50,6 +51,7 @@ from ansible_know.validation import (
     validate_fqcn,
     validate_install_path,
     validate_keyword,
+    validate_lola_module_name,
     validate_namespace,
     validate_plugin_type,
     validate_query,
@@ -1414,6 +1416,89 @@ async def generate_collection_skills(
     except Exception as exc:
         logger.warning("generate_collection_skills failed: %s", exc)
         return {"error": maybe_add_hint(sanitize_error(str(exc)), collection_namespace)}
+
+
+@mcp.tool(annotations=ToolAnnotations(idempotentHint=True, readOnlyHint=False, destructiveHint=True))
+async def package_for_lola(
+    collection: Annotated[
+        str,
+        "Collection namespace whose generated skills to wrap (e.g. 'netbox.netbox').",
+    ],
+    output_dir: Annotated[
+        str,
+        "Parent directory where the Lola module directory will be created "
+        "(e.g. '.' or '/tmp/lola-modules').",
+    ],
+    source_dir: Annotated[
+        str | None,
+        "Optional skills root to read from. Defaults to ANSIBLE_KNOW_SKILLS_PATH "
+        "or SKILLS_DIR (same roots as list_skills).",
+    ] = None,
+    module_name: Annotated[
+        str | None,
+        "Optional Lola module directory name. Defaults to "
+        "'ansible-{collection-kebab}' (e.g. 'ansible-netbox-netbox').",
+    ] = None,
+    write_market_yml: Annotated[
+        bool,
+        "When true (default), write lola-market.yml with collection metadata "
+        "beside the module skills/ tree.",
+    ] = True,
+) -> PackageForLolaResult | ErrorResponse:
+    """Wrap already-generated skills into a Lola-compatible module directory.
+
+    Does not change ``generate_*`` output layout. Copies
+    ``skills/{collection-kebab}/{skill}/`` into
+    ``{output_dir}/{module}/skills/{skill}/`` for marketplace /
+    ``lola mod add`` use. Replaces any existing ``skills/`` tree under the
+    target module directory (destructive but idempotent).
+
+    Returns: {"collection", "module_name", "module_dir", "skill_count", "skills",
+    "market_yml"} or {"error": str} on failure.
+    """
+    logger.info(
+        "package_for_lola collection=%r output_dir=%r source_dir=%r module_name=%r",
+        collection,
+        output_dir,
+        source_dir,
+        module_name,
+    )
+    try:
+        validate_namespace(collection)
+        validate_install_path(output_dir)
+        if source_dir is not None:
+            validate_install_path(source_dir)
+        if module_name is not None:
+            validate_lola_module_name(module_name)
+    except ValidationError as exc:
+        return {"error": str(exc)}
+
+    try:
+        from ansible_know.config import get_skills_dirs
+        from ansible_know.skills import package_collection_for_lola
+
+        def _package() -> PackageForLolaResult:
+            skills_dirs = (
+                [validate_install_path(source_dir)]
+                if source_dir is not None
+                else get_skills_dirs()
+            )
+            return package_collection_for_lola(
+                skills_dirs,
+                collection,
+                validate_install_path(output_dir),
+                write_market_yml=write_market_yml,
+                module_name=module_name,
+            )
+
+        return await run_in_executor(_package)
+    except FileNotFoundError as exc:
+        return {"error": sanitize_error(str(exc))}
+    except ValidationError as exc:
+        return {"error": str(exc)}
+    except Exception as exc:
+        logger.warning("package_for_lola failed: %s", exc)
+        return {"error": sanitize_error(str(exc))}
 
 
 _VALID_CACHE_SCOPES = {"galaxy", "docs"}
