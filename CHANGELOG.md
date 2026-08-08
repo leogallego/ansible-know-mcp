@@ -7,9 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-08
+
 ### Added
 
-- Multi-path skill search via `ANSIBLE_KNOW_SKILLS_PATH` (colon-separated) for `list_skills`, `get_skill`, and `skills://*` — first path wins; writes still use single `SKILLS_DIR` (#182)
+- AAP 2.5/2.6/2.7 documentation manifests and guide discovery (#178, #180, #209)
+- HTTP fallback when Red Hat Docs MCP rejects modular AAP URLs (#183, #206)
+- Project-scoped skills with `AGENTS.md` discovery/updates (#181, #184)
+- Multi-path skill search via `ANSIBLE_KNOW_SKILLS_PATH` (colon-separated) for `list_skills`, `get_skill`, and `skills://*` — first path wins; writes still use single `SKILLS_DIR` (#182, #202)
+- RTD Embed API fallback when Cloudflare blocks `docs.ansible.com` markdown (#168, #213)
+- Lola-compatible packaging helper for generated skills (#149, #211)
+
+### Changed
+
+- Batch `ansible-doc` for collection manifests and skill generation (fewer subprocesses) (#191, #212, #215)
+- Share Foundation HTML→markdown / RTD token helpers; extract optional HTTP client lifecycle and RTD markdown pipeline; inject lifespan `httpx` into `RedHatDocsClient` (#117, #197, #217, #218, #219)
+- TypedDict (`AnsibleDocEntry` / `AnsibleDocPayload`) for raw ansible-doc JSON at the parser/Galaxy boundary (#216, #220)
+- Refresh architecture docs after v0.7 (#196, #201)
+
+### Fixed
+
+- Set `ANSIBLE_LOCAL_TMP` for subprocesses in restricted environments (#174)
+- Partition Galaxy caches by server base URL; keep docs-blob cache memory-only (#190, #199)
+- Keep skill/resource path resolution and MCP resource I/O off the event loop (#193, #205, #208, #210)
+- Align `test_with_tags` mocks with multi-server Galaxy search (#179, #204)
+- Canonicalize AAP 2.6/2.7 manifest URLs at build time (#209)
+
+### Chore
+
+- Docs hygiene, Superpowers plans/specs tracking, stop tracking demo assets (#198)
+- Publish workflow marks `alpha`/`beta`/`rc` tags as GitHub prereleases
 
 ## [0.7.0] - 2026-06-30
 
@@ -209,6 +236,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OWASP security hardening: FQCN input validation, path traversal protection, error sanitization, output size limits, audit logging
 - 77 tests covering tools, parser, skills, docs, collection manifests, and security
 
+[0.8.0]: https://github.com/leogallego/ansible-know-mcp/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/leogallego/ansible-know-mcp/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/leogallego/ansible-know-mcp/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/leogallego/ansible-know-mcp/compare/v0.5.2...v0.6.0
