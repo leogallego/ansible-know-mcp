@@ -127,8 +127,7 @@ class TestRedHatDocsClient:
         ])
         mock_client.aclose = AsyncMock()
 
-        client = RedHatDocsClient()
-        client._client = mock_client
+        client = RedHatDocsClient(http_client=mock_client)
 
         result = await client.fetch("https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.7/install")
         assert result == markdown
@@ -156,8 +155,7 @@ class TestRedHatDocsClient:
         ])
         mock_client.aclose = AsyncMock()
 
-        client = RedHatDocsClient()
-        client._client = mock_client
+        client = RedHatDocsClient(http_client=mock_client)
 
         result = await client.fetch("https://docs.redhat.com/some/page")
         assert result == markdown
@@ -184,8 +182,7 @@ class TestRedHatDocsClient:
         ])
         mock_client.aclose = AsyncMock()
 
-        client = RedHatDocsClient()
-        client._client = mock_client
+        client = RedHatDocsClient(http_client=mock_client)
 
         with pytest.raises(AnsibleKnowError, match="failed after"):
             await client.fetch("https://docs.redhat.com/broken")
@@ -204,8 +201,7 @@ class TestRedHatDocsClient:
         ])
         mock_client.aclose = AsyncMock()
 
-        client = RedHatDocsClient()
-        client._client = mock_client
+        client = RedHatDocsClient(http_client=mock_client)
 
         result = await client.fetch("https://docs.redhat.com/some/page")
         assert result == inner
@@ -234,8 +230,7 @@ class TestRedHatDocsClient:
         ])
         mock_client.aclose = AsyncMock()
 
-        client = RedHatDocsClient()
-        client._client = mock_client
+        client = RedHatDocsClient(http_client=mock_client)
 
         result = await client.fetch("https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.7")
         parsed = json.loads(result)
@@ -247,6 +242,14 @@ class TestRedHatDocsClient:
         client = RedHatDocsClient()
         await client.close()
         await client.close()
+
+    @pytest.mark.asyncio
+    async def test_close_does_not_close_shared_client(self):
+        shared = AsyncMock(spec=httpx.AsyncClient)
+        shared.aclose = AsyncMock()
+        client = RedHatDocsClient(http_client=shared)
+        await client.close()
+        shared.aclose.assert_not_called()
 
 
 class TestCleanRedhatMarkdown:
@@ -697,8 +700,7 @@ class TestCallToolIsError:
         ])
         mock_client.aclose = AsyncMock()
 
-        client = RedHatDocsClient()
-        client._client = mock_client
+        client = RedHatDocsClient(http_client=mock_client)
 
         with pytest.raises(AnsibleKnowError, match="Not a valid Red Hat Documentation link"):
             await client.fetch(

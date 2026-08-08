@@ -196,8 +196,9 @@ layer and `_ReadmeParser` in `readme_parser.py` are the other classes.)
 - `RedHatDocsClient` methods are **async**. It manages its own MCP session
   lifecycle (lazy connect, auto-reconnect on 404 expiry). The client
   instance lives in `SharedState` (created at lifespan, closed at shutdown).
-  It is a transport client, not a data cache — `clear_cache` does not
-  touch it.
+  Prefer injecting the lifespan ``httpx.AsyncClient`` (shared transport);
+  ``close()`` only closes an owned fallback client. It is a transport
+  client, not a data cache — `clear_cache` does not touch it.
 
 ### Violations
 
