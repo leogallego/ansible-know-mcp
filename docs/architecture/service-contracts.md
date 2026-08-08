@@ -223,7 +223,7 @@ dependencies on upper layers.
 
 | Foundation Module | Purpose | File |
 |-------------------|---------|------|
-| `async_utils.py` | `run_in_executor` — blocking-to-async bridge | `async_utils.py` |
+| `async_utils.py` | `run_in_executor` — blocking-to-async bridge; `optional_http_client` — shared-or-owned httpx lifecycle | `async_utils.py` |
 | `cache.py` | Thread-safe bounded LRU cache with TTL | `cache.py` |
 | `config.py` | Paths, constants, env var defaults, doc sources | `config.py` |
 | `galaxy_config.py` | Galaxy server config from `ansible.cfg` | `galaxy_config.py` |
