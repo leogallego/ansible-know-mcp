@@ -28,6 +28,27 @@ class ParamDict(TypedDict):
     aliases: list[str]
 
 
+AnsibleDocEntry = TypedDict(
+    "AnsibleDocEntry",
+    {
+        "doc": dict[str, Any],
+        "examples": str,
+        "return": Any,
+        "metadata": dict[str, Any],
+        "entry_points": dict[str, Any],
+    },
+    total=False,
+)
+"""Single ansible-doc --json entry (module, plugin, or role).
+
+All keys are optional (``total=False``) so extra ansible-doc fields are
+tolerated without breaking structural typing.
+"""
+
+AnsibleDocPayload = dict[str, AnsibleDocEntry]
+"""Raw ansible-doc --json payload keyed by FQCN."""
+
+
 class ModuleMetadata(TypedDict):
     """Module metadata extracted by parser.extract_module_metadata()."""
 
@@ -386,7 +407,7 @@ class GalaxyDocClient(Protocol):
 
     async def fetch_module_doc(
         self, module_name: str,
-    ) -> tuple[dict[str, Any], DocProvenance]: ...
+    ) -> tuple[AnsibleDocPayload, DocProvenance]: ...
 
     async def fetch_role_doc(
         self, role_name: str,
@@ -394,7 +415,7 @@ class GalaxyDocClient(Protocol):
 
     async def fetch_plugin_doc(
         self, plugin_name: str, plugin_type: str,
-    ) -> tuple[dict[str, Any], DocProvenance]: ...
+    ) -> tuple[AnsibleDocPayload, DocProvenance]: ...
 
     async def fetch_collection_docs(
         self, collection_namespace: str, version: str | None = None,

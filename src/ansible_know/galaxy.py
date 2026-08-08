@@ -20,7 +20,7 @@ from ansible_know.errors import GalaxyError
 
 if TYPE_CHECKING:
     from ansible_know.galaxy_config import GalaxyServerConfig
-    from ansible_know.types import DocProvenance, ModuleMetadata
+    from ansible_know.types import AnsibleDocPayload, DocProvenance, ModuleMetadata
 
 logger = logging.getLogger("ansible_know")
 
@@ -632,7 +632,7 @@ class GalaxyClient:
 
     async def fetch_module_doc(
         self, module_name: str, version: str | None = None,
-    ) -> tuple[dict[str, Any], DocProvenance]:
+    ) -> tuple[AnsibleDocPayload, DocProvenance]:
         """Fetch module documentation from Galaxy.
 
         Returns (module_doc, meta) where module_doc mimics ansible-doc --json
@@ -720,7 +720,7 @@ class GalaxyClient:
 
     async def fetch_plugin_doc(
         self, plugin_name: str, plugin_type: str, version: str | None = None,
-    ) -> tuple[dict[str, Any], DocProvenance]:
+    ) -> tuple[AnsibleDocPayload, DocProvenance]:
         """Fetch plugin documentation from Galaxy.
 
         Returns (plugin_doc, meta) where plugin_doc mimics ansible-doc --json

@@ -22,7 +22,14 @@ from ansible_know.errors import AnsibleDocError, CollectionNotFoundError, is_mis
 from ansible_know.validation import validate_plugin_type
 
 if TYPE_CHECKING:
-    from ansible_know.types import EntryPointInfo, ModuleMetadata, ParamDict, PluginMetadata, RoleMetadata
+    from ansible_know.types import (
+        AnsibleDocPayload,
+        EntryPointInfo,
+        ModuleMetadata,
+        ParamDict,
+        PluginMetadata,
+        RoleMetadata,
+    )
 
 logger = logging.getLogger("ansible_know")
 
@@ -73,7 +80,7 @@ def _batch_timeout(chunk_size: int) -> int:
     return max(60, min(300, 30 + 3 * chunk_size))
 
 
-def _parse_ansible_doc_json(raw: str, *, kind: str = "ansible-doc") -> dict[str, Any]:
+def _parse_ansible_doc_json(raw: str, *, kind: str = "ansible-doc") -> AnsibleDocPayload:
     """Parse ansible-doc --json stdout into a dict, or raise AnsibleDocError."""
     try:
         docs = json.loads(raw)
@@ -91,7 +98,7 @@ def _fetch_docs_chunk(
     *,
     plugin_type: str | None = None,
     collections_path: str | None = None,
-) -> dict[str, Any]:
+) -> AnsibleDocPayload:
     """Run one ansible-doc --json invocation for ``names`` (optionally typed)."""
     if plugin_type is None:
         args: tuple[str, ...] = (*names, "--json")
@@ -113,7 +120,7 @@ def _fetch_docs_batched(
     plugin_type: str | None = None,
     collections_path: str | None = None,
     label: str = "module",
-) -> dict[str, Any]:
+) -> AnsibleDocPayload:
     """Fetch docs for many names with chunking and per-name fallback.
 
     On multi-name chunk failure, falls back to one ansible-doc call per name
@@ -123,7 +130,7 @@ def _fetch_docs_batched(
     if not unique_names:
         return {}
 
-    merged: dict[str, Any] = {}
+    merged: AnsibleDocPayload = {}
     last_exc: AnsibleDocError | None = None
     for start in range(0, len(unique_names), _ANSIBLE_DOC_BATCH_SIZE):
         chunk = unique_names[start:start + _ANSIBLE_DOC_BATCH_SIZE]
@@ -213,7 +220,7 @@ def _run_ansible_doc(
 
 def get_module_doc(
     module_name: str, *, collections_path: str | None = None,
-) -> dict[str, Any]:
+) -> AnsibleDocPayload:
     """Fetch full documentation for a single module.
 
     Returns the parsed JSON from `ansible-doc <module> --json`.
@@ -226,7 +233,7 @@ def get_module_docs(
     module_names: Sequence[str],
     *,
     collections_path: str | None = None,
-) -> dict[str, Any]:
+) -> AnsibleDocPayload:
     """Fetch documentation for many modules in few ansible-doc subprocesses.
 
     ``ansible-doc`` accepts multiple plugin names per invocation. Names are
@@ -357,7 +364,7 @@ def search_modules(
     }
 
 
-def extract_params(module_doc: dict[str, Any]) -> list[ParamDict]:
+def extract_params(module_doc: AnsibleDocPayload) -> list[ParamDict]:
     """Extract parameter specs from a module doc.
 
     Returns:
@@ -388,20 +395,20 @@ def extract_params(module_doc: dict[str, Any]) -> list[ParamDict]:
     return params
 
 
-def extract_examples(module_doc: dict[str, Any]) -> str:
+def extract_examples(module_doc: AnsibleDocPayload) -> str:
     """Extract example YAML snippets from a module doc."""
     module_name = _get_module_name(module_doc)
     return module_doc[module_name].get("examples", "")
 
 
-def _get_module_name(module_doc: dict[str, Any]) -> str:
+def _get_module_name(module_doc: AnsibleDocPayload) -> str:
     """Return the first key from a module doc dict, or raise on empty."""
     if not module_doc:
         raise AnsibleDocError("Module not found or ansible-doc returned empty output.")
     return next(iter(module_doc))
 
 
-def extract_short_description(module_doc: dict[str, Any]) -> str:
+def extract_short_description(module_doc: AnsibleDocPayload) -> str:
     """Extract the module's one-line description."""
     module_name = _get_module_name(module_doc)
     doc_entry = module_doc[module_name].get("doc", {})
@@ -409,7 +416,7 @@ def extract_short_description(module_doc: dict[str, Any]) -> str:
     return desc.strip() if desc else ""
 
 
-def is_api_module(module_doc: dict[str, Any]) -> bool:
+def is_api_module(module_doc: AnsibleDocPayload) -> bool:
     """Detect whether a module talks to an API rather than managing system state over SSH."""
     module_name = _get_module_name(module_doc)
     doc_entry = module_doc[module_name].get("doc", {})
@@ -429,7 +436,7 @@ def is_api_module(module_doc: dict[str, Any]) -> bool:
     return False
 
 
-def extract_module_metadata(module_doc: dict[str, Any]) -> ModuleMetadata:
+def extract_module_metadata(module_doc: AnsibleDocPayload) -> ModuleMetadata:
     """Extract all metadata needed for skill generation."""
     module_name = _get_module_name(module_doc)
     logger.debug("Extracting module metadata for %s", module_name)
@@ -444,7 +451,7 @@ def extract_module_metadata(module_doc: dict[str, Any]) -> ModuleMetadata:
 
 def transform_galaxy_to_ansible_doc_format(
     fqcn: str, entry: dict[str, Any],
-) -> dict[str, Any]:
+) -> AnsibleDocPayload:
     """Convert a Galaxy docs-blob content entry to ansible-doc --json format."""
     ds = entry.get("doc_strings", {})
     raw_doc = ds.get("doc", {})
@@ -507,7 +514,7 @@ def list_roles(
 
 def get_role_doc(
     role_name: str, *, collections_path: str | None = None,
-) -> dict[str, Any]:
+) -> AnsibleDocPayload:
     """Fetch full documentation for a single role.
 
     Returns parsed JSON from ansible-doc. Returns {} if the role
@@ -521,7 +528,7 @@ def get_role_doc(
     return doc
 
 
-def extract_role_metadata(role_doc: dict[str, Any]) -> RoleMetadata:
+def extract_role_metadata(role_doc: AnsibleDocPayload) -> RoleMetadata:
     """Extract metadata from ansible-doc -t role JSON output.
 
     Returns dict with role_name, short_description, and entry_points.
@@ -608,7 +615,7 @@ def get_plugin_doc(
     plugin_type: str,
     *,
     collections_path: str | None = None,
-) -> dict[str, Any]:
+) -> AnsibleDocPayload:
     """Fetch full documentation for a single plugin.
 
     Returns the parsed JSON from `ansible-doc -t <type> <plugin> --json`.
@@ -623,7 +630,7 @@ def get_plugin_docs(
     plugin_type: str,
     *,
     collections_path: str | None = None,
-) -> dict[str, Any]:
+) -> AnsibleDocPayload:
     """Fetch documentation for many plugins of one type in few ansible-doc calls.
 
     Args:
@@ -755,7 +762,7 @@ def search_plugins(
 
 
 def extract_plugin_metadata(
-    plugin_doc: dict[str, Any], plugin_type: str,
+    plugin_doc: AnsibleDocPayload, plugin_type: str,
 ) -> PluginMetadata:
     """Extract all metadata needed for plugin skill generation."""
     plugin_name = _get_module_name(plugin_doc)
