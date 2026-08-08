@@ -49,4 +49,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ github.ref_name }}
-        run: gh release create "$TAG_NAME" dist/* --generate-notes
+        run: |
+          EXTRA=()
+          if [[ "$TAG_NAME" == *alpha* || "$TAG_NAME" == *beta* || "$TAG_NAME" == *rc* || "$TAG_NAME" =~ v[0-9.]+[ab][0-9]+$ ]]; then
+            EXTRA+=(--prerelease)
+          fi
+          gh release create "$TAG_NAME" dist/* --generate-notes "${EXTRA[@]}"
