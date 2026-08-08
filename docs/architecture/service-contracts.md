@@ -293,8 +293,9 @@ State is split into process-wide and per-session layers (PR #87):
 - **`SharedState`** (process-wide): `galaxy_servers`, `version_info`,
   `enrichment_semaphore`, `redhat_client`. Created once in lifespan.
   `version_info` updated by periodic PyPI check. `redhat_client` is a
-  transport client (not a data cache) — manages its own MCP session
-  lifecycle and is closed at lifespan shutdown, not by `clear_cache`.
+  transport client (not a data cache) — shares the lifespan httpx client
+  when injected, manages MCP session lifecycle, and is closed at lifespan
+  shutdown (without closing the shared httpx client), not by `clear_cache`.
 - **`ServerState`** (per-session): `collection_manager`, `missing_collections`,
   `upgrade_warned`. Created lazily by `SessionManager.get_or_create()`.
 - **`SessionManager`**: manages session lifecycle with `asyncio.Lock`.
