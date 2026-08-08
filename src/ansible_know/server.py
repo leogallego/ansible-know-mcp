@@ -118,17 +118,6 @@ async def app_lifespan(server):
     from ansible_know.redhat_docs import RedHatDocsClient
 
     galaxy_servers = await run_in_executor(load_galaxy_servers)
-    shared = SharedState(
-        galaxy_servers=galaxy_servers,
-        redhat_client=RedHatDocsClient(),
-    )
-    sessions = SessionManager(shared, collection_factory=CollectionManager)
-    _shared_state = shared
-    _session_manager = sessions
-    for gs in galaxy_servers:
-        auth_type = "token" if gs.token else ("basic" if gs.username else "none")
-        logger.info("Galaxy server: %s (%s, auth=%s)", gs.name, gs.url, auth_type)
-
     from ansible_know.config import USER_AGENT
 
     async with httpx.AsyncClient(
@@ -137,6 +126,17 @@ async def app_lifespan(server):
         follow_redirects=True,
         headers={"User-Agent": USER_AGENT},
     ) as client:
+        shared = SharedState(
+            galaxy_servers=galaxy_servers,
+            redhat_client=RedHatDocsClient(http_client=client),
+        )
+        sessions = SessionManager(shared, collection_factory=CollectionManager)
+        _shared_state = shared
+        _session_manager = sessions
+        for gs in galaxy_servers:
+            auth_type = "token" if gs.token else ("basic" if gs.username else "none")
+            logger.info("Galaxy server: %s (%s, auth=%s)", gs.name, gs.url, auth_type)
+
         shared.version_info = await _check_pypi_version(client)
         check_task = asyncio.create_task(
             _periodic_version_check(client, shared, sessions)

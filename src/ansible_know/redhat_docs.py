@@ -20,6 +20,7 @@ from urllib.parse import urlparse, urlunparse
 
 import httpx
 
+from ansible_know.async_utils import optional_http_client
 from ansible_know.config import REDHAT_DOCS_MCP_URL, USER_AGENT
 from ansible_know.errors import AnsibleKnowError, ValidationError
 from ansible_know.text_utils import (
@@ -95,22 +96,38 @@ class RedHatDocsClient:
     Connects to ``docs-mcp.api.redhat.com`` via JSON-RPC over Streamable
     HTTP. Sessions are initialized lazily on first ``fetch()`` call and
     re-created transparently when the server returns 404 (session expiry).
+
+    Prefer injecting the lifespan ``httpx.AsyncClient`` so MCP traffic
+    shares the process pool/timeouts. When omitted, an owned client is
+    created on first connect and closed by :meth:`close`.
     """
 
-    def __init__(self, mcp_url: str | None = None):
+    def __init__(
+        self,
+        mcp_url: str | None = None,
+        http_client: httpx.AsyncClient | None = None,
+    ):
         self.mcp_url = mcp_url or REDHAT_DOCS_MCP_URL
         self._session_id: str | None = None
-        self._client: httpx.AsyncClient | None = None
+        self._http_client = http_client
+        self._owned_client: httpx.AsyncClient | None = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        """Return the shared client or create a short-lived owned one."""
+        if self._http_client is not None:
+            return self._http_client
+        if self._owned_client is None:
+            self._owned_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(30.0, read=120.0),
+            )
+        return self._owned_client
 
     async def connect(self) -> None:
         """Initialize MCP session. Called automatically by ``fetch()``."""
-        if self._client is None:
-            self._client = httpx.AsyncClient(
-                timeout=httpx.Timeout(30.0, read=120.0),
-            )
+        client = self._get_client()
         self._session_id = None
 
-        resp = await self._client.post(
+        resp = await client.post(
             self.mcp_url,
             json={
                 "jsonrpc": "2.0",
@@ -127,7 +144,7 @@ class RedHatDocsClient:
         resp.raise_for_status()
         self._session_id = resp.headers.get("mcp-session-id")
 
-        await self._client.post(
+        await client.post(
             self.mcp_url,
             json={
                 "jsonrpc": "2.0",
@@ -162,9 +179,9 @@ class RedHatDocsClient:
 
     async def _call_tool(self, name: str, arguments: dict[str, Any]) -> str:
         """Call an MCP tool and return its text content."""
-        if self._client is None:
+        if self._session_id is None:
             raise AnsibleKnowError("RedHatDocsClient not connected")
-        resp = await self._client.post(
+        resp = await self._get_client().post(
             self.mcp_url,
             json={
                 "jsonrpc": "2.0",
@@ -205,10 +222,13 @@ class RedHatDocsClient:
         return _unwrap_mcp_result(raw)
 
     async def close(self) -> None:
-        """Close the HTTP client and clear session state."""
-        if self._client is not None:
-            await self._client.aclose()
-            self._client = None
+        """Close an owned HTTP client (if any) and clear session state.
+
+        Shared lifespan clients are never closed here.
+        """
+        if self._owned_client is not None:
+            await self._owned_client.aclose()
+            self._owned_client = None
         self._session_id = None
 
 
@@ -409,13 +429,9 @@ async def fetch_redhat_doc_http(
             "URL must start with https://docs.redhat.com/ for HTTP fallback"
         )
 
-    client = http_client
-    should_close = False
-    if client is None:
-        client = httpx.AsyncClient(timeout=httpx.Timeout(30.0))
-        should_close = True
-
-    try:
+    async with optional_http_client(
+        http_client, timeout=httpx.Timeout(30.0),
+    ) as client:
         resp = await _http_get_redhat_doc(client, url)
         _validate_redhat_http_response(resp, url)
 
@@ -429,9 +445,6 @@ async def fetch_redhat_doc_http(
             )
 
         return _finalize_doc_result(markdown, str(resp.url), max_tokens)
-    finally:
-        if should_close:
-            await client.aclose()
 
 
 async def fetch_redhat_doc(
