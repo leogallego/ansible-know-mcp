@@ -19,6 +19,7 @@ from urllib.parse import urlparse, urlunparse
 
 import httpx
 
+from ansible_know.async_utils import optional_http_client, run_in_executor
 from ansible_know.cache import BoundedCache
 from ansible_know.config import (
     CACHE_DIR,
@@ -38,6 +39,8 @@ logger = logging.getLogger("ansible_know")
 __all__ = [
     "clear_cache",
     "fetch_doc_content",
+    "fetch_rtd_markdown",
+    "parse_rtd_markdown_response",
     "search_docs",
 ]
 
@@ -184,13 +187,9 @@ async def _fetch_manifest_url(
     if cached is not None:
         return cached
 
-    client = http_client
-    should_close = False
-    if client is None:
-        client = httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=30.0))
-        should_close = True
-
-    try:
+    async with optional_http_client(
+        http_client, timeout=httpx.Timeout(10.0, read=30.0),
+    ) as client:
         resp = await client.get(url)
         resp.raise_for_status()
         content_length = resp.headers.get("content-length")
@@ -204,9 +203,6 @@ async def _fetch_manifest_url(
         if len(resp.content) > MAX_MANIFEST_SIZE:
             raise ValueError(f"Manifest too large: {len(resp.content)} bytes (max {MAX_MANIFEST_SIZE})")
         data = resp.json()
-    finally:
-        if should_close:
-            await client.aclose()
 
     _check_manifest_version(data, source_name)
     entries, base_url = _extract_manifest_entries(data)
@@ -223,7 +219,9 @@ async def _get_manifest(
 ) -> list[dict[str, Any]]:
     """Load manifest from file or URL based on source config."""
     if "file" in src_config:
-        return _load_manifest_file(source_name, src_config["file"])
+        return await run_in_executor(
+            _load_manifest_file, source_name, src_config["file"],
+        )
     if "url" in src_config:
         return await _fetch_manifest_url(source_name, src_config["url"], http_client)
     logger.warning("Doc source '%s' has neither 'file' nor 'url', skipping", source_name)
@@ -244,53 +242,48 @@ async def _search_rtd_api(
     else:
         slugs_to_search = list(RTD_PROJECT_SLUGS.items())
 
-    client = http_client
-    should_close = False
-    if client is None:
-        client = httpx.AsyncClient(timeout=10.0)
-        should_close = True
+    async with optional_http_client(http_client, timeout=10.0) as client:
 
-    async def _search_one(source_name: str, slug: str) -> list[SearchDocsEntry]:
-        params = {
-            "q": f"project:{slug}/latest {query}",
-            "page_size": min(limit, 20),
-        }
-        headers = _rtd_api_headers()
-        try:
-            resp = await client.get(
-                RTD_SEARCH_URL,
-                params=params,
-                headers=headers,
-                timeout=5.0,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-        except (httpx.HTTPError, ValueError) as exc:
-            logger.debug("RTD search for %s failed: %s", slug, exc)
-            return []
+        async def _search_one(source_name: str, slug: str) -> list[SearchDocsEntry]:
+            params = {
+                "q": f"project:{slug}/latest {query}",
+                "page_size": min(limit, 20),
+            }
+            headers = _rtd_api_headers()
+            try:
+                resp = await client.get(
+                    RTD_SEARCH_URL,
+                    params=params,
+                    headers=headers,
+                    timeout=5.0,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+            except (httpx.HTTPError, ValueError) as exc:
+                logger.debug("RTD search for %s failed: %s", slug, exc)
+                return []
 
-        hits: list[SearchDocsEntry] = []
-        for hit in data.get("results", []):
-            blocks = hit.get("blocks", [])
-            summary = ""
-            if blocks:
-                raw = blocks[0].get("content", "")
-                dot = raw.find(". ")
-                summary = (raw[: dot + 1] if dot > 0 else raw[:120]).strip()
+            hits: list[SearchDocsEntry] = []
+            for hit in data.get("results", []):
+                blocks = hit.get("blocks", [])
+                summary = ""
+                if blocks:
+                    raw = blocks[0].get("content", "")
+                    dot = raw.find(". ")
+                    summary = (raw[: dot + 1] if dot > 0 else raw[:120]).strip()
 
-            path = hit.get("path", "")
-            hits.append({
-                "title": hit.get("title", ""),
-                "summary": summary,
-                "topic": [],
-                "audience": [],
-                "lines": 0,
-                "source": f"rtd-search:{source_name}",
-                "url": f"{RTD_DOCS_DOMAIN}{path}",
-            })
-        return hits
+                path = hit.get("path", "")
+                hits.append({
+                    "title": hit.get("title", ""),
+                    "summary": summary,
+                    "topic": [],
+                    "audience": [],
+                    "lines": 0,
+                    "source": f"rtd-search:{source_name}",
+                    "url": f"{RTD_DOCS_DOMAIN}{path}",
+                })
+            return hits
 
-    try:
         all_hits = await asyncio.gather(
             *[_search_one(name, slug) for name, slug in slugs_to_search],
             return_exceptions=True,
@@ -305,9 +298,6 @@ async def _search_rtd_api(
             hit for group in zip_longest(*per_source)
             for hit in group if hit is not None
         ]
-    finally:
-        if should_close:
-            await client.aclose()
 
     return results[:limit]
 
@@ -542,6 +532,59 @@ async def _fetch_via_rtd_embed(
     return result
 
 
+def parse_rtd_markdown_response(
+    resp: httpx.Response,
+    *,
+    url: str | None = None,
+) -> tuple[str, str, int]:
+    """Parse a Cloudflare ``text/markdown`` response.
+
+    Returns:
+        ``(content, title, tokens)`` after ``clean_rtd_markdown``.
+
+    Raises:
+        AnsibleKnowError: When ``Content-Type`` is not markdown.
+    """
+    content_type = resp.headers.get("content-type", "")
+    if "text/markdown" not in content_type:
+        target = url or str(resp.url)
+        raise AnsibleKnowError(
+            f"Expected text/markdown but got {content_type!r} for {target}"
+        )
+
+    tokens_str = resp.headers.get("x-markdown-tokens", "0")
+    try:
+        tokens = int(tokens_str)
+    except ValueError:
+        tokens = 0
+
+    content, title = clean_rtd_markdown(resp.text)
+    return content, title, tokens
+
+
+async def fetch_rtd_markdown(
+    url: str,
+    client: httpx.AsyncClient,
+) -> tuple[str, str, int]:
+    """Fetch a docs page via Cloudflare markdown content negotiation.
+
+    Shared pipeline for runtime ``fetch_doc_content`` callers that do not
+    need retry/Embed fallback, and for build-time
+    ``manifest_builder._fetch_page_metadata``.
+
+    Returns:
+        ``(content, title, tokens)``.
+    """
+    resp = await client.get(
+        url,
+        headers={"Accept": "text/markdown"},
+        follow_redirects=True,
+        timeout=30.0,
+    )
+    resp.raise_for_status()
+    return parse_rtd_markdown_response(resp, url=url)
+
+
 async def fetch_doc_content(
     url: str,
     max_tokens: int | None = None,
@@ -576,13 +619,10 @@ async def fetch_doc_content(
                 f"Fetch without max_tokens or increase the limit."
             )
         return cached
-    client = http_client
-    should_close = False
-    if client is None:
-        client = httpx.AsyncClient(timeout=httpx.Timeout(30.0))
-        should_close = True
 
-    try:
+    async with optional_http_client(
+        http_client, timeout=httpx.Timeout(30.0),
+    ) as client:
         try:
             resp = await _fetch_with_retry(client, url)
         except (AnsibleKnowError, httpx.HTTPStatusError) as primary_exc:
@@ -614,17 +654,7 @@ async def fetch_doc_content(
                 f"(max {MAX_DOC_FETCH_SIZE})"
             )
 
-        content_type = resp.headers.get("content-type", "")
-        if "text/markdown" not in content_type:
-            raise AnsibleKnowError(
-                f"Expected text/markdown but got {content_type!r} for {url}"
-            )
-
-        tokens_str = resp.headers.get("x-markdown-tokens", "0")
-        try:
-            tokens = int(tokens_str)
-        except ValueError:
-            tokens = 0
+        content, title, tokens = parse_rtd_markdown_response(resp, url=url)
 
         if max_tokens is not None and tokens > max_tokens:
             raise AnsibleKnowError(
@@ -632,7 +662,6 @@ async def fetch_doc_content(
                 f"Fetch without max_tokens or increase the limit."
             )
 
-        content, title = clean_rtd_markdown(resp.text)
         content = truncate_response(content)
 
         result: FetchDocResult = {
@@ -643,9 +672,6 @@ async def fetch_doc_content(
         }
         _page_cache.put(url, result)
         return result
-    finally:
-        if should_close:
-            await client.aclose()
 
 
 async def _fetch_with_retry(
