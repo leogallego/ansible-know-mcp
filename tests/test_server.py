@@ -1457,6 +1457,7 @@ class TestIsStable:
         from ansible_know.server import _is_stable
         assert _is_stable("0.4.0.dev0") is False
         assert _is_stable("0.4.0a1") is False
+        assert _is_stable("0.4.0b0") is False
         assert _is_stable("0.4.0rc1") is False
         assert _is_stable("0.4.0.post1") is False
 

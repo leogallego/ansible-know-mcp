@@ -7,9 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.8.0-beta0] - 2026-08-08
-
-Pre-release after v0.7.0. Package version is `0.8.0b0` (PEP 440); git/GitHub tag is `v0.8.0-beta0`.
+## [0.8.0] - 2026-08-08
 
 ### Added
 
@@ -238,7 +236,7 @@ Pre-release after v0.7.0. Package version is `0.8.0b0` (PEP 440); git/GitHub tag
 - OWASP security hardening: FQCN input validation, path traversal protection, error sanitization, output size limits, audit logging
 - 77 tests covering tools, parser, skills, docs, collection manifests, and security
 
-[0.8.0-beta0]: https://github.com/leogallego/ansible-know-mcp/compare/v0.7.0...v0.8.0-beta0
+[0.8.0]: https://github.com/leogallego/ansible-know-mcp/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/leogallego/ansible-know-mcp/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/leogallego/ansible-know-mcp/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/leogallego/ansible-know-mcp/compare/v0.5.2...v0.6.0
