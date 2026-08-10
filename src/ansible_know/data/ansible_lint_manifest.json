@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "generated": "2026-06-30T21:26:45.825900+00:00",
+  "generated": "2026-08-10T05:52:05.087330+00:00",
   "base_url": "https://docs.ansible.com/projects/lint",
   "files": [
     {
@@ -11,7 +11,7 @@
       "core": true,
       "summary": "## About Ansible Lint\n\nAnsible Lint is a command-line tool for linting **playbooks, roles and collections** aimed toward any Ansible users.",
       "lines": 15,
-      "tokens": 519
+      "tokens": 523
     },
     {
       "path": "installing/",
@@ -21,7 +21,7 @@
       "core": false,
       "summary": "Install Ansible-lint to apply rules and follow best practices with your automation content.\n\nNote\n\nAnsible-lint does not currently support installation on Windows systems.\n\nWarning\n\nAnsible-lint does not support any installation methods that are not mentioned in this document.",
       "lines": 116,
-      "tokens": 1971
+      "tokens": 1977
     },
     {
       "path": "rules/",
@@ -29,9 +29,9 @@
       "title": "Rules",
       "audience": "author",
       "core": true,
-      "summary": "* [args](https://docs.ansible.com/projects/lint/args/#args)\n* [avoid-implicit](https://docs.ansible.com/projects/lint/avoid-implicit/#avoid-implicit)\n* [complexity](https://docs.ansible.com/projects/l",
+      "summary": "* [args](https://docs.ansible.com/projects/lint/rules/args/#args)\n* [avoid-implicit](https://docs.ansible.com/projects/lint/rules/avoid-implicit/#avoid-implicit)\n* [complexity](https://docs.ansible.co",
       "lines": 56,
-      "tokens": 1252
+      "tokens": 1332
     },
     {
       "path": "contributing/",
@@ -41,7 +41,7 @@
       "core": false,
       "summary": "To contribute to ansible-lint, please use pull requests on a branch of your own fork.\n\nAfter [creating your fork on GitHub](https://docs.github.com/en/get-started/quickstart/contributing-to-projects), you can do:\n\n`[](#%5F%5Fcodelineno-0-1)$ git clone --recursive git@github.com:your-name/ansible-lint\n[](#%5F%5Fcodelineno-0-2)$ cd ansible-lint\n[](#%5F%5Fcodelineno-0-3)$ # Recommended: Initialize and activate a Python virtual environment\n[](#%5F%5Fcodelineno-0-4)$ pip install --upgrade pip\n[](#%5F%5Fcodelineno-0-5)$ pip install -e '.[test]'       # Install testing dependencies\n[](#%5F%5Fcodelineno-0-6)$ tox run -e lint,pkg,docs,py  # Ensure subset of tox tests work in clean checkout\n[](#%5F%5Fcodelineno-0-7)$ git checkout -b your-branch-name\n[](#%5F%5Fcodelineno-0-8)# DO SOME CODING HERE\n[](#%5F%5Fcodelineno-0-9)$ tox run -e lint,pkg,docs,py  # Ensure subset of tox tests work with your changes\n[](#%5F%5Fcodelineno-0-10)$ git add your new files\n[](#%5F%5Fcodelineno-0-11)$ git commit -v\n[](#%5F%5Fcodelineno-0-12)$ git push origin your-branch-name\n`\n\nYou will then be able to create a pull request from your commit.\n\nAll fixes to core functionality (i.e.",
       "lines": 136,
-      "tokens": 2397
+      "tokens": 2405
     },
     {
       "path": "philosophy/",
@@ -51,7 +51,7 @@
       "core": false,
       "summary": "Ansible **playbooks, roles, and collections** should read like documentation, be production ready, unambiguous, and provide consistent results.\n\n`Ansible-lint` should be considered a trusted advisor, helping ansible content creators write and package high-quality Ansible content.",
       "lines": 61,
-      "tokens": 1665
+      "tokens": 1670
     },
     {
       "path": "usage/",
@@ -60,8 +60,8 @@
       "audience": "author",
       "core": true,
       "summary": "## Using commands\n\nAfter you install Ansible-lint, run `ansible-lint --help` to display available commands and their options.\n\n`` [](#%5F%5Fcodelineno-0-1)$ ansible-lint --help\n[](#%5F%5Fcodelineno-0-2)usage: ansible-lint [-h] [-P | -L | -T]\n[](#%5F%5Fcodelineno-0-3)                    [-f {brief,full,md,json,codeclimate,quiet,pep8,sarif}]\n[](#%5F%5Fcodelineno-0-4)                    [--sarif-file SARIF_FILE] [-q]\n[](#%5F%5Fcodelineno-0-5)                    [--profile {min,basic,moderate,safety,shared,production}]\n[](#%5F%5Fcodelineno-0-6)                    [--project-dir PROJECT_DIR] [-r RULESDIR] [-R] [-s]\n[](#%5F%5Fcodelineno-0-7)                    [--fix [WRITE_LIST]] [--show-relpath] [-t TAGS] [-v]\n[](#%5F%5Fcodelineno-0-8)                    [-x SKIP_LIST] [--generate-ignore] [-w WARN_LIST]\n[](#%5F%5Fcodelineno-0-9)                    [--enable-list ENABLE_LIST] [--nocolor] [--force-color]\n[](#%5F%5Fcodelineno-0-10)                    [--exclude EXCLUDE_PATHS [EXCLUDE_PATHS ...]]\n[](#%5F%5Fcodelineno-0-11)                    [-c CONFIG_FILE] [-i IGNORE_FILE]\n[](#%5F%5Fcodelineno-0-12)                    [--yamllint-file YAMLLINT_FILE] [--offline | --no-offline]\n[](#%5F%5Fcodelineno-0-13)                    [--version]\n[](#%5F%5Fcodelineno-0-14)                    [lintables ...]\n[](#%5F%5Fcodelineno-0-15)\n[](#%5F%5Fcodelineno-0-16)positional arguments:\n[](#%5F%5Fcodelineno-0-17)  lintables             One or more files or paths.",
-      "lines": 446,
-      "tokens": 8693
+      "lines": 458,
+      "tokens": 8879
     },
     {
       "path": "index.html",
@@ -81,7 +81,7 @@
       "core": true,
       "summary": "Customize how Ansible-lint runs against automation content to suit your needs.",
       "lines": 222,
-      "tokens": 3614
+      "tokens": 3619
     },
     {
       "path": "profiles/",
@@ -91,7 +91,7 @@
       "core": true,
       "summary": "Ansible-lint profiles gradually increase the strictness of rules as your Ansible content lifecycle matures.",
       "lines": 93,
-      "tokens": 1614
+      "tokens": 1669
     },
     {
       "path": "autofix/",
@@ -101,7 +101,7 @@
       "core": false,
       "summary": "Ansible-lint autofix can fix or simplify fixing issues identified by that rule.",
       "lines": 21,
-      "tokens": 565
+      "tokens": 582
     },
     {
       "path": "rules/args/",
@@ -111,7 +111,7 @@
       "core": false,
       "summary": "This rule validates if the task arguments conform with the plugin documentation.\n\nThe rule validation will check if the option name is valid and has the correct value along with conditionals on the options like `mutually_exclusive`, `required_together`, `required_one_of` and so on.\n\nFor more information see the [argument spec validator](https://docs.ansible.com/projects/ansible/latest/reference%5Fappendices/module%5Futils.html#argumentspecvalidator)topic in the Ansible module utility documentation.\n\nPossible messages:\n\n* `args[module]` \\- missing required arguments: ...\n* `args[module]` \\- missing parameter(s) required by ...\n\n## Problematic Code\n\n`` [](#%5F%5Fcodelineno-0-1)---\n[](#%5F%5Fcodelineno-0-2)- name: Fixture to validate module options failure scenarios\n[](#%5F%5Fcodelineno-0-3)  hosts: localhost\n[](#%5F%5Fcodelineno-0-4)  tasks:\n[](#%5F%5Fcodelineno-0-5)    - name: Clone content repository\n[](#%5F%5Fcodelineno-0-6)      ansible.builtin.git: # <- Required option `repo` is missing.\n[](#%5F%5Fcodelineno-0-7)        dest: /home/www\n[](#%5F%5Fcodelineno-0-8)        accept_hostkey: true\n[](#%5F%5Fcodelineno-0-9)        version: master\n[](#%5F%5Fcodelineno-0-10)        update: false\n[](#%5F%5Fcodelineno-0-11)\n[](#%5F%5Fcodelineno-0-12)    - name: Enable service httpd and ensure it is not masked\n[](#%5F%5Fcodelineno-0-13)      ansible.builtin.systemd: # <- Missing 'name' parameter required by 'enabled'.\n[](#%5F%5Fcodelineno-0-14)        enabled: true\n[](#%5F%5Fcodelineno-0-15)        masked: false\n[](#%5F%5Fcodelineno-0-16)\n[](#%5F%5Fcodelineno-0-17)    - name: Use quiet to avoid verbose output\n[](#%5F%5Fcodelineno-0-18)      ansible.builtin.assert:\n[](#%5F%5Fcodelineno-0-19)        test:\n[](#%5F%5Fcodelineno-0-20)          - my_param <= 100\n[](#%5F%5Fcodelineno-0-21)          - my_param >= 0\n[](#%5F%5Fcodelineno-0-22)        quiet: invalid # <- Value for option `quiet` is invalid.\n[](#%5F%5Fcodelineno-0-23)\n[](#%5F%5Fcodelineno-0-24)    - name: Do not use mutually exclusive arguments together\n[](#%5F%5Fcodelineno-0-25)      ansible.builtin.command:\n[](#%5F%5Fcodelineno-0-26)        cmd: /bin/echo # <- cmd and argv are mutually exclusive options\n[](#%5F%5Fcodelineno-0-27)        argv:\n[](#%5F%5Fcodelineno-0-28)          - Hello\n[](#%5F%5Fcodelineno-0-29)      when_changed: false\n ``\n\n## Correct Code\n\n`` [](#%5F%5Fcodelineno-1-1)---\n[](#%5F%5Fcodelineno-1-2)- name: Fixture to validate module options pass scenario\n[](#%5F%5Fcodelineno-1-3)  hosts: localhost\n[](#%5F%5Fcodelineno-1-4)  tasks:\n[](#%5F%5Fcodelineno-1-5)    - name: Clone content repository\n[](#%5F%5Fcodelineno-1-6)      ansible.builtin.git: # <- Contains required option `repo`.\n[](#%5F%5Fcodelineno-1-7)        repo: https://github.com/ansible/ansible-examples\n[](#%5F%5Fcodelineno-1-8)        dest: /home/www\n[](#%5F%5Fcodelineno-1-9)        accept_hostkey: true\n[](#%5F%5Fcodelineno-1-10)        version: master\n[](#%5F%5Fcodelineno-1-11)        update: false\n[](#%5F%5Fcodelineno-1-12)\n[](#%5F%5Fcodelineno-1-13)    - name: Enable service httpd and ensure it is not masked\n[](#%5F%5Fcodelineno-1-14)      ansible.builtin.systemd: # <- Contains 'name' parameter required by 'enabled'.\n[](#%5F%5Fcodelineno-1-15)        name: httpd\n[](#%5F%5Fcodelineno-1-16)        enabled: false\n[](#%5F%5Fcodelineno-1-17)        masked: false\n[](#%5F%5Fcodelineno-1-18)\n[](#%5F%5Fcodelineno-1-19)    - name: Use quiet to avoid verbose output\n[](#%5F%5Fcodelineno-1-20)      ansible.builtin.assert:\n[](#%5F%5Fcodelineno-1-21)        that:\n[](#%5F%5Fcodelineno-1-22)          - my_param <= 100\n[](#%5F%5Fcodelineno-1-23)          - my_param >= 0\n[](#%5F%5Fcodelineno-1-24)        quiet: True # <- Has correct type value for option `quiet` which is boolean.\n[](#%5F%5Fcodelineno-1-25)\n[](#%5F%5Fcodelineno-1-26)    - name: Do not use mutually exclusive arguments together\n[](#%5F%5Fcodelineno-1-27)      ansible.builtin.command:\n[](#%5F%5Fcodelineno-1-28)        cmd: \"/bin/echo Hello\" # <- Does not use `cmd` and `argv`\n[](#%5F%5Fcodelineno-1-29)      when_changed: false\n[](#%5F%5Fcodelineno-1-30)\n[](#%5F%5Fcodelineno-1-31)    - name: Do not use mutually exclusive arguments together alternative\n[](#%5F%5Fcodelineno-1-32)      ansible.builtin.command:\n[](#%5F%5Fcodelineno-1-33)        argv: # <- Does not use `cmd` and `argv`\n[](#%5F%5Fcodelineno-1-34)          - /bin/echo\n[](#%5F%5Fcodelineno-1-35)          - Hello\n[](#%5F%5Fcodelineno-1-36)      when_changed: false\n ``\n\n## Special cases\n\nIn some complex cases where you are using jinja expressions, the linter may not able to fully validate all the possible values and report a false positive.",
       "lines": 103,
-      "tokens": 2447
+      "tokens": 2525
     },
     {
       "path": "rules/avoid-implicit/",
@@ -121,7 +121,7 @@
       "core": false,
       "summary": "This rule identifies the use of dangerous implicit behaviors, often also undocumented.\n\nThis rule will produce the following type of error messages:\n\n* `avoid-implicit[copy-content]` is not a string a",
       "lines": 35,
-      "tokens": 1436
+      "tokens": 1512
     },
     {
       "path": "rules/complexity/",
@@ -131,7 +131,7 @@
       "core": false,
       "summary": "This rule aims to warn about Ansible content that seems to be overly complex, suggesting refactoring for better readability and maintainability.\n\n## complexity\\[tasks\\]\n\n`complexity[tasks]` will be triggered if the total number of tasks inside a file is above 100\\.",
       "lines": 22,
-      "tokens": 1394
+      "tokens": 1469
     },
     {
       "path": "rules/command-instead-of-module/",
@@ -141,7 +141,7 @@
       "core": false,
       "summary": "This rule will recommend you to use a specific ansible module instead for tasks that are better served by a module, as these are more reliable, provide better messaging and usually have additional fea",
       "lines": 30,
-      "tokens": 1415
+      "tokens": 1489
     },
     {
       "path": "rules/command-instead-of-shell/",
@@ -151,7 +151,7 @@
       "core": false,
       "summary": "This rule identifies uses of `shell` modules instead of a `command` one when this is not really needed.",
       "lines": 31,
-      "tokens": 1337
+      "tokens": 1410
     },
     {
       "path": "rules/deprecated-bare-vars/",
@@ -161,7 +161,7 @@
       "core": false,
       "summary": "This rule identifies possible confusing expressions where it is not clear if a variable or string is to be used and asks for clarification.\n\nYou should either use the full variable syntax ('{{{{ {0} }",
       "lines": 30,
-      "tokens": 1267
+      "tokens": 1338
     },
     {
       "path": "rules/deprecated-local-action/",
@@ -171,7 +171,7 @@
       "core": false,
       "summary": "This rule recommends using `delegate_to: localhost` instead of the `local_action`.\n\n## Problematic Code\n\n`[](#%5F%5Fcodelineno-0-1)---\n[](#%5F%5Fcodelineno-0-2)- name: Task example\n[](#%5F%5Fcodelinen",
       "lines": 24,
-      "tokens": 1159
+      "tokens": 1229
     },
     {
       "path": "rules/deprecated-module/",
@@ -181,7 +181,7 @@
       "core": false,
       "summary": "This rule identifies deprecated modules in playbooks.",
       "lines": 30,
-      "tokens": 1285
+      "tokens": 1353
     },
     {
       "path": "rules/empty-string-compare/",
@@ -191,7 +191,7 @@
       "core": false,
       "summary": "This rule checks for empty string comparison in playbooks.",
       "lines": 41,
-      "tokens": 1335
+      "tokens": 1401
     },
     {
       "path": "rules/fqcn/",
@@ -201,7 +201,7 @@
       "core": false,
       "summary": "This rule checks for fully-qualified collection names (FQCN) in Ansible content.\n\nDeclaring an FQCN ensures that an action uses code from the correct namespace.",
       "lines": 70,
-      "tokens": 1956
+      "tokens": 2022
     },
     {
       "path": "rules/galaxy-version-incorrect/",
@@ -211,7 +211,7 @@
       "core": false,
       "summary": "This rule checks that the `version` key within `galaxy.yml` is greater than or equal to `1.0.0`.",
       "lines": 57,
-      "tokens": 1559
+      "tokens": 1622
     },
     {
       "path": "rules/galaxy/",
@@ -221,7 +221,7 @@
       "core": false,
       "summary": "This rule identifies if the collection version mentioned in galaxy.yml is ideal in terms of the version number being greater than or equal to `1.0.0`.\n\nThis rule looks for a changelog file in expected locations, detailed below in the Changelog Details section.\n\nThis rule checks to see if the `galaxy.yml` file includes one of the required tags for certification on Automation Hub.",
       "lines": 99,
-      "tokens": 1964
+      "tokens": 2025
     },
     {
       "path": "rules/ignore-errors/",
@@ -231,7 +231,7 @@
       "core": false,
       "summary": "This rule checks that playbooks do not use the `ignore_errors` directive to ignore all errors.",
       "lines": 58,
-      "tokens": 1484
+      "tokens": 1544
     },
     {
       "path": "rules/inline-env-var/",
@@ -241,7 +241,7 @@
       "core": false,
       "summary": "This rule checks that playbooks do not set environment variables in the `ansible.builtin.command` module.\n\nYou should use the `environment` keyword to set environment variables.",
       "lines": 41,
-      "tokens": 1286
+      "tokens": 1344
     },
     {
       "path": "rules/internal-error/",
@@ -251,7 +251,7 @@
       "core": false,
       "summary": "This error can also be caused by internal bugs but also by custom rules.",
       "lines": 33,
-      "tokens": 1226
+      "tokens": 1283
     },
     {
       "path": "rules/jinja/",
@@ -261,7 +261,7 @@
       "core": false,
       "summary": "This rule can report problems related to jinja2 string templates.",
       "lines": 44,
-      "tokens": 1410
+      "tokens": 1466
     },
     {
       "path": "rules/jinja-template-extension/",
@@ -271,7 +271,7 @@
       "core": false,
       "summary": "This rule checks that files used with `ansible.builtin.template` have a `.j2` extension.\n\nNaming template source files with a `.j2` suffix provides several benefits:\n\n* **Editor support**: Editors can apply Jinja2 syntax highlighting automatically based on the file extension.\n* **Clear intent**: Developers can immediately distinguish template files from static files in the `templates/` directory.\n* **Convention**: The `.j2` extension is the widely adopted community convention for Ansible template files.\n\nThis is an opt-in rule.",
       "lines": 43,
-      "tokens": 1220
+      "tokens": 1274
     },
     {
       "path": "rules/key-order/",
@@ -281,7 +281,7 @@
       "core": false,
       "summary": "This rule recommends reordering key names in ansible content to make code easier to maintain and less prone to errors.\n\nHere are some examples of common ordering checks done for tasks and handlers:\n\n* `name` must always be the first key for plays, tasks and handlers\n* on tasks, the `block`, `rescue` and `always` keys must be the last keys, as this would avoid accidental miss-indentation errors between the last task and the parent level.\n\n## Problematic code\n\n`[](#%5F%5Fcodelineno-0-1)---\n[](#%5F%5Fcodelineno-0-2)- hosts: localhost\n[](#%5F%5Fcodelineno-0-3)  name: This is a playbook # <-- name key should be the first one\n[](#%5F%5Fcodelineno-0-4)  tasks:\n[](#%5F%5Fcodelineno-0-5)    - name: A block\n[](#%5F%5Fcodelineno-0-6)      block:\n[](#%5F%5Fcodelineno-0-7)        - name: Display a message\n[](#%5F%5Fcodelineno-0-8)          debug:\n[](#%5F%5Fcodelineno-0-9)            msg: \"Hello world!\"\n[](#%5F%5Fcodelineno-0-10)      when: true # <-- when key should be before block\n`\n\n## Correct code\n\n`[](#%5F%5Fcodelineno-1-1)---\n[](#%5F%5Fcodelineno-1-2)- name: This is a playbook\n[](#%5F%5Fcodelineno-1-3)  hosts: localhost\n[](#%5F%5Fcodelineno-1-4)  tasks:\n[](#%5F%5Fcodelineno-1-5)    - name: A block\n[](#%5F%5Fcodelineno-1-6)      when: true\n[](#%5F%5Fcodelineno-1-7)      block:\n[](#%5F%5Fcodelineno-1-8)        - name: Display a message\n[](#%5F%5Fcodelineno-1-9)          debug:\n[](#%5F%5Fcodelineno-1-10)            msg: \"Hello world!\"\n`\n\n## Reasoning\n\nMaking decisions about the optimal order of keys for ansible tasks or plays is no easy task, as we had a huge number of combinations to consider.",
       "lines": 54,
-      "tokens": 1500
+      "tokens": 1554
     },
     {
       "path": "rules/latest/",
@@ -291,7 +291,7 @@
       "core": false,
       "summary": "The `latest` rule checks that module arguments like those used for source control checkout do not have arguments that might generate different results based on context.\n\nThis more generic rule replaced two older rules named `git-latest` and `hg-latest`.\n\nWe are aware that there are genuine cases where getting the tip of the main branch is not accidental.",
       "lines": 38,
-      "tokens": 1124
+      "tokens": 1175
     },
     {
       "path": "rules/literal-compare/",
@@ -301,7 +301,7 @@
       "core": false,
       "summary": "This rule checks for literal comparison with the `when` clause.",
       "lines": 29,
-      "tokens": 1024
+      "tokens": 1073
     },
     {
       "path": "rules/load-failure/",
@@ -311,7 +311,7 @@
       "core": false,
       "summary": "\"Linter failed to process a file, possible invalid file.",
       "lines": 16,
-      "tokens": 289
+      "tokens": 290
     },
     {
       "path": "rules/loop-var-prefix/",
@@ -321,7 +321,7 @@
       "core": false,
       "summary": "This rule avoids conflicts with nested looping tasks by enforcing an individual variable name in loops.",
       "lines": 64,
-      "tokens": 1437
+      "tokens": 1483
     },
     {
       "path": "rules/meta-incorrect/",
@@ -331,7 +331,7 @@
       "core": false,
       "summary": "This rule checks role metadata for fields with undefined or default values.",
       "lines": 31,
-      "tokens": 915
+      "tokens": 960
     },
     {
       "path": "rules/meta-no-tags/",
@@ -341,7 +341,7 @@
       "core": false,
       "summary": "This rule checks role metadata for tags with special characters.",
       "lines": 21,
-      "tokens": 817
+      "tokens": 860
     },
     {
       "path": "rules/meta-runtime/",
@@ -351,7 +351,7 @@
       "core": false,
       "summary": "This rule checks the meta/runtime.yml `requires_ansible` key against the list of currently supported versions of ansible-core.\n\nThis rule can produce messages such as:\n\n* `meta-runtime[unsupported-version]` \\- `requires_ansible` key must refer to a currently supported version such as: >=2.15.0, >=2.16.0, >=2.17.0, >=2.18.0\n* `meta-runtime[invalid-version]` \\- `requires_ansible` is not a valid requirement specification\n\nPlease note that the linter will allow only a full version of Ansible such `2.16.0` and not allow their short form, like `2.16`.",
       "lines": 40,
-      "tokens": 1068
+      "tokens": 1109
     },
     {
       "path": "rules/meta-video-links/",
@@ -361,7 +361,7 @@
       "core": false,
       "summary": "This rule checks formatting for video links in metadata.",
       "lines": 33,
-      "tokens": 944
+      "tokens": 984
     },
     {
       "path": "rules/name/",
@@ -371,7 +371,7 @@
       "core": false,
       "summary": "This rule identifies several problems related to the naming of tasks and plays.",
       "lines": 57,
-      "tokens": 1525
+      "tokens": 1565
     },
     {
       "path": "rules/no-changed-when/",
@@ -381,7 +381,7 @@
       "core": false,
       "summary": "This rule checks that tasks return changes to results or conditions.",
       "lines": 36,
-      "tokens": 1097
+      "tokens": 1134
     },
     {
       "path": "rules/no-free-form/",
@@ -391,7 +391,7 @@
       "core": false,
       "summary": "This rule identifies any use of [free-form](https://docs.ansible.com/projects/ansible/latest/index.html#action-shorthand)module calling syntax and asks for switching to the full syntax.\n\n**Free-form** syntax, also known as **inline** or **shorthand**, can produce subtle bugs.",
       "lines": 52,
-      "tokens": 1195
+      "tokens": 1232
     },
     {
       "path": "rules/no-handler/",
@@ -401,7 +401,7 @@
       "core": false,
       "summary": "This rule checks for the correct handling of changes to results or conditions.\n\nIf a task has a `when: result.changed` condition, it effectively acts as a [handler](https://docs.ansible.com/projects/ansible/latest/playbook%5Fguide/playbooks%5Fhandlers.html#handlers).",
       "lines": 51,
-      "tokens": 1149
+      "tokens": 1183
     },
     {
       "path": "rules/no-jinja-when/",
@@ -411,7 +411,7 @@
       "core": false,
       "summary": "This rule checks conditional statements for Jinja expressions in curly brackets `{{ }}`.",
       "lines": 33,
-      "tokens": 894
+      "tokens": 928
     },
     {
       "path": "rules/no-log-password/",
@@ -421,7 +421,7 @@
       "core": false,
       "summary": "This rule ensures playbooks do not write passwords to logs when using loops.",
       "lines": 53,
-      "tokens": 1035
+      "tokens": 1067
     },
     {
       "path": "rules/no-prompting/",
@@ -431,7 +431,7 @@
       "core": false,
       "summary": "This rule checks for `vars_prompt` or the `ansible.builtin.pause` module in playbooks.",
       "lines": 33,
-      "tokens": 810
+      "tokens": 840
     },
     {
       "path": "rules/no-relative-paths/",
@@ -441,7 +441,7 @@
       "core": false,
       "summary": "This rule checks for relative paths in the `ansible.builtin.copy` and `ansible.builtin.template` modules.\n\nRelative paths in a task most often direct Ansible to remote files and directories on managed nodes.",
       "lines": 82,
-      "tokens": 1430
+      "tokens": 1458
     },
     {
       "path": "rules/no-same-owner/",
@@ -451,7 +451,7 @@
       "core": false,
       "summary": "This rule checks that the owner and group do not transfer across hosts.\n\nIn many cases the owner and group on remote hosts do not match the owner and group assigned to source files.",
       "lines": 51,
-      "tokens": 1057
+      "tokens": 1084
     },
     {
       "path": "rules/no-tabs/",
@@ -461,7 +461,7 @@
       "core": false,
       "summary": "This rule checks for the tab character.",
       "lines": 36,
-      "tokens": 774
+      "tokens": 800
     },
     {
       "path": "rules/only-builtins/",
@@ -471,7 +471,7 @@
       "core": false,
       "summary": "This rule checks that playbooks use actions from the `ansible.builtin` collection only.\n\nThis is an opt-in rule.",
       "lines": 34,
-      "tokens": 713
+      "tokens": 737
     },
     {
       "path": "rules/package-latest/",
@@ -481,7 +481,7 @@
       "core": false,
       "summary": "This rule checks that package managers install software in a controlled, safe manner.\n\nPackage manager modules, such as `ansible.builtin.dnf`, include a `state` parameter that configures how Ansible installs software.",
       "lines": 80,
-      "tokens": 1467
+      "tokens": 1490
     },
     {
       "path": "rules/parser-error/",
@@ -491,7 +491,7 @@
       "core": false,
       "summary": "**AnsibleParserError.**\n\nAnsible parser fails; this usually indicates an invalid file.\n\nBack to top",
       "lines": 7,
-      "tokens": 158
+      "tokens": 160
     },
     {
       "path": "rules/partial-become/",
@@ -501,7 +501,7 @@
       "core": false,
       "summary": "This rule checks that privilege escalation is activated when changing users.\n\nTo perform an action as a different user with the `become_user` directive, you must set `become: true`.\n\nThis rule can produce the following messages:\n\n* `partial-become[play]`: become\\_user requires become to work as expected, at play level.\n* `partial-become[task]`: become\\_user requires become to work as expected, at task level.\n\nWarning\n\nWhile Ansible inherits `become` and `become_user` from upper levels, like play level or command line, we do not look at these values.",
       "lines": 113,
-      "tokens": 1580
+      "tokens": 1601
     },
     {
       "path": "rules/playbook-extension/",
@@ -511,7 +511,7 @@
       "core": false,
       "summary": "This rule checks the file extension for playbooks is either `.yml` or `.yaml`.",
       "lines": 15,
-      "tokens": 500
+      "tokens": 518
     },
     {
       "path": "rules/risky-file-permissions/",
@@ -521,7 +521,7 @@
       "core": false,
       "summary": "This rule is triggered by various modules that could end up creating new files on disk with permissions that might be too open, or unpredictable.",
       "lines": 51,
-      "tokens": 1156
+      "tokens": 1172
     },
     {
       "path": "rules/risky-octal/",
@@ -531,7 +531,7 @@
       "core": false,
       "summary": "This rule checks that octal file permissions are strings that contain a leading zero or are written in [symbolic modes](https://www.gnu.org/software/findutils/manual/html%5Fnode/find%5Fhtml/Symbolic-Modes.html), such as `u+rwx` or `u=rw,g=r,o=r`.\n\nUsing integers or octal values in YAML can result in unexpected behavior.",
       "lines": 44,
-      "tokens": 873
+      "tokens": 887
     },
     {
       "path": "rules/risky-shell-pipe/",
@@ -541,7 +541,7 @@
       "core": false,
       "summary": "This rule checks for the bash `pipefail` option with the Ansible `shell` module.\n\nYou should always set `pipefail` when piping output from one command to another.",
       "lines": 39,
-      "tokens": 697
+      "tokens": 710
     },
     {
       "path": "rules/role-name/",
@@ -551,7 +551,7 @@
       "core": false,
       "summary": "This rule checks role names to ensure they conform with requirements.\n\nRole names must contain only lowercase alphanumeric characters and the underscore `_` character.",
       "lines": 33,
-      "tokens": 634
+      "tokens": 645
     },
     {
       "path": "rules/run-once/",
@@ -561,7 +561,7 @@
       "core": false,
       "summary": "This rule warns against the use of `run_once` when the `strategy` is set to `free`.\n\nThis rule can produce the following messages:\n\n* `run-once[play]`: Play uses `strategy: free`.\n* `run-once[task]`: Using `run_once` may behave differently if the `strategy` is set to `free`.\n\nFor more information see the following topics in Ansible documentation:\n\n* [free strategy](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/free%5Fstrategy.html#free-strategy)\n* [selecting a strategy](https://docs.ansible.com/projects/ansible/latest/playbook%5Fguide/playbooks%5Fstrategies.html#selecting-a-strategy)\n* [run\\_once(playbook keyword) more info](https://docs.ansible.com/projects/ansible/latest/reference%5Fappendices/playbooks%5Fkeywords.html)\n\nWarning\n\nThe reason for the existence of this rule is for reminding users that `run_once`is not providing any warranty that the task will run only once.",
       "lines": 59,
-      "tokens": 965
+      "tokens": 975
     },
     {
       "path": "rules/sanity/",
@@ -571,7 +571,7 @@
       "core": false,
       "summary": "This rule checks the `tests/sanity/ignore-x.x.txt` file for disallowed ignores.",
       "lines": 46,
-      "tokens": 622
+      "tokens": 631
     },
     {
       "path": "rules/schema/",
@@ -581,7 +581,7 @@
       "core": false,
       "summary": "The `schema` rule validates Ansible metadata files against JSON schemas.",
       "lines": 50,
-      "tokens": 1214
+      "tokens": 1222
     },
     {
       "path": "rules/syntax-check/",
@@ -591,7 +591,7 @@
       "core": false,
       "summary": "Our linter runs `ansible-playbook --syntax-check` on all playbooks, and if any of these reports a syntax error, this stops any further processing of these files.\n\nThis error **cannot be disabled** due to being a prerequisite for other steps.",
       "lines": 54,
-      "tokens": 910
+      "tokens": 916
     },
     {
       "path": "rules/var-naming/",
@@ -601,7 +601,7 @@
       "core": false,
       "summary": "This rule checks variable names to ensure they conform with requirements.\n\nVariable names must contain only lowercase alphanumeric characters and the underscore `_` character.",
       "lines": 62,
-      "tokens": 1045
+      "tokens": 1050
     },
     {
       "path": "rules/warning/",
@@ -611,7 +611,7 @@
       "core": false,
       "summary": "`warning` is a special type of internal rule that is used to report generic runtime warnings found during execution.",
       "lines": 7,
-      "tokens": 251
+      "tokens": 252
     },
     {
       "path": "rules/yaml/",
@@ -621,7 +621,7 @@
       "core": false,
       "summary": "This rule checks YAML syntax by using [yamllint](https://yamllint.readthedocs.io/en/stable/) library but with a [specific default configuration](#yamllint-configuration), one that is compatible with both, our internal reformatter (`--fix`) and also [prettier](https://prettier.io/).\n\nYou can disable YAML syntax violations by adding `yaml` to the `skip_list` in your Ansible-lint configuration as follows:\n\n`[](#%5F%5Fcodelineno-0-1)skip_list:\n[](#%5F%5Fcodelineno-0-2)  - yaml\n`\n\nFor more fine-grained control, disable violations for specific rules using tag identifiers in the `yaml[yamllint_rule]` format as follows:\n\n`[](#%5F%5Fcodelineno-1-1)skip_list:\n[](#%5F%5Fcodelineno-1-2)  - yaml[trailing-spaces]\n[](#%5F%5Fcodelineno-1-3)  - yaml[indentation]\n`\n\nThese settings control whether YAML violations are reported.",
       "lines": 133,
-      "tokens": 2190
+      "tokens": 2193
     },
     {
       "path": "custom-rules/",

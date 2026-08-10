@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "generated": "2026-06-30T21:26:33.210116+00:00",
+  "generated": "2026-08-10T05:51:51.736348+00:00",
   "base_url": "https://docs.ansible.com/projects/ansible/latest",
   "files": [
     {
@@ -31,7 +31,7 @@
       "core": true,
       "summary": "Note\n\nIf you install a collection manually as described in this paragraph, the collection will not be upgraded automatically when you upgrade the `ansible` package or `ansible-core`.\n\n## Installing collections in containers\n\nYou can install collections with their dependencies in containers known as Execution Environments.",
       "lines": 416,
-      "tokens": 6766
+      "tokens": 6765
     },
     {
       "path": "collections_guide/collections_listing.html",
@@ -2460,8 +2460,8 @@
       "audience": "author",
       "core": true,
       "summary": "In a playbook, you may want to execute different tasks or have different goals, depending on the value of a fact (data about the remote system), a variable, or the result of a previous task.",
-      "lines": 495,
-      "tokens": 6473
+      "lines": 516,
+      "tokens": 6766
     },
     {
       "path": "playbook_guide/playbooks_debugger.html",
@@ -2500,8 +2500,8 @@
       "audience": "author",
       "core": true,
       "summary": "When Ansible receives a non-zero return code from a command or a failure from a module, by default it stops executing on that host and continues on other hosts.",
-      "lines": 246,
-      "tokens": 3521
+      "lines": 264,
+      "tokens": 3711
     },
     {
       "path": "playbook_guide/playbooks_execution.html",
@@ -2560,8 +2560,8 @@
       "audience": "author",
       "core": true,
       "summary": "Ansible offers the `loop`, `with_<lookup>`, and `until` keywords to execute a task multiple times.",
-      "lines": 707,
-      "tokens": 7043
+      "lines": 792,
+      "tokens": 7998
     },
     {
       "path": "playbook_guide/playbooks_module_defaults.html",
@@ -2620,8 +2620,8 @@
       "audience": "author",
       "core": true,
       "summary": "Roles let you automatically load related vars, files, tasks, handlers, and other Ansible artifacts based on a known file structure.",
-      "lines": 711,
-      "tokens": 8513
+      "lines": 715,
+      "tokens": 8615
     },
     {
       "path": "playbook_guide/playbooks_startnstep.html",
@@ -2700,8 +2700,8 @@
       "audience": "author",
       "core": true,
       "summary": "Ansible uses variables to manage differences between systems.",
-      "lines": 460,
-      "tokens": 8440
+      "lines": 510,
+      "tokens": 9104
     },
     {
       "path": "playbook_guide/playbooks_variables_validation.html",

@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "generated": "2026-06-30T21:26:53.169634+00:00",
+  "generated": "2026-08-10T05:52:11.490297+00:00",
   "base_url": "https://docs.ansible.com/projects/creator",
   "files": [
     {
@@ -11,7 +11,7 @@
       "core": true,
       "summary": "The `ansible-creator` is a Command-Line Interface (CLI) tool designed for effortlessly scaffolding all your Ansible content.",
       "lines": 11,
-      "tokens": 360
+      "tokens": 364
     },
     {
       "path": "installing/",
@@ -20,8 +20,8 @@
       "audience": "author",
       "core": false,
       "summary": "ansible-creator provides two main functionalities: `init` and `add`.",
-      "lines": 393,
-      "tokens": 5946
+      "lines": 399,
+      "tokens": 6053
     },
     {
       "path": "contributing/",
@@ -41,7 +41,7 @@
       "core": true,
       "summary": "* For users who prefer a graphical interface, ansible-creator seamlessly integrates with the [Visual Studio Code (VS Code)](https://code.visualstudio.com/docs) and the [Ansible extension](https://marketplace.visualstudio.com/items?itemName=redhat.ansible)for it, offering an intuitive GUI experience.\n* By navigating to the Ansible section in the VS Code activity bar and selecting \"Ansible Development Tools,\" users can access a menu-driven interface.\n* This GUI provides interactive forms for straightforward input.",
       "lines": 8,
-      "tokens": 406
+      "tokens": 408
     },
     {
       "path": "ee_scaffolding/",
