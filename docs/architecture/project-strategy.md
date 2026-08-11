@@ -14,7 +14,7 @@
 | Language | Python (FastMCP) |
 | License | GPL-3.0-or-later |
 | Distribution | PyPI (`uvx ansible-know-mcp`) |
-| Tools | 18 |
+| Tools | 20 |
 | Resources | 6 |
 | Prompts | 5 |
 | Tests | 974 collected (unit + integration; integration skipped by default) |
