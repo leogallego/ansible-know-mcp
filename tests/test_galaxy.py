@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 from unittest.mock import patch as stdlib_patch
 
@@ -217,14 +218,32 @@ SAMPLE_DETAIL_RESPONSE = {
 }
 
 
-def _mock_search_context(mock_api_get_fn):
-    """Patch _api_get for search_collections tests.
+@contextmanager
+def _mock_api_get_context(mock_api_get_fn):
+    """Patch ``_api_get`` and stub API-root discovery for unit tests.
 
-    Since search_collections now uses the GalaxyClient's _get_client method
-    instead of creating its own httpx.AsyncClient, we only need to patch
-    _api_get itself.
+    Production methods call ``_discover_api_root()`` (raw httpx) before
+    ``_api_get``. Patching only ``_api_get`` leaves that handshake on the
+    live network, which flakes when Galaxy is slow or unreachable. This
+    helper closes the mock boundary: discovery is satisfied in-process
+    with a public-Galaxy-shaped root, and v3 HTTP goes through
+    *mock_api_get_fn*.
     """
-    return patch.object(GalaxyClient, "_api_get", mock_api_get_fn)
+    async def _stub_discover(self):
+        if self._api_root is None:
+            self._api_root = "https://galaxy.ansible.com/api"
+            self._v3_path = "v3/"
+
+    with (
+        patch.object(GalaxyClient, "_api_get", mock_api_get_fn),
+        patch.object(GalaxyClient, "_discover_api_root", _stub_discover),
+    ):
+        yield
+
+
+def _mock_search_context(mock_api_get_fn):
+    """Patch Galaxy HTTP for ``search_collections`` unit tests."""
+    return _mock_api_get_context(mock_api_get_fn)
 
 
 class TestSearchCollections:
@@ -498,7 +517,7 @@ class TestFetchModuleDoc:
                 return SAMPLE_DOCS_BLOB
             return {}
 
-        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+        with _mock_api_get_context(mock_api_get):
             client = GalaxyClient()
             doc, meta = await client.fetch_module_doc("netbox.netbox.netbox_device")
 
@@ -523,7 +542,7 @@ class TestFetchModuleDoc:
                 return SAMPLE_DOCS_BLOB
             return {}
 
-        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+        with _mock_api_get_context(mock_api_get):
             client = GalaxyClient()
             doc, meta = await client.fetch_module_doc(
                 "netbox.netbox.netbox_device", version="3.20.0",
@@ -541,10 +560,28 @@ class TestFetchModuleDoc:
                 return SAMPLE_DOCS_BLOB
             return {}
 
-        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+        with _mock_api_get_context(mock_api_get):
             client = GalaxyClient()
             with pytest.raises(GalaxyError, match="not found"):
                 await client.fetch_module_doc("netbox.netbox.nonexistent_module")
+
+    @pytest.mark.asyncio
+    async def test_missing_module_never_opens_live_http_client(self):
+        """Mock boundary must stub discovery — not depend on live Galaxy."""
+        async def mock_api_get(self_client, path, params=None, timeout=None):
+            if "versions/" in path and "docs-blob" not in path:
+                return SAMPLE_VERSIONS_RESPONSE
+            if "docs-blob" in path:
+                return SAMPLE_DOCS_BLOB
+            return {}
+
+        with patch.object(
+            GalaxyClient, "_get_client", side_effect=AssertionError("live HTTP client"),
+        ):
+            with _mock_api_get_context(mock_api_get):
+                client = GalaxyClient()
+                with pytest.raises(GalaxyError, match="not found"):
+                    await client.fetch_module_doc("netbox.netbox.nonexistent_module")
 
     @pytest.mark.asyncio
     async def test_handles_options_already_as_dict(self):
@@ -581,7 +618,7 @@ class TestFetchModuleDoc:
                 return blob_with_dict_options
             return {}
 
-        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+        with _mock_api_get_context(mock_api_get):
             client = GalaxyClient()
             doc, meta = await client.fetch_module_doc("test.col.some_module")
 
@@ -601,7 +638,7 @@ class TestFetchCollectionDocs:
                 return SAMPLE_DOCS_BLOB
             return {}
 
-        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+        with _mock_api_get_context(mock_api_get):
             client = GalaxyClient()
             docs, meta = await client.fetch_collection_docs("netbox.netbox")
 
@@ -622,7 +659,7 @@ class TestFetchCollectionDocs:
                 return SAMPLE_DOCS_BLOB
             return {}
 
-        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+        with _mock_api_get_context(mock_api_get):
             client = GalaxyClient()
             docs, meta = await client.fetch_collection_docs(
                 "netbox.netbox", version="3.20.0",
@@ -646,7 +683,7 @@ class TestFetchCollectionDocs:
                 return empty_blob
             return {}
 
-        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+        with _mock_api_get_context(mock_api_get):
             client = GalaxyClient()
             docs, meta = await client.fetch_collection_docs("netbox.netbox")
 
@@ -699,7 +736,7 @@ class TestFetchCollectionDocs:
                 return blob_with_bad_module
             return {}
 
-        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+        with _mock_api_get_context(mock_api_get):
             client = GalaxyClient()
             import logging
             with caplog.at_level(logging.WARNING, logger="ansible_know"):
@@ -721,7 +758,7 @@ class TestListCollectionModules:
                 return SAMPLE_DOCS_BLOB
             return {}
 
-        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+        with _mock_api_get_context(mock_api_get):
             client = GalaxyClient()
             modules, meta = await client.list_collection_modules("netbox.netbox")
 
@@ -917,7 +954,10 @@ class TestCacheHitPaths:
             _bkey("netbox", "netbox", "3.23.0"), SAMPLE_DOCS_BLOB["docs_blob"],
         )
 
-        with patch.object(GalaxyClient, "_api_get", side_effect=AssertionError("should not call API")):
+        async def boom(*_args, **_kwargs):
+            raise AssertionError("should not call API")
+
+        with _mock_api_get_context(boom):
             client = GalaxyClient()
             doc, meta = await client.fetch_module_doc("netbox.netbox.netbox_device")
 
@@ -1250,7 +1290,7 @@ class TestModuleWithoutDocStrings:
                 return blob
             return {}
 
-        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+        with _mock_api_get_context(mock_api_get):
             client = GalaxyClient()
             modules, meta = await client.list_collection_modules("test.col")
 
@@ -1464,7 +1504,7 @@ class TestEnrichmentSemaphore:
                 return search_data
             return {"download_count": 100, "highest_version": {"version": "1.0.0"}}
 
-        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+        with _mock_api_get_context(mock_api_get):
             with patch.object(GalaxyClient, "_get_collection_detail", tracking_detail):
                 client = GalaxyClient()
                 await client.search_collections("test")
@@ -1544,7 +1584,7 @@ class TestListCollectionRoles:
                 return SAMPLE_DOCS_BLOB_WITH_ROLES
             return {}
 
-        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+        with _mock_api_get_context(mock_api_get):
             client = GalaxyClient()
             roles, meta = await client.list_collection_roles("fedora.linux_system_roles")
 
@@ -1571,7 +1611,7 @@ class TestFetchRoleDoc:
                 return SAMPLE_DOCS_BLOB_WITH_ROLES
             return {}
 
-        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+        with _mock_api_get_context(mock_api_get):
             client = GalaxyClient()
             role_meta, meta = await client.fetch_role_doc(
                 "fedora.linux_system_roles.timesync",
@@ -1596,7 +1636,7 @@ class TestFetchRoleDoc:
                 return SAMPLE_DOCS_BLOB_WITH_ROLES
             return {}
 
-        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+        with _mock_api_get_context(mock_api_get):
             client = GalaxyClient()
             with pytest.raises(GalaxyError, match="not found"):
                 await client.fetch_role_doc("fedora.linux_system_roles.nonexistent")
@@ -1623,7 +1663,7 @@ class TestFetchRoleDoc:
                 return blob
             return {}
 
-        with patch.object(GalaxyClient, "_api_get", mock_api_get):
+        with _mock_api_get_context(mock_api_get):
             client = GalaxyClient()
             role_meta, meta = await client.fetch_role_doc("some.col.empty_role")
 
@@ -2248,7 +2288,7 @@ class TestDynamicUrlConstruction:
         gc._api_root = "https://hub.example.com/api/galaxy/content/published"
         gc._v3_path = "v3/"
 
-        with patch.object(GalaxyClient, "_api_get", tracking_api_get):
+        with _mock_api_get_context(tracking_api_get):
             await gc.latest_version("netbox", "netbox")
 
         url = call_urls[0]
@@ -2269,7 +2309,7 @@ class TestDynamicUrlConstruction:
         gc._api_root = "https://hub.example.com"
         gc._v3_path = "v3/"
 
-        with patch.object(GalaxyClient, "_api_get", tracking_api_get):
+        with _mock_api_get_context(tracking_api_get):
             await gc.search_collections("test")
 
         url = call_urls[0]
@@ -2288,7 +2328,7 @@ class TestDynamicUrlConstruction:
         gc._api_root = "https://galaxy.ansible.com/api"
         gc._v3_path = "v3/"
 
-        with patch.object(GalaxyClient, "_api_get", tracking_api_get):
+        with _mock_api_get_context(tracking_api_get):
             await gc.latest_version("ansible", "utils")
 
         url = call_urls[0]
