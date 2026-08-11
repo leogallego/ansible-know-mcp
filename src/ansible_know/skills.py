@@ -38,6 +38,9 @@ from ansible_know.validation import (
 if TYPE_CHECKING:
     from ansible_know.types import (
         AgentMcpConfig,
+        AgentMcpHttpServer,
+        AgentMcpServer,
+        AgentMcpStdioServer,
         AgentPluginManifest,
         CollectionSkillContext,
         LolaMarketYml,
@@ -1089,22 +1092,25 @@ def _write_mcp_json(
 ) -> Path:
     """Write Agent Plugins ``mcp.json`` for know-mcp (stdio or streamable-http)."""
     validate_mcp_transport(mcp_transport)
+    server: AgentMcpServer
     if mcp_transport == "stdio":
-        server: dict[str, Any] = {
+        stdio_server: AgentMcpStdioServer = {
             "type": "stdio",
             "command": "uvx",
             "args": ["ansible-know-mcp"],
         }
+        server = stdio_server
     else:
         if not mcp_url:
             raise ValidationError(
                 "mcp_url is required when mcp_transport is 'streamable-http'."
             )
         validate_mcp_server_url(mcp_url)
-        server = {
+        http_server: AgentMcpHttpServer = {
             "type": "streamable-http",
             "url": mcp_url,
         }
+        server = http_server
     payload: AgentMcpConfig = {
         "$schema": MCP_SCHEMA,
         "mcpServers": {

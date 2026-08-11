@@ -265,6 +265,9 @@ dependencies on upper layers.
 | `ValidationError` | Exception | `errors.py:26-27` |
 | `PackageAsPluginResult` | `TypedDict` | `types.py` (added in #223) |
 | `AgentPluginManifest` | `TypedDict` | `types.py` (added in #223) |
+| `AgentMcpStdioServer` | `TypedDict` | `types.py` (added in #223) |
+| `AgentMcpHttpServer` | `TypedDict` | `types.py` (added in #223) |
+| `AgentMcpServer` | union alias | `types.py` (added in #223) |
 | `AgentMcpConfig` | `TypedDict` | `types.py` (added in #223) |
 | `PackageForLolaResult` | `TypedDict` | `types.py` (added in #149; deprecated wrap) |
 

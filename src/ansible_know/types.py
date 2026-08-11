@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 if sys.version_info >= (3, 12):
     from typing import TypedDict
@@ -404,11 +404,30 @@ AgentPluginManifest = TypedDict(
 """Closed-schema ``plugin.json`` payload (Agent Plugins v1.0.0)."""
 
 
+class AgentMcpStdioServer(TypedDict):
+    """stdio MCP server entry in Agent Plugins ``mcp.json``."""
+
+    type: Literal["stdio"]
+    command: str
+    args: list[str]
+
+
+class AgentMcpHttpServer(TypedDict):
+    """streamable-http MCP server entry in Agent Plugins ``mcp.json``."""
+
+    type: Literal["streamable-http"]
+    url: str
+
+
+AgentMcpServer = AgentMcpStdioServer | AgentMcpHttpServer
+"""Discriminated MCP server entry for ``mcpServers`` values."""
+
+
 AgentMcpConfig = TypedDict(
     "AgentMcpConfig",
     {
         "$schema": str,
-        "mcpServers": dict[str, dict[str, Any]],
+        "mcpServers": dict[str, AgentMcpServer],
     },
 )
 """Top-level ``mcp.json`` payload (Agent Plugins v1.0.0)."""

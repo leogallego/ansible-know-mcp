@@ -288,10 +288,11 @@ class TestPackageForLolaTool:
 
         from ansible_know.server import package_for_lola
 
-        result = await package_for_lola(
-            collection="netbox.netbox",
-            output_dir=str(out),
-        )
+        with pytest.warns(DeprecationWarning, match="package_as_plugin"):
+            result = await package_for_lola(
+                collection="netbox.netbox",
+                output_dir=str(out),
+            )
 
         assert "error" not in result
         assert result["skill_count"] == 3
@@ -304,12 +305,13 @@ class TestPackageForLolaTool:
 
         from ansible_know.server import package_for_lola
 
-        result = await package_for_lola(
-            collection="netbox.netbox",
-            output_dir=str(out),
-            source_dir=str(skills),
-            write_market_yml=False,
-        )
+        with pytest.warns(DeprecationWarning, match="package_as_plugin"):
+            result = await package_for_lola(
+                collection="netbox.netbox",
+                output_dir=str(out),
+                source_dir=str(skills),
+                write_market_yml=False,
+            )
 
         assert result["market_yml"] is None
         assert result["skill_count"] == 3
@@ -317,8 +319,9 @@ class TestPackageForLolaTool:
     async def test_package_for_lola_validation_error(self) -> None:
         from ansible_know.server import package_for_lola
 
-        result = await package_for_lola(
-            collection="not a namespace",
-            output_dir="/tmp/out",
-        )
+        with pytest.warns(DeprecationWarning, match="package_as_plugin"):
+            result = await package_for_lola(
+                collection="not a namespace",
+                output_dir="/tmp/out",
+            )
         assert "error" in result
