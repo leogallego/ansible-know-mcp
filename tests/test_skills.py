@@ -23,6 +23,7 @@ from ansible_know.skills import (
     render_role_skill,
     render_skill,
     role_skill_name,
+    skill_dir_to_collection_fqcn,
     update_agents_md,
     write_collection_skill_package,
     write_module_skill_package,
@@ -746,6 +747,7 @@ class TestUpdateAgentsMd:
         """Create a minimal collection skill directory with SKILL.md."""
         coll_dir = skills_dir / name
         coll_dir.mkdir(parents=True)
+        fqcn = skill_dir_to_collection_fqcn(name)
         fm = (
             f"---\n"
             f"name: {name}\n"
@@ -754,8 +756,8 @@ class TestUpdateAgentsMd:
             f"  Covers {module_count} modules (v{version}).\n"
             f"compatibility: Requires ansible-core\n"
             f"metadata:\n"
-            f"  fqcn: test.collection\n"
-            f"  collection: test.collection\n"
+            f"  fqcn: {fqcn}\n"
+            f"  collection: {fqcn}\n"
             f"  plugin-type: collection\n"
             f'  version: "{version}"\n'
             f"---\n"
@@ -875,7 +877,11 @@ class TestUpdateAgentsMd:
         coll_dir = skills_dir / "some-coll"
         coll_dir.mkdir(parents=True)
         (coll_dir / "SKILL.md").write_text(
-            "---\nname: some-coll\ndescription: Covers 10 modules.\n---\n"
+            "---\nname: some-coll\ndescription: Covers 10 modules.\n"
+            "metadata:\n"
+            "  fqcn: some.coll\n"
+            "  plugin-type: collection\n"
+            "---\n"
         )
         update_agents_md(tmp_path, skills_dir)
         agents_md = (tmp_path / "AGENTS.md").read_text()
@@ -888,12 +894,45 @@ class TestUpdateAgentsMd:
         coll_dir.mkdir(parents=True)
         (coll_dir / "SKILL.md").write_text(
             '---\nname: some-coll\ndescription: A collection.\n'
-            'metadata:\n  version: "2.0.0"\n---\n'
+            'metadata:\n'
+            '  fqcn: some.coll\n'
+            '  plugin-type: collection\n'
+            '  version: "2.0.0"\n---\n'
         )
         update_agents_md(tmp_path, skills_dir)
         agents_md = (tmp_path / "AGENTS.md").read_text()
         assert "**some.coll** (v2.0.0)" in agents_md
         assert "symlink.collection" not in agents_md
+
+    def test_skips_non_collection_skills(self, tmp_path):
+        """Flat module/role skills must not appear as collections."""
+        skills_dir = tmp_path / "skills"
+        self._make_collection_skill(
+            skills_dir, "netbox-netbox", module_count=90, version="3.23.0",
+        )
+        module_dir = skills_dir / "dcim-device"
+        module_dir.mkdir(parents=True)
+        (module_dir / "SKILL.md").write_text(
+            "---\n"
+            "name: dcim-device\n"
+            "description: Manage NetBox devices.\n"
+            "metadata:\n"
+            "  fqcn: netbox.netbox.dcim_device\n"
+            "  plugin-type: module\n"
+            "---\n"
+        )
+        role_dir = skills_dir / "some-role"
+        role_dir.mkdir(parents=True)
+        (role_dir / "SKILL.md").write_text(
+            "---\nname: some-role\ndescription: A role.\n---\n"
+        )
+        update_agents_md(tmp_path, skills_dir)
+        agents_md = (tmp_path / "AGENTS.md").read_text()
+        assert "**netbox.netbox** (90 modules, v3.23.0)" in agents_md
+        assert "dcim-device" not in agents_md
+        assert "dcim.device" not in agents_md
+        assert "some.role" not in agents_md
+        assert "some-role" not in agents_md
 
 
 class TestMultiPathSkills:

@@ -415,7 +415,13 @@ def _parse_collection_frontmatter(skill_md: Path) -> dict[str, Any]:
 
 
 def update_agents_md(project_root: Path, skills_dir: Path) -> None:
-    """Write or update the managed AGENTS.md section listing generated skills."""
+    """Write or update the managed AGENTS.md section listing generated skills.
+
+    Only directories whose SKILL.md frontmatter declares
+    ``metadata.plugin-type: collection`` are listed. That keeps nested
+    generate output and flat Agent Plugins ``skills/`` trees from treating
+    module/role/plugin skills as collections.
+    """
     validate_install_path(str(project_root))
 
     collection_lines: list[str] = []
@@ -427,9 +433,15 @@ def update_agents_md(project_root: Path, skills_dir: Path) -> None:
                 skill_md = entry / "SKILL.md"
                 if not skill_md.exists():
                     continue
-                fqcn = skill_dir_to_collection_fqcn(entry.name)
                 fm = _parse_collection_frontmatter(skill_md)
                 meta = fm.get("metadata", {}) or {}
+                if meta.get("plugin-type") != "collection":
+                    continue
+                fqcn = (
+                    meta.get("fqcn")
+                    or meta.get("collection")
+                    or skill_dir_to_collection_fqcn(entry.name)
+                )
                 version = meta.get("version", "")
                 desc = fm.get("description", "")
                 count_match = re.search(r"Covers (\d+) modules?", desc)
