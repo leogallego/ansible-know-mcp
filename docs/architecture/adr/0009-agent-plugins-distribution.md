@@ -35,8 +35,9 @@ Adopt Agent Plugins as the **primary** Layer-2 packaging format.
    ```text
    {plugin}/
    ├── plugin.json
-   ├── mcp.json                 # optional (uvx ansible-know-mcp stdio)
+   ├── mcp.json                 # optional (stdio or streamable-http)
    └── skills/{skill}/SKILL.md  # flat; no recursive nesting
+   {plugin}-{version}.tar.gz    # optional Pulp/AAP artifact (default on)
    ```
 
 2. Keep `generate_*` output nested (`skills/{collection}/{module}/`) —
@@ -49,6 +50,26 @@ Adopt Agent Plugins as the **primary** Layer-2 packaging format.
    Agent Plugins §5.5 (including the 64-character limit) fail closed — callers
    must supply an explicit `plugin_name`.
 
+5. Artifact format is **`.tar.gz`** (not ZIP) for consistency with Ansible
+   collections and Pulp. Filename is `{plugin-name}-{version}.tar.gz`.
+
+6. `mcp.json` supports `stdio` (default `uvx ansible-know-mcp`) and
+   `streamable-http` (requires `mcp_url` for AAP-hosted know-mcp).
+
+7. `plugin.json` `keywords` include `ansible`, `automation`, namespace,
+   collection kebab, collection FQCN, and packaged skill names (capped).
+
+### Explicitly out of scope for know-mcp packaging
+
+- **JFrog path-based identity** (`name/version/name-version.zip`): that layout
+  is a **registry storage convention**. know-mcp produces a portable plugin
+  directory + tarball; PAH/Pulp/Artifactory decide how to place the artifact
+  under their repository path scheme when uploading.
+- **Multi-harness manifest directories** (`.claude-plugin/`, `.cursor-plugin/`,
+  …): Agent Plugins v1 portable discovery uses root `plugin.json`. Harness-
+  specific sidecars are client/marketplace extensions and can be added later
+  without changing the core wrap.
+
 ## Consequences
 
 ### Positive
@@ -57,6 +78,8 @@ Adopt Agent Plugins as the **primary** Layer-2 packaging format.
 - Single directory can ship MCP tools **and** pre-generated skills.
 - Flat packaged `skills/` aligns with shallow scanners (related: #200).
 - No change to ADR-0007 generate-time layout.
+- `.tar.gz` artifact aligns with Pulp/AAP content pipelines.
+- Enterprise `mcp.json` can point at AAP-hosted streamable-http know-mcp.
 
 ### Negative
 
@@ -68,6 +91,7 @@ Adopt Agent Plugins as the **primary** Layer-2 packaging format.
 
 - `AGENTS.md` host discovery for flat vs nested trees remains Layer 1 and is
   tracked separately (#222).
+- Registry path layout and multi-harness sidecars remain hosting concerns.
 
 ## Related Decisions
 
@@ -87,3 +111,4 @@ Adopt Agent Plugins as the **primary** Layer-2 packaging format.
 | Date | Author | Change |
 |------|--------|--------|
 | 2026-08-11 | Leonardo Gallego (Assisted-by: Cursor (Grok 4.5)) | Initial acceptance |
+| 2026-08-11 | Leonardo Gallego (Assisted-by: Cursor (Grok 4.5)) | tar.gz artifact, streamable-http mcp.json, richer keywords; clarify registry/harness out of scope |

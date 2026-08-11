@@ -388,6 +388,7 @@ class PackageAsPluginResult(TypedDict):
     skills: list[str]
     plugin_json: str | None
     mcp_json: str | None
+    archive: str | None
 
 
 AgentPluginManifest = TypedDict(

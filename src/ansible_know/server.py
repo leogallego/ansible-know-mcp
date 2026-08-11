@@ -54,6 +54,8 @@ from ansible_know.validation import (
     validate_install_path,
     validate_keyword,
     validate_lola_module_name,
+    validate_mcp_server_url,
+    validate_mcp_transport,
     validate_namespace,
     validate_plugin_name,
     validate_plugin_type,
@@ -1445,33 +1447,50 @@ async def package_as_plugin(
     ] = None,
     include_mcp_config: Annotated[
         bool,
-        "When true (default), write mcp.json with a stdio entry for "
-        "uvx ansible-know-mcp.",
+        "When true (default), write mcp.json for know-mcp (see mcp_transport).",
     ] = True,
     write_plugin_json: Annotated[
         bool,
         "When true (default), write plugin.json with Agent Plugins v1.0.0 "
         "manifest fields.",
     ] = True,
+    write_tarball: Annotated[
+        bool,
+        "When true (default), also write {plugin_name}-{version}.tar.gz beside "
+        "the plugin directory (Pulp/AAP-friendly artifact).",
+    ] = True,
+    mcp_transport: Annotated[
+        str,
+        "MCP transport for mcp.json when include_mcp_config is true: "
+        "'stdio' (default, uvx ansible-know-mcp) or 'streamable-http' "
+        "(requires mcp_url for an AAP-hosted know-mcp endpoint).",
+    ] = "stdio",
+    mcp_url: Annotated[
+        str | None,
+        "Absolute MCP endpoint URL when mcp_transport is 'streamable-http' "
+        "(e.g. 'https://aap.example.com/mcp/skills/'). Ignored for stdio.",
+    ] = None,
 ) -> PackageAsPluginResult | ErrorResponse:
     """Wrap already-generated skills into an Agent Plugins directory.
 
     Does not change ``generate_*`` output layout. Copies
     ``skills/{collection-kebab}/{skill}/`` into
     ``{output_dir}/{plugin}/skills/{skill}/`` and writes ``plugin.json``
-    (and optionally ``mcp.json``) per the Agent Plugins specification.
-    Replaces any existing ``skills/`` tree under the target plugin directory
-    (destructive but idempotent).
+    (and optionally ``mcp.json`` + ``.tar.gz``) per the Agent Plugins
+    specification. Replaces any existing ``skills/`` tree under the target
+    plugin directory (destructive but idempotent).
 
     Returns: {"collection", "plugin_name", "plugin_dir", "skill_count", "skills",
-    "plugin_json", "mcp_json"} or {"error": str} on failure.
+    "plugin_json", "mcp_json", "archive"} or {"error": str} on failure.
     """
     logger.info(
-        "package_as_plugin collection=%r output_dir=%r source_dir=%r plugin_name=%r",
+        "package_as_plugin collection=%r output_dir=%r source_dir=%r "
+        "plugin_name=%r mcp_transport=%r",
         collection,
         output_dir,
         source_dir,
         plugin_name,
+        mcp_transport,
     )
     try:
         validate_namespace(collection)
@@ -1480,6 +1499,14 @@ async def package_as_plugin(
             validate_install_path(source_dir)
         if plugin_name is not None:
             validate_plugin_name(plugin_name)
+        if include_mcp_config:
+            validate_mcp_transport(mcp_transport)
+            if mcp_transport == "streamable-http":
+                if not mcp_url:
+                    raise ValidationError(
+                        "mcp_url is required when mcp_transport is 'streamable-http'."
+                    )
+                validate_mcp_server_url(mcp_url)
     except ValidationError as exc:
         return {"error": str(exc)}
 
@@ -1500,6 +1527,9 @@ async def package_as_plugin(
                 plugin_name=plugin_name,
                 include_mcp_config=include_mcp_config,
                 write_plugin_json=write_plugin_json,
+                write_tarball=write_tarball,
+                mcp_transport=mcp_transport,
+                mcp_url=mcp_url,
             )
 
         return await run_in_executor(_package)

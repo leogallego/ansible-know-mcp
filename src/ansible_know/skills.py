@@ -12,6 +12,7 @@ import logging
 import re
 import shutil
 import stat
+import tarfile
 import threading
 from collections import Counter
 from collections.abc import Sequence
@@ -21,12 +22,15 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from ansible_know.config import TEMPLATE_DIR
+from ansible_know.errors import ValidationError
 from ansible_know.tagging import derive_tags
 from ansible_know.validation import (
     split_collection_fqcn,
     truncate_response,
     validate_install_path,
     validate_lola_module_name,
+    validate_mcp_server_url,
+    validate_mcp_transport,
     validate_path_containment,
     validate_plugin_name,
 )
@@ -942,6 +946,8 @@ def package_collection_for_lola(
 
 PLUGIN_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
 MCP_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json"
+_ARCHIVE_VERSION_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
+MAX_PLUGIN_KEYWORDS = 64
 
 
 def default_plugin_name(collection_fqcn: str) -> str:
@@ -988,6 +994,35 @@ def _plan_packable_skill_dirs(collection_dir: Path) -> tuple[bool, list[Path]]:
     return has_collection_skill, nested_skill_dirs
 
 
+def _archive_version(version: str | None) -> str:
+    """Return a filesystem-safe version segment for ``{name}-{version}.tar.gz``."""
+    if version and _ARCHIVE_VERSION_RE.match(version):
+        return version
+    return "0.0.0"
+
+
+def _build_plugin_keywords(
+    collection_fqcn: str,
+    skill_names: Sequence[str],
+) -> list[str]:
+    """Build registry-oriented keywords for ``plugin.json``.
+
+    Includes ``ansible`` / ``automation``, namespace, collection kebab, collection
+    FQCN, and packaged skill directory names (capped for manifest size).
+    """
+    namespace, collection_name = split_collection_fqcn(collection_fqcn)
+    keywords: set[str] = {
+        "ansible",
+        "automation",
+        namespace.lower(),
+        collection_name.replace("_", "-").lower(),
+        collection_fqcn.lower(),
+    }
+    for skill in skill_names:
+        keywords.add(skill.lower())
+    return sorted(keywords)[:MAX_PLUGIN_KEYWORDS]
+
+
 def _write_plugin_json(
     plugin_root: Path,
     *,
@@ -995,20 +1030,16 @@ def _write_plugin_json(
     collection_fqcn: str,
     description: str,
     version: str | None,
+    skill_names: Sequence[str],
 ) -> Path:
     """Write closed-schema ``plugin.json`` under the plugin root."""
-    namespace, collection_name = split_collection_fqcn(collection_fqcn)
     payload: AgentPluginManifest = {
         "$schema": PLUGIN_SCHEMA,
         "name": plugin_name,
         "version": version or "0.0.0",
         "description": description
         or f"Ansible skills for the {collection_fqcn} collection",
-        "keywords": sorted({
-            "ansible",
-            namespace.lower(),
-            collection_name.replace("_", "-").lower(),
-        }),
+        "keywords": _build_plugin_keywords(collection_fqcn, skill_names),
     }
     plugin_json_path = plugin_root / "plugin.json"
     validate_path_containment(plugin_json_path.resolve(), plugin_root)
@@ -1016,22 +1047,58 @@ def _write_plugin_json(
     return plugin_json_path
 
 
-def _write_mcp_json(plugin_root: Path) -> Path:
-    """Write Agent Plugins ``mcp.json`` pointing at know-mcp via uvx stdio."""
+def _write_mcp_json(
+    plugin_root: Path,
+    *,
+    mcp_transport: str = "stdio",
+    mcp_url: str | None = None,
+) -> Path:
+    """Write Agent Plugins ``mcp.json`` for know-mcp (stdio or streamable-http)."""
+    validate_mcp_transport(mcp_transport)
+    if mcp_transport == "stdio":
+        server: dict[str, Any] = {
+            "type": "stdio",
+            "command": "uvx",
+            "args": ["ansible-know-mcp"],
+        }
+    else:
+        if not mcp_url:
+            raise ValidationError(
+                "mcp_url is required when mcp_transport is 'streamable-http'."
+            )
+        validate_mcp_server_url(mcp_url)
+        server = {
+            "type": "streamable-http",
+            "url": mcp_url,
+        }
     payload: AgentMcpConfig = {
         "$schema": MCP_SCHEMA,
         "mcpServers": {
-            "ansible-know": {
-                "type": "stdio",
-                "command": "uvx",
-                "args": ["ansible-know-mcp"],
-            },
+            "ansible-know": server,
         },
     }
     mcp_json_path = plugin_root / "mcp.json"
     validate_path_containment(mcp_json_path.resolve(), plugin_root)
     mcp_json_path.write_text(json.dumps(payload, indent=2) + "\n")
     return mcp_json_path
+
+
+def _write_plugin_tarball(
+    plugin_root: Path,
+    output_dir: Path,
+    *,
+    plugin_name: str,
+    version: str | None,
+) -> Path:
+    """Write ``{plugin_name}-{version}.tar.gz`` beside the plugin directory."""
+    archive_name = f"{plugin_name}-{_archive_version(version)}.tar.gz"
+    archive_path = (output_dir / archive_name).resolve()
+    validate_path_containment(archive_path, output_dir)
+    if archive_path.exists():
+        archive_path.unlink()
+    with tarfile.open(archive_path, "w:gz") as archive:
+        archive.add(plugin_root, arcname=plugin_name)
+    return archive_path
 
 
 def package_as_agent_plugin(
@@ -1042,6 +1109,9 @@ def package_as_agent_plugin(
     plugin_name: str | None = None,
     include_mcp_config: bool = True,
     write_plugin_json: bool = True,
+    write_tarball: bool = True,
+    mcp_transport: str = "stdio",
+    mcp_url: str | None = None,
 ) -> PackageAsPluginResult:
     """Wrap generated collection skills into an Agent Plugins directory.
 
@@ -1054,6 +1124,7 @@ def package_as_agent_plugin(
         {output_dir}/{plugin_name}/plugin.json
         {output_dir}/{plugin_name}/mcp.json          # optional
         {output_dir}/{plugin_name}/skills/{skill}/SKILL.md
+        {output_dir}/{plugin_name}-{version}.tar.gz  # optional artifact
 
     Nested skill directories that contain ``SKILL.md`` are copied with supporting
     files (symlink members are skipped). A collection-level ``SKILL.md`` is
@@ -1069,11 +1140,14 @@ def package_as_agent_plugin(
             - When *plugin_name* is not ``None``, it must already satisfy
               Agent Plugins §5.5 (or it is validated here). Empty string is
               invalid — pass ``None`` for the default name.
+            - When *include_mcp_config* is true, *mcp_transport* must be
+              ``stdio`` or ``streamable-http``; *mcp_url* is required for
+              ``streamable-http``.
         Raises:
             FileNotFoundError: If the collection has no generated skills, or
                 none of those skills contain a ``SKILL.md``.
-            ValidationError: On path escape or invalid plugin name (including
-                when the default name exceeds §5.5 limits).
+            ValidationError: On path escape, invalid plugin name, invalid MCP
+                transport/URL (including when the default name exceeds §5.5).
             OSError: On filesystem permission or I/O errors during mkdir,
                 copy, or manifest write (not silenced).
         Silences:
@@ -1088,6 +1162,14 @@ def package_as_agent_plugin(
     else:
         name = plugin_name
         validate_plugin_name(name)
+    if include_mcp_config:
+        validate_mcp_transport(mcp_transport)
+        if mcp_transport == "streamable-http":
+            if not mcp_url:
+                raise ValidationError(
+                    "mcp_url is required when mcp_transport is 'streamable-http'."
+                )
+            validate_mcp_server_url(mcp_url)
 
     collection_dir = resolve_collection_skills_dir(skills_dirs, collection_fqcn)
     collection_dir_name = collection_dir.name
@@ -1139,6 +1221,8 @@ def package_as_agent_plugin(
         except OSError as exc:
             logger.warning("Could not read collection skill description: %s", exc)
 
+    version = _read_collection_version(collection_dir)
+
     plugin_json_path: str | None = None
     plugin_json_file = plugin_root / "plugin.json"
     if write_plugin_json:
@@ -1148,7 +1232,8 @@ def package_as_agent_plugin(
                 plugin_name=name,
                 collection_fqcn=collection_fqcn,
                 description=description,
-                version=_read_collection_version(collection_dir),
+                version=version,
+                skill_names=packaged,
             )
         )
     elif plugin_json_file.is_file():
@@ -1158,10 +1243,33 @@ def package_as_agent_plugin(
     mcp_json_path: str | None = None
     mcp_json_file = plugin_root / "mcp.json"
     if include_mcp_config:
-        mcp_json_path = str(_write_mcp_json(plugin_root))
+        mcp_json_path = str(
+            _write_mcp_json(
+                plugin_root,
+                mcp_transport=mcp_transport,
+                mcp_url=mcp_url,
+            )
+        )
     elif mcp_json_file.is_file():
         validate_path_containment(mcp_json_file.resolve(), plugin_root)
         mcp_json_file.unlink()
+
+    archive_path: str | None = None
+    archive_file = (
+        resolved_output / f"{name}-{_archive_version(version)}.tar.gz"
+    ).resolve()
+    if write_tarball:
+        archive_path = str(
+            _write_plugin_tarball(
+                plugin_root,
+                resolved_output,
+                plugin_name=name,
+                version=version,
+            )
+        )
+    elif archive_file.is_file():
+        validate_path_containment(archive_file, resolved_output)
+        archive_file.unlink()
 
     logger.info(
         "Packaged %d skills for %s into Agent Plugin %s",
@@ -1177,4 +1285,5 @@ def package_as_agent_plugin(
         "skills": packaged,
         "plugin_json": plugin_json_path,
         "mcp_json": mcp_json_path,
+        "archive": archive_path,
     }

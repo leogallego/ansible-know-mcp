@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -14,7 +15,11 @@ from ansible_know.skills import (
     default_plugin_name,
     package_as_agent_plugin,
 )
-from ansible_know.validation import validate_plugin_name
+from ansible_know.validation import (
+    validate_mcp_server_url,
+    validate_mcp_transport,
+    validate_plugin_name,
+)
 
 
 def _write_skill_tree(skills_root: Path, collection_kebab: str) -> Path:
@@ -101,6 +106,30 @@ class TestDefaultPluginName:
             default_plugin_name(f"{long_ns}.{long_coll}")
 
 
+class TestValidateMcpTransportAndUrl:
+    def test_accepts_stdio_and_streamable_http(self) -> None:
+        validate_mcp_transport("stdio")
+        validate_mcp_transport("streamable-http")
+
+    def test_rejects_unknown_transport(self) -> None:
+        with pytest.raises(ValidationError, match="Invalid MCP transport"):
+            validate_mcp_transport("sse")
+
+    def test_accepts_https_url(self) -> None:
+        validate_mcp_server_url("https://aap.example.com/mcp/skills/")
+
+    def test_accepts_localhost_http(self) -> None:
+        validate_mcp_server_url("http://localhost:8080/mcp")
+
+    def test_rejects_plain_http_remote(self) -> None:
+        with pytest.raises(ValidationError, match="loopback"):
+            validate_mcp_server_url("http://aap.example.com/mcp")
+
+    def test_rejects_userinfo(self) -> None:
+        with pytest.raises(ValidationError, match="userinfo|fragment"):
+            validate_mcp_server_url("https://user:pass@aap.example.com/mcp")
+
+
 class TestPackageAsAgentPlugin:
     def test_wraps_skills_into_plugin_layout(self, tmp_path: Path) -> None:
         skills = tmp_path / "skills"
@@ -130,6 +159,9 @@ class TestPackageAsAgentPlugin:
         assert plugin_json["version"] == "3.2.0"
         assert plugin_json["description"] == "Collection overview"
         assert "ansible" in plugin_json["keywords"]
+        assert "automation" in plugin_json["keywords"]
+        assert "netbox.netbox" in plugin_json["keywords"]
+        assert "netbox-device" in plugin_json["keywords"]
         assert set(plugin_json.keys()) <= {
             "$schema", "name", "version", "description", "author",
             "homepage", "repository", "license", "keywords", "extensions",
@@ -142,6 +174,14 @@ class TestPackageAsAgentPlugin:
         assert mcp_json["mcpServers"]["ansible-know"]["args"] == ["ansible-know-mcp"]
         assert result["plugin_json"] == str(plugin_dir / "plugin.json")
         assert result["mcp_json"] == str(plugin_dir / "mcp.json")
+
+        archive = Path(result["archive"] or "")
+        assert archive.name == "ansible-netbox-netbox-3.2.0.tar.gz"
+        assert archive.is_file()
+        with tarfile.open(archive, "r:gz") as tf:
+            names = tf.getnames()
+        assert "ansible-netbox-netbox/plugin.json" in names
+        assert "ansible-netbox-netbox/skills/netbox-device/SKILL.md" in names
 
     def test_skips_plugin_json_when_disabled(self, tmp_path: Path) -> None:
         skills = tmp_path / "skills"
@@ -167,6 +207,48 @@ class TestPackageAsAgentPlugin:
         assert not (Path(result["plugin_dir"]) / "mcp.json").exists()
         assert (Path(result["plugin_dir"]) / "plugin.json").is_file()
 
+    def test_streamable_http_mcp_config(self, tmp_path: Path) -> None:
+        skills = tmp_path / "skills"
+        out = tmp_path / "out"
+        _write_skill_tree(skills, "netbox-netbox")
+        url = "https://aap.example.com/mcp/skills/"
+
+        result = package_as_agent_plugin(
+            skills,
+            "netbox.netbox",
+            out,
+            mcp_transport="streamable-http",
+            mcp_url=url,
+            write_tarball=False,
+        )
+        mcp_json = json.loads(Path(result["mcp_json"] or "").read_text())
+        assert mcp_json["mcpServers"]["ansible-know"] == {
+            "type": "streamable-http",
+            "url": url,
+        }
+        assert result["archive"] is None
+
+    def test_streamable_http_requires_url(self, tmp_path: Path) -> None:
+        skills = tmp_path / "skills"
+        _write_skill_tree(skills, "netbox-netbox")
+        with pytest.raises(ValidationError, match="mcp_url is required"):
+            package_as_agent_plugin(
+                skills,
+                "netbox.netbox",
+                tmp_path / "out",
+                mcp_transport="streamable-http",
+            )
+
+    def test_skips_tarball_when_disabled(self, tmp_path: Path) -> None:
+        skills = tmp_path / "skills"
+        out = tmp_path / "out"
+        _write_skill_tree(skills, "netbox-netbox")
+        result = package_as_agent_plugin(
+            skills, "netbox.netbox", out, write_tarball=False,
+        )
+        assert result["archive"] is None
+        assert not list(out.glob("*.tar.gz"))
+
     def test_removes_stale_manifests_when_disabled(self, tmp_path: Path) -> None:
         skills = tmp_path / "skills"
         out = tmp_path / "out"
@@ -176,6 +258,7 @@ class TestPackageAsAgentPlugin:
         plugin_dir = Path(first["plugin_dir"])
         assert (plugin_dir / "plugin.json").is_file()
         assert (plugin_dir / "mcp.json").is_file()
+        assert Path(first["archive"] or "").is_file()
 
         second = package_as_agent_plugin(
             skills,
@@ -183,11 +266,14 @@ class TestPackageAsAgentPlugin:
             out,
             write_plugin_json=False,
             include_mcp_config=False,
+            write_tarball=False,
         )
         assert second["plugin_json"] is None
         assert second["mcp_json"] is None
+        assert second["archive"] is None
         assert not (plugin_dir / "plugin.json").exists()
         assert not (plugin_dir / "mcp.json").exists()
+        assert not list(out.glob("*.tar.gz"))
 
     def test_custom_plugin_name(self, tmp_path: Path) -> None:
         skills = tmp_path / "skills"

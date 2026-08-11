@@ -263,7 +263,7 @@ claude mcp add ansible-know --transport http https://know.ansible.ar/mcp
 | `generate_role_skill(role_name, install_to?)` | Generate a skill package for one role |
 | `generate_plugin_skill(plugin_name, plugin_type, install_to?)` | Generate a skill package for one plugin |
 | `generate_collection_skills(collection_namespace, install_to?)` | Batch generate skills for an entire collection |
-| `package_as_plugin(collection, output_dir, source_dir?, plugin_name?, include_mcp_config?, write_plugin_json?)` | Wrap generated skills into an Agent Plugins directory (`plugin.json` + flat `skills/` + optional `mcp.json`; does not change `generate_*` layout) |
+| `package_as_plugin(collection, output_dir, source_dir?, plugin_name?, include_mcp_config?, write_plugin_json?, write_tarball?, mcp_transport?, mcp_url?)` | Wrap generated skills into an Agent Plugins directory (`plugin.json` + flat `skills/` + optional `mcp.json` + `.tar.gz`; stdio or streamable-http; does not change `generate_*` layout) |
 | `package_for_lola(collection, output_dir, source_dir?, module_name?, write_market_yml?)` | **Deprecated** — prefer `package_as_plugin`. Wrap generated skills into a Lola module directory |
 
 ### Maintenance
