@@ -123,3 +123,4 @@ Adopt Agent Plugins as the **primary** Layer-2 packaging format.
 | 2026-08-11 | Leonardo Gallego (Assisted-by: Cursor (Grok 4.5)) | Initial acceptance |
 | 2026-08-11 | Leonardo Gallego (Assisted-by: Cursor (Grok 4.5)) | tar.gz artifact, streamable-http mcp.json, richer keywords; clarify registry/harness out of scope |
 | 2026-08-11 | Leonardo Gallego (Assisted-by: Cursor (Grok 4.5)) | Default plugin name suffix `-agentplugin` to distinguish from collections |
+| 2026-08-11 | Leonardo Gallego (Assisted-by: Cursor (Grok 4.5)) | Clarify tarball members at archive root (not nested under `{plugin-name}/`) |
