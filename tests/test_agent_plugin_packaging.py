@@ -129,6 +129,18 @@ class TestValidateMcpTransportAndUrl:
         with pytest.raises(ValidationError, match="userinfo|fragment"):
             validate_mcp_server_url("https://user:pass@aap.example.com/mcp")
 
+    def test_rejects_fragment(self) -> None:
+        with pytest.raises(ValidationError, match="userinfo|fragment"):
+            validate_mcp_server_url("https://aap.example.com/mcp#frag")
+
+    def test_rejects_whitespace_and_controls(self) -> None:
+        with pytest.raises(ValidationError, match="whitespace|control"):
+            validate_mcp_server_url(" https://aap.example.com/mcp")
+        with pytest.raises(ValidationError, match="whitespace|control"):
+            validate_mcp_server_url("https://aap.example.com/mcp\nX")
+        with pytest.raises(ValidationError, match="whitespace|control"):
+            validate_mcp_server_url("https://aap.example.com/mcp with space")
+
 
 class TestPackageAsAgentPlugin:
     def test_wraps_skills_into_plugin_layout(self, tmp_path: Path) -> None:
@@ -248,6 +260,45 @@ class TestPackageAsAgentPlugin:
         )
         assert result["archive"] is None
         assert not list(out.glob("*.tar.gz"))
+
+    def test_tarball_excludes_leftover_symlinks_and_junk(self, tmp_path: Path) -> None:
+        skills = tmp_path / "skills"
+        out = tmp_path / "out"
+        _write_skill_tree(skills, "netbox-netbox")
+        plugin_dir = out / "ansible-netbox-netbox-agentplugin"
+        plugin_dir.mkdir(parents=True)
+        secret = tmp_path / "secret"
+        secret.write_text("leak\n")
+        (plugin_dir / "leak").symlink_to(secret)
+        (plugin_dir / "extra.txt").write_text("junk\n")
+
+        result = package_as_agent_plugin(skills, "netbox.netbox", out)
+        assert not (plugin_dir / "leak").exists()
+        assert not (plugin_dir / "extra.txt").exists()
+        with tarfile.open(result["archive"] or "", "r:gz") as tf:
+            names = set(tf.getnames())
+            members = tf.getmembers()
+        assert "ansible-netbox-netbox-agentplugin/plugin.json" in names
+        assert "ansible-netbox-netbox-agentplugin/extra.txt" not in names
+        assert "ansible-netbox-netbox-agentplugin/leak" not in names
+        assert all(not m.issym() and not m.islnk() for m in members)
+
+    def test_removes_stale_versioned_archives(self, tmp_path: Path) -> None:
+        skills = tmp_path / "skills"
+        out = tmp_path / "out"
+        _write_skill_tree(skills, "netbox-netbox")
+        first = package_as_agent_plugin(skills, "netbox.netbox", out)
+        stale = out / "ansible-netbox-netbox-agentplugin-9.9.9.tar.gz"
+        stale.write_bytes(Path(first["archive"] or "").read_bytes())
+
+        second = package_as_agent_plugin(skills, "netbox.netbox", out)
+        assert Path(second["archive"] or "").name == (
+            "ansible-netbox-netbox-agentplugin-3.2.0.tar.gz"
+        )
+        assert not stale.exists()
+        assert {
+            p.name for p in out.glob("ansible-netbox-netbox-agentplugin-*.tar.gz")
+        } == {"ansible-netbox-netbox-agentplugin-3.2.0.tar.gz"}
 
     def test_removes_stale_manifests_when_disabled(self, tmp_path: Path) -> None:
         skills = tmp_path / "skills"

@@ -754,9 +754,9 @@ def _ignore_symlinks(directory: str, names: list[str]) -> list[str]:
     return [name for name in names if (base / name).is_symlink()]
 
 
-def _copy_skill_tree(src: Path, dest: Path, module_root: Path) -> None:
-    """Copy one skill directory into the Lola module, replacing any prior copy."""
-    validate_path_containment(dest.resolve(), module_root)
+def _copy_skill_tree(src: Path, dest: Path, package_root: Path) -> None:
+    """Copy one skill directory into a packaging root, replacing any prior copy."""
+    validate_path_containment(dest.resolve(), package_root)
     if dest.exists():
         shutil.rmtree(dest)
     shutil.copytree(src, dest, symlinks=False, ignore=_ignore_symlinks)
@@ -1084,6 +1084,56 @@ def _write_mcp_json(
     return mcp_json_path
 
 
+_PLUGIN_ROOT_ENTRIES = frozenset({"plugin.json", "mcp.json", "skills"})
+
+
+def _tar_safe_filter(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo | None:
+    """Omit symlink/hardlink members and path-escape attempts from archives."""
+    if tarinfo.issym() or tarinfo.islnk():
+        return None
+    if ".." in Path(tarinfo.name).parts:
+        return None
+    return tarinfo
+
+
+def _scrub_plugin_root(plugin_root: Path) -> None:
+    """Remove unexpected top-level entries before archiving a plugin root.
+
+    Containment checks the directory entry under *plugin_root* without
+    following symlink targets (absolute links must still be removable).
+    """
+    root = plugin_root.resolve()
+    for entry in list(plugin_root.iterdir()):
+        if entry.name in _PLUGIN_ROOT_ENTRIES:
+            continue
+        try:
+            if entry.parent.resolve() != root:
+                logger.warning(
+                    "Skipping unexpected non-child entry under plugin root: %s",
+                    entry.name,
+                )
+                continue
+            if entry.is_symlink() or entry.is_file():
+                entry.unlink()
+            elif entry.is_dir():
+                shutil.rmtree(entry)
+        except OSError as exc:
+            logger.warning("Could not scrub plugin root entry %s: %s", entry.name, exc)
+
+
+def _remove_plugin_archives(output_dir: Path, plugin_name: str) -> None:
+    """Remove ``{plugin_name}-*.tar.gz`` artifacts under *output_dir*."""
+    for archive in sorted(output_dir.glob(f"{plugin_name}-*.tar.gz")):
+        try:
+            resolved = archive.resolve()
+            validate_path_containment(resolved, output_dir)
+            if archive.is_symlink() or not archive.is_file():
+                continue
+            archive.unlink()
+        except (OSError, ValidationError) as exc:
+            logger.warning("Could not remove stale archive %s: %s", archive.name, exc)
+
+
 def _write_plugin_tarball(
     plugin_root: Path,
     output_dir: Path,
@@ -1091,14 +1141,26 @@ def _write_plugin_tarball(
     plugin_name: str,
     version: str | None,
 ) -> Path:
-    """Write ``{plugin_name}-{version}.tar.gz`` beside the plugin directory."""
+    """Write ``{plugin_name}-{version}.tar.gz`` beside the plugin directory.
+
+    Archives only allowlisted members (``plugin.json``, ``mcp.json``,
+    ``skills/``) and filters out symlink/hardlink members.
+    """
+    _scrub_plugin_root(plugin_root)
+    _remove_plugin_archives(output_dir, plugin_name)
     archive_name = f"{plugin_name}-{_archive_version(version)}.tar.gz"
     archive_path = (output_dir / archive_name).resolve()
     validate_path_containment(archive_path, output_dir)
-    if archive_path.exists():
-        archive_path.unlink()
     with tarfile.open(archive_path, "w:gz") as archive:
-        archive.add(plugin_root, arcname=plugin_name)
+        for member_name in sorted(_PLUGIN_ROOT_ENTRIES):
+            src = plugin_root / member_name
+            if not src.exists() or src.is_symlink():
+                continue
+            archive.add(
+                src,
+                arcname=f"{plugin_name}/{member_name}",
+                filter=_tar_safe_filter,
+            )
     return archive_path
 
 
@@ -1256,9 +1318,6 @@ def package_as_agent_plugin(
         mcp_json_file.unlink()
 
     archive_path: str | None = None
-    archive_file = (
-        resolved_output / f"{name}-{_archive_version(version)}.tar.gz"
-    ).resolve()
     if write_tarball:
         archive_path = str(
             _write_plugin_tarball(
@@ -1268,9 +1327,9 @@ def package_as_agent_plugin(
                 version=version,
             )
         )
-    elif archive_file.is_file():
-        validate_path_containment(archive_file, resolved_output)
-        archive_file.unlink()
+    else:
+        _remove_plugin_archives(resolved_output, name)
+        _scrub_plugin_root(plugin_root)
 
     logger.info(
         "Packaged %d skills for %s into Agent Plugin %s",

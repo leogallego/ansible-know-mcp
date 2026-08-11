@@ -263,6 +263,10 @@ dependencies on upper layers.
 | `GalaxyError` | Exception | `errors.py:18-19` |
 | `CollectionInstallError` | Exception | `errors.py:22-23` |
 | `ValidationError` | Exception | `errors.py:26-27` |
+| `PackageAsPluginResult` | `TypedDict` | `types.py` (added in #223) |
+| `AgentPluginManifest` | `TypedDict` | `types.py` (added in #223) |
+| `AgentMcpConfig` | `TypedDict` | `types.py` (added in #223) |
+| `PackageForLolaResult` | `TypedDict` | `types.py` (added in #149; deprecated wrap) |
 
 ### Error Hierarchy
 

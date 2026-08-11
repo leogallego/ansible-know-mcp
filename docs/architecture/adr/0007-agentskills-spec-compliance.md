@@ -116,11 +116,12 @@ gap, not a spec violation on our side.
 We propose patching next-mcp's `_loadLocalSource` to scan 2+ levels,
 citing the spec. This benefits all skill producers that use namespace grouping.
 
-### Lola packaging is a packaging concern (not a generation format)
+### Packaging is a packaging concern (not a generation format)
 
-Lola is a distribution channel, not a generation format. Our spec-compliant
-output is wrapped into a Lola module as a separate packaging step
-(``package_for_lola`` / #149). No special ``generate_*`` output mode.
+Distribution wraps are separate from generation. Preferred Layer-2 wrap is
+Agent Plugins via ``package_as_plugin`` (#223 / ADR-0009). Deprecated Lola
+wrap ``package_for_lola`` (#149) remains for one release cycle. No special
+``generate_*`` output mode.
 
 ## Consequences
 
@@ -168,6 +169,8 @@ Issue [#148](https://github.com/leogallego/ansible-know-mcp/issues/148)
   required for interoperability with next-mcp's SkillRegistry
 - [ADR-0008](0008-three-layer-distribution.md) — one output format makes
   the three-layer model possible
+- [ADR-0009](0009-agent-plugins-distribution.md) — preferred Layer-2
+  packaging wrap (Agent Plugins)
 
 ## Revision History
 
@@ -175,3 +178,4 @@ Issue [#148](https://github.com/leogallego/ansible-know-mcp/issues/148)
 |------|--------|--------|
 | 2026-06-26 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Initial proposal |
 | 2026-08-03 | Leonardo Gallego (Assisted-by: Cursor) | Accepted after #148; consumer gaps point to #200 / #149 |
+| 2026-08-11 | Leonardo Gallego (Assisted-by: Cursor (Grok 4.5)) | Prefer Agent Plugins packaging (#223 / ADR-0009); Lola wrap deprecated |

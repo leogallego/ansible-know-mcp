@@ -287,6 +287,10 @@ def validate_mcp_server_url(url: str) -> None:
         raise ValidationError(
             f"MCP URL must be non-empty and under {MAX_URL_LENGTH} characters."
         )
+    if url != url.strip() or any(ch.isspace() or ord(ch) < 32 for ch in url):
+        raise ValidationError(
+            "MCP URL must not contain whitespace or control characters."
+        )
     try:
         parsed = urlparse(url)
     except ValueError as exc:

@@ -22,7 +22,7 @@ Load these reference materials before starting — they define the layer
 boundaries, allowed dependencies, and known violations:
 
 1. Read `docs/architecture/service-contracts.md`
-2. Read all ADRs in `docs/architecture/adr/` (0001–0008)
+2. Read all ADRs in `docs/architecture/adr/` (0001–0009)
 3. Read `docs/architecture/project-strategy.md` for strategic context
 
 Pass the relevant sections to each subagent in Phase 2.
@@ -273,8 +273,9 @@ For changes that affect architecture or project direction:
   kebab-case names, include `metadata.fqcn`, `metadata.collection`,
   `metadata.plugin-type`, and `compatibility` fields. Validate with
   `agentskills validate`.
-- [ ] **Distribution model** (ADR-0008): skill output must work at all
-  three layers (local, repository, remote) without format changes.
+- [ ] **Distribution model** (ADR-0008 / ADR-0009): skill output must work
+  at all three layers without format changes. Layer 2 packaging prefers
+  Agent Plugins (`package_as_plugin`); `package_for_lola` is deprecated.
 - [ ] **ADR consistency**: if a PR contradicts an existing ADR, it must
   either update the ADR or document why the deviation is necessary.
 - [ ] **Tools to keep vs drop**: changes to tools marked for upstream
@@ -306,7 +307,7 @@ For each finding, report:
 
 ---
 
-## Last reviewed: 2026-08-07
+## Last reviewed: 2026-08-11
 
 ## Revision History
 
@@ -316,3 +317,4 @@ For each finding, report:
 | 2026-06-27 | Updated layer map (added resolution.py, text_utils.py, manifest_builder.py, cli.py). Updated known violations to current state (most fixed). Added Step 9: ADR and strategy compliance (ADRs 0006-0008). Updated state management checklist for SharedState/ServerState/SessionManager/CollectionManager. Made frontmatter agentskills.io spec-compliant. Added revision history. |
 | 2026-07-17 | Added redhat_docs.py to External Access layer map (PR #178). |
 | 2026-08-07 | PR #211 / #149: service-contracts tool count 19 + `PackageForLolaResult`; ADR-0007/0008 note Layer 2 wrap via `package_for_lola` (no new layer-map modules). |
+| 2026-08-11 | PR #224 / #223: ADRs 0001–0009; Layer 2 prefers `package_as_plugin` / ADR-0009; `package_for_lola` deprecated; service-contracts 20 tools + Agent Plugins TypedDicts. |
