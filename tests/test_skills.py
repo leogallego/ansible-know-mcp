@@ -740,14 +740,27 @@ class TestCollectionSkillWithPlugins:
 
 
 class TestUpdateAgentsMd:
-    def _make_collection_skill(self, skills_dir, name):
+    def _make_collection_skill(
+        self, skills_dir, name, *, module_count=5, version="1.0.0",
+    ):
         """Create a minimal collection skill directory with SKILL.md."""
         coll_dir = skills_dir / name
         coll_dir.mkdir(parents=True)
-        (coll_dir / "SKILL.md").write_text(
-            "---\nname: test\ndescription: test collection\n---\n"
+        fm = (
+            f"---\n"
+            f"name: {name}\n"
+            f"description: >-\n"
+            f"  Guided playbook development.\n"
+            f"  Covers {module_count} modules (v{version}).\n"
+            f"compatibility: Requires ansible-core\n"
+            f"metadata:\n"
+            f"  fqcn: test.collection\n"
+            f"  collection: test.collection\n"
+            f"  plugin-type: collection\n"
+            f'  version: "{version}"\n'
+            f"---\n"
         )
-        # Add a module-level skill for example path generation
+        (coll_dir / "SKILL.md").write_text(fm)
         mod_dir = coll_dir / "some-module"
         mod_dir.mkdir()
         (mod_dir / "SKILL.md").write_text(
@@ -756,12 +769,14 @@ class TestUpdateAgentsMd:
 
     def test_create_agents_md(self, tmp_path):
         skills_dir = tmp_path / "skills"
-        self._make_collection_skill(skills_dir, "netbox-netbox")
+        self._make_collection_skill(skills_dir, "netbox-netbox", module_count=90, version="3.23.0")
         update_agents_md(tmp_path, skills_dir)
         agents_md = (tmp_path / "AGENTS.md").read_text()
         assert "<!-- ansible-know:skills:start -->" in agents_md
         assert "<!-- ansible-know:skills:end -->" in agents_md
-        assert "netbox.netbox" in agents_md
+        assert "**netbox.netbox** (90 modules, v3.23.0)" in agents_md
+        assert "skills/netbox-netbox/SKILL.md" in agents_md
+        assert "### Available collections" in agents_md
 
     def test_append_to_existing(self, tmp_path):
         skills_dir = tmp_path / "skills"
@@ -772,7 +787,8 @@ class TestUpdateAgentsMd:
         assert agents_md.startswith("# My Project")
         assert "Existing content." in agents_md
         assert "<!-- ansible-know:skills:start -->" in agents_md
-        assert "netbox.netbox" in agents_md
+        assert "**netbox.netbox**" in agents_md
+        assert "skills/netbox-netbox/SKILL.md" in agents_md
 
     def test_replace_between_sentinels(self, tmp_path):
         skills_dir = tmp_path / "skills"
@@ -828,7 +844,7 @@ class TestUpdateAgentsMd:
         skills_dir.mkdir()
         update_agents_md(tmp_path, skills_dir)
         agents_md = (tmp_path / "AGENTS.md").read_text()
-        assert "Available collections:" in agents_md
+        assert "(none generated yet)" in agents_md
 
     def test_skips_symlinks(self, tmp_path):
         skills_dir = tmp_path / "skills"
@@ -836,9 +852,47 @@ class TestUpdateAgentsMd:
         (skills_dir / "symlink-collection").symlink_to(skills_dir / "real-collection")
         update_agents_md(tmp_path, skills_dir)
         agents_md = (tmp_path / "AGENTS.md").read_text()
-        assert "real.collection" in agents_md
-        # Should appear once in collections list, not duplicated by symlink
-        assert "Available collections: real.collection" in agents_md
+        assert "**real.collection**" in agents_md
+        assert agents_md.count("**real.collection**") == 1
+
+    def test_multiple_collections(self, tmp_path):
+        skills_dir = tmp_path / "skills"
+        self._make_collection_skill(
+            skills_dir, "ansible-controller", module_count=45, version="4.6.1",
+        )
+        self._make_collection_skill(
+            skills_dir, "netbox-netbox", module_count=90, version="3.23.0",
+        )
+        update_agents_md(tmp_path, skills_dir)
+        agents_md = (tmp_path / "AGENTS.md").read_text()
+        assert "**ansible.controller** (45 modules, v4.6.1)" in agents_md
+        assert "**netbox.netbox** (90 modules, v3.23.0)" in agents_md
+        assert "skills/ansible-controller/SKILL.md" in agents_md
+        assert "skills/netbox-netbox/SKILL.md" in agents_md
+
+    def test_frontmatter_missing_version(self, tmp_path):
+        skills_dir = tmp_path / "skills"
+        coll_dir = skills_dir / "some-coll"
+        coll_dir.mkdir(parents=True)
+        (coll_dir / "SKILL.md").write_text(
+            "---\nname: some-coll\ndescription: Covers 10 modules.\n---\n"
+        )
+        update_agents_md(tmp_path, skills_dir)
+        agents_md = (tmp_path / "AGENTS.md").read_text()
+        assert "**some.coll** (10 modules)" in agents_md
+        assert ", v)" not in agents_md
+
+    def test_frontmatter_missing_count(self, tmp_path):
+        skills_dir = tmp_path / "skills"
+        coll_dir = skills_dir / "some-coll"
+        coll_dir.mkdir(parents=True)
+        (coll_dir / "SKILL.md").write_text(
+            '---\nname: some-coll\ndescription: A collection.\n'
+            'metadata:\n  version: "2.0.0"\n---\n'
+        )
+        update_agents_md(tmp_path, skills_dir)
+        agents_md = (tmp_path / "AGENTS.md").read_text()
+        assert "**some.coll** (v2.0.0)" in agents_md
         assert "symlink.collection" not in agents_md
 
 

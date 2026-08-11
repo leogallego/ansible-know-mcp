@@ -397,45 +397,73 @@ def get_skill_sync(skills_dirs: Path | Sequence[Path], skill_name: str) -> str:
     raise FileNotFoundError(f"Skill '{skill_name}' not found.")
 
 
+def _parse_collection_frontmatter(skill_md: Path) -> dict[str, Any]:
+    """Extract metadata from a collection SKILL.md frontmatter block."""
+    try:
+        content = skill_md.read_text()
+    except OSError:
+        return {}
+    if not content.startswith("---"):
+        return {}
+    end = content.find("\n---", 3)
+    if end < 0:
+        return {}
+    try:
+        return yaml.safe_load(content[3:end]) or {}
+    except yaml.YAMLError:
+        return {}
+
+
 def update_agents_md(project_root: Path, skills_dir: Path) -> None:
     """Write or update the managed AGENTS.md section listing generated skills."""
     validate_install_path(str(project_root))
 
-    collections = []
-    example_path = ""
-    example_dir = ""
+    collection_lines: list[str] = []
     if skills_dir.exists():
         for entry in sorted(skills_dir.iterdir()):
             try:
                 if not entry.is_dir() or entry.is_symlink():
                     continue
-                if (entry / "SKILL.md").exists():
-                    fqcn = skill_dir_to_collection_fqcn(entry.name)
-                    collections.append(fqcn)
-                    if not example_path:
-                        for sub in sorted(entry.iterdir()):
-                            if sub.is_dir() and not sub.is_symlink() and (sub / "SKILL.md").exists():
-                                example_path = f"{fqcn}.{skill_dir_to_short_fqcn(sub.name)}"
-                                example_dir = f"skills/{entry.name}/{sub.name}/SKILL.md"
-                                break
+                skill_md = entry / "SKILL.md"
+                if not skill_md.exists():
+                    continue
+                fqcn = skill_dir_to_collection_fqcn(entry.name)
+                fm = _parse_collection_frontmatter(skill_md)
+                meta = fm.get("metadata", {}) or {}
+                version = meta.get("version", "")
+                desc = fm.get("description", "")
+                count_match = re.search(r"Covers (\d+) modules?", desc)
+                module_count = count_match.group(1) if count_match else ""
+
+                detail_parts: list[str] = []
+                if module_count:
+                    detail_parts.append(f"{module_count} modules")
+                if version:
+                    detail_parts.append(f"v{version}")
+                detail = f" ({', '.join(detail_parts)})" if detail_parts else ""
+
+                collection_lines.append(
+                    f"- **{fqcn}**{detail}"
+                    f" → `skills/{entry.name}/SKILL.md`"
+                )
             except OSError:
                 continue
 
-    example_line = ""
-    if example_path:
-        example_line = f"\n(e.g., `{example_path}` → `{example_dir}`)."
+    if collection_lines:
+        coll_block = "\n".join(collection_lines) + "\n"
     else:
-        example_line = "."
+        coll_block = "(none generated yet)\n"
 
     section = (
         f"{_AGENTS_MD_START}\n"
         f"## Ansible Module Skills\n"
         f"\n"
-        f"Generated Ansible module documentation skills are in `skills/`.\n"
-        f"Before writing tasks for a module, check for a SKILL.md in the\n"
-        f"matching collection and module directory{example_line}\n"
+        f"Before writing tasks for any module below, read the collection\n"
+        f"SKILL.md for the full module index, then open the specific module skill.\n"
         f"\n"
-        f"Available collections: {', '.join(collections)}\n"
+        f"### Available collections\n"
+        f"\n"
+        f"{coll_block}"
         f"{_AGENTS_MD_END}\n"
     )
 
