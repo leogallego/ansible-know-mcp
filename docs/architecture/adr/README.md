@@ -16,6 +16,7 @@ decision with its context, rationale, and consequences.
 | [0006](0006-upstream-first-integration.md) | Upstream-First Integration with @ansible/mcp-server (next) | Proposed |
 | [0007](0007-agentskills-spec-compliance.md) | agentskills.io Specification Compliance | Accepted |
 | [0008](0008-three-layer-distribution.md) | Three-Layer Skill Distribution Model | Proposed |
+| [0009](0009-agent-plugins-distribution.md) | Agent Plugins as Layer-2 Distribution Format | Accepted |
 
 ## Format
 

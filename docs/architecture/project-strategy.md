@@ -14,7 +14,7 @@
 | Language | Python (FastMCP) |
 | License | GPL-3.0-or-later |
 | Distribution | PyPI (`uvx ansible-know-mcp`) |
-| Tools | 18 |
+| Tools | 20 |
 | Resources | 6 |
 | Prompts | 5 |
 | Tests | 974 collected (unit + integration; integration skipped by default) |
@@ -114,7 +114,7 @@ The Ansible DevTools MCP server, bundled in the VS Code extension. Our primary i
 - **Repo:** `github.com/ansible/vscode-ansible`
 - **Version:** 0.0.1 (pre-release)
 - **Relationship:** We upstream knowledge features; they distribute skills via the SkillRegistry
-- **Integration point:** Shared project `skills/` directory (Layer 1 dual-config + `AGENTS.md`; see ADR-0008 / #181) or GitHub source after Lola packaging (#149)
+- **Integration point:** Shared project `skills/` directory (Layer 1 dual-config + `AGENTS.md`; see ADR-0008 / #181) or GitHub/Agent Plugins packaging (#223; Lola wrap #149 deprecated)
 - **Gap:** `_loadLocalSource` scans 1 level; tracked in [#200](https://github.com/leogallego/ansible-know-mcp/issues/200) (upstream later)
 - **Pitch document:** [upstream-integration-proposal-2026-06-26.md](../research/upstream-integration-proposal-2026-06-26.md)
 
@@ -126,13 +126,25 @@ The AAP platform MCP server for Controller, EDA, and Gateway operations.
 - **Relationship:** Future home for `aap-mcp-skills` (Phase 4, TypeScript rewrite)
 - **No current integration** — the platform MCP ecosystem is the long-term direction
 
+### Agent Plugins
+
+Open packaging format for bundling Agent Skills and MCP servers.
+
+- **Spec:** [agent-plugins.org/specification](https://agent-plugins.org/specification)
+- **Relationship:** Primary Layer-2 distribution wrap via MCP tool
+  ``package_as_plugin`` (#223 / ADR-0009). Ships flat `skills/` plus optional
+  `mcp.json` for know-mcp.
+- **Not a generation format** — packaging is a post-generate wrap step; nested
+  `generate_*` layout is unchanged (ADR-0007).
+
 ### Lola
 
 Cross-agent AI skill package manager by Red Hat Product Security.
 
 - **Repo:** `github.com/LobsterTrap/lola`
 - **Marketplace:** `github.com/RedHatProductSecurity/lola-market`
-- **Relationship:** Distribution channel. Wrap our spec-compliant skills with MCP tool ``package_for_lola`` (#149) into Lola modules for cross-agent installation (40+ agents).
+- **Relationship:** Legacy distribution channel. ``package_for_lola`` (#149)
+  is deprecated for one release cycle in favor of Agent Plugins (#223).
 - **Not a generation format** — Lola packaging is a post-generate wrap step, not a `generate_*` output mode.
 
 ### agentskills.io
@@ -151,7 +163,7 @@ The standard specification for AI agent skills.
 1. ~~**Finalize issue #148**~~ — **Done** (closed; ADR-0007 Accepted)
 2. ~~**Draft next-mcp scan depth proposal**~~ — **Tracked** as [#200](https://github.com/leogallego/ansible-know-mcp/issues/200)
 3. ~~**#182** — multi-path `list_skills` / `get_skill`~~ (done: `ANSIBLE_KNOW_SKILLS_PATH`)
-4. **#149** — Lola packaging helper (Layer 2)
+4. ~~**#149** — Lola packaging helper (Layer 2)~~ — **Done** (deprecated wrap; prefer [#223](https://github.com/leogallego/ansible-know-mcp/issues/223) / [ADR-0009](adr/0009-agent-plugins-distribution.md))
 5. **#189 / #125** — FastMCP 4 / MCP 2026-07-28 session migration (blocked on stable release)
 
 ---

@@ -18,7 +18,7 @@ Runtime requirement: `ansible-core` must be installed in the same environment (f
 
 ```
 src/ansible_know/
-├── server.py              # FastMCP server: 19 tools, 6 resources, 5 prompts (entrypoint)
+├── server.py              # FastMCP server: 20 tools, 6 resources, 5 prompts (entrypoint)
 ├── parser.py              # ansible-doc wrapper — module discovery and metadata extraction
 ├── resolution.py          # local-then-Galaxy doc resolution + multi-server search
 ├── readme_parser.py       # Parse Galaxy role README HTML into structured data
@@ -57,7 +57,8 @@ src/ansible_know/
 | `generate_plugin_skill` | idempotent write | Generate a skill package for one plugin |
 | `generate_role_skill` | idempotent write | Generate a skill package for one role |
 | `generate_collection_skills` | idempotent write | Batch generate skills for a collection |
-| `package_for_lola` | idempotent write | Wrap generated skills into a Lola module directory |
+| `package_as_plugin` | idempotent write | Wrap generated skills into an Agent Plugins directory (+ optional `.tar.gz`, stdio/streamable-http) |
+| `package_for_lola` | idempotent write | Deprecated: wrap skills into a Lola module (prefer `package_as_plugin`) |
 | `clear_cache` | idempotent write | Clear Galaxy and/or doc manifest caches |
 
 ## MCP Resources

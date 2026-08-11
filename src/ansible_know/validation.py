@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import re
 import warnings
 from pathlib import Path
@@ -11,6 +12,7 @@ from ansible_know.errors import ValidationError
 
 __all__ = [
     "ALLOWED_DOC_HOSTS",
+    "VALID_MCP_TRANSPORTS",
     "extract_collection_fqcn",
     "extract_namespace",
     "split_collection_fqcn",
@@ -21,8 +23,11 @@ __all__ = [
     "validate_install_path",
     "validate_keyword",
     "validate_lola_module_name",
+    "validate_mcp_server_url",
+    "validate_mcp_transport",
     "validate_namespace",
     "validate_path_containment",
+    "validate_plugin_name",
     "validate_plugin_type",
     "validate_query",
     "validate_skill_name",
@@ -44,10 +49,13 @@ _SKILL_NAME_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)?$")
 _VERSION_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
 _TAGS_RE = re.compile(r"^[a-zA-Z0-9_,-]+$")
 _LOLA_MODULE_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
+# Agent Plugins §5.5: lowercase alphanumeric, hyphen, period; no "--" / "..".
+_PLUGIN_NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?$")
 _SENSITIVE_PREFIXES = ("/etc", "/usr", "/bin", "/sbin", "/boot", "/proc", "/sys", "/dev")
 _PATH_RE = re.compile(r"/(?:home|tmp|usr|etc|var|opt)/\S+")
 # Allow "ansible-" + full kebab collection name (namespace max is 128).
 MAX_LOLA_MODULE_NAME_LENGTH = MAX_NAMESPACE_LENGTH + len("ansible-")
+MAX_PLUGIN_NAME_LENGTH = 64
 
 
 def validate_fqcn(name: str) -> None:
@@ -104,6 +112,36 @@ def validate_lola_module_name(name: str) -> None:
             "Invalid Lola module name: use 1-"
             f"{MAX_LOLA_MODULE_NAME_LENGTH} alphanumeric characters, "
             "dots, underscores, or hyphens (no path separators)."
+        )
+
+
+def validate_plugin_name(name: str) -> None:
+    """Validate an Agent Plugins ``plugin.json`` ``name`` field (§5.5).
+
+    Contract:
+        Preconditions:
+            - ``name`` length is 1–``MAX_PLUGIN_NAME_LENGTH`` (64).
+            - Character set is lowercase ``a-z``, ``0-9``, ``-``, ``.`` only.
+            - First and last characters are alphanumeric.
+            - No consecutive ``--`` or ``..``.
+            - No path separators (``/``, ``\\``).
+        Raises:
+            ValidationError: If any precondition fails (explicit check).
+    """
+    if (
+        not name
+        or len(name) > MAX_PLUGIN_NAME_LENGTH
+        or "/" in name
+        or "\\" in name
+        or "--" in name
+        or ".." in name
+        or not _PLUGIN_NAME_RE.match(name)
+    ):
+        raise ValidationError(
+            "Invalid plugin name: use 1-"
+            f"{MAX_PLUGIN_NAME_LENGTH} lowercase alphanumeric characters, "
+            "hyphens, or periods; must start and end alphanumeric; "
+            "no '--' or '..' (Agent Plugins §5.5)."
         )
 
 
@@ -213,6 +251,69 @@ def validate_plugin_type(plugin_type: str) -> None:
 
 
 ALLOWED_DOC_HOSTS = frozenset({"docs.ansible.com", "docs.redhat.com"})
+VALID_MCP_TRANSPORTS = frozenset({"stdio", "streamable-http"})
+
+
+def validate_mcp_transport(transport: str) -> None:
+    """Validate an Agent Plugins ``mcp.json`` transport type.
+
+    Contract:
+        Preconditions:
+            - ``transport`` must be ``stdio`` or ``streamable-http``.
+        Raises:
+            ValidationError: If the transport is unsupported.
+    """
+    if transport not in VALID_MCP_TRANSPORTS:
+        raise ValidationError(
+            "Invalid MCP transport: use 'stdio' or 'streamable-http'."
+        )
+
+
+def validate_mcp_server_url(url: str) -> None:
+    """Validate an Agent Plugins remote MCP URL (§7.2.1).
+
+    Absolute HTTP(S) URL, no userinfo or fragment. Non-loopback hosts MUST
+    use HTTPS; HTTP is allowed only for ``localhost`` or loopback IPs.
+
+    Contract:
+        Preconditions:
+            - Non-empty URL under ``MAX_URL_LENGTH``.
+            - Scheme ``https``, or ``http`` only for loopback.
+            - No username/password/fragment.
+        Raises:
+            ValidationError: If any precondition fails.
+    """
+    if not url or len(url) > MAX_URL_LENGTH:
+        raise ValidationError(
+            f"MCP URL must be non-empty and under {MAX_URL_LENGTH} characters."
+        )
+    if url != url.strip() or any(ch.isspace() or ord(ch) < 32 for ch in url):
+        raise ValidationError(
+            "MCP URL must not contain whitespace or control characters."
+        )
+    try:
+        parsed = urlparse(url)
+    except ValueError as exc:
+        raise ValidationError(f"Invalid MCP URL format: {exc}") from exc
+    if parsed.scheme not in ("http", "https"):
+        raise ValidationError("MCP URL must use http or https.")
+    if parsed.username is not None or parsed.password is not None or parsed.fragment:
+        raise ValidationError("MCP URL must not include userinfo or a fragment.")
+    host = parsed.hostname
+    if not host:
+        raise ValidationError("MCP URL must include a host.")
+    if parsed.scheme == "http":
+        if host == "localhost":
+            return
+        try:
+            if not ipaddress.ip_address(host).is_loopback:
+                raise ValidationError(
+                    "HTTP MCP URLs are only allowed for localhost or loopback IPs."
+                )
+        except ValueError as exc:
+            raise ValidationError(
+                "HTTP MCP URLs are only allowed for localhost or loopback IPs."
+            ) from exc
 
 
 def validate_doc_url(url: str) -> None:

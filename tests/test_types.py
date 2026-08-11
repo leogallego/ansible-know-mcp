@@ -1,7 +1,15 @@
 """Tests for ansible_know.types."""
 
 from ansible_know.parser import transform_galaxy_to_ansible_doc_format
-from ansible_know.types import AnsibleDocEntry, AnsibleDocPayload, ManifestPluginEntry, PluginMetadata
+from ansible_know.types import (
+    AgentMcpConfig,
+    AgentMcpHttpServer,
+    AgentMcpStdioServer,
+    AnsibleDocEntry,
+    AnsibleDocPayload,
+    ManifestPluginEntry,
+    PluginMetadata,
+)
 
 
 class TestAnsibleDocEntry:
@@ -57,3 +65,28 @@ class TestPluginTypes:
             "has_skill": False,
         }
         assert entry["plugin_type"] == "lookup"
+
+
+class TestAgentMcpTypes:
+    def test_stdio_server_entry(self) -> None:
+        server: AgentMcpStdioServer = {
+            "type": "stdio",
+            "command": "uvx",
+            "args": ["ansible-know-mcp"],
+        }
+        config: AgentMcpConfig = {
+            "$schema": "https://agentplugins.com/schema/v1/mcp.json",
+            "mcpServers": {"ansible-know": server},
+        }
+        assert config["mcpServers"]["ansible-know"]["type"] == "stdio"
+
+    def test_http_server_entry(self) -> None:
+        server: AgentMcpHttpServer = {
+            "type": "streamable-http",
+            "url": "https://aap.example.com/mcp/skills/",
+        }
+        config: AgentMcpConfig = {
+            "$schema": "https://agentplugins.com/schema/v1/mcp.json",
+            "mcpServers": {"ansible-know": server},
+        }
+        assert config["mcpServers"]["ansible-know"]["type"] == "streamable-http"

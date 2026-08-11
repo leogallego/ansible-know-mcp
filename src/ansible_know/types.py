@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 if sys.version_info >= (3, 12):
     from typing import TypedDict
@@ -376,6 +376,61 @@ class LolaMarketYml(TypedDict):
     collection: str
     skill_count: int
     tags: list[str]
+
+
+class PackageAsPluginResult(TypedDict):
+    """Result of package_as_plugin tool / package_as_agent_plugin."""
+
+    collection: str
+    plugin_name: str
+    plugin_dir: str
+    skill_count: int
+    skills: list[str]
+    plugin_json: str | None
+    mcp_json: str | None
+    archive: str | None
+
+
+AgentPluginManifest = TypedDict(
+    "AgentPluginManifest",
+    {
+        "$schema": str,
+        "name": str,
+        "version": str,
+        "description": str,
+        "keywords": list[str],
+    },
+)
+"""Closed-schema ``plugin.json`` payload (Agent Plugins v1.0.0)."""
+
+
+class AgentMcpStdioServer(TypedDict):
+    """stdio MCP server entry in Agent Plugins ``mcp.json``."""
+
+    type: Literal["stdio"]
+    command: str
+    args: list[str]
+
+
+class AgentMcpHttpServer(TypedDict):
+    """streamable-http MCP server entry in Agent Plugins ``mcp.json``."""
+
+    type: Literal["streamable-http"]
+    url: str
+
+
+AgentMcpServer = AgentMcpStdioServer | AgentMcpHttpServer
+"""Discriminated MCP server entry for ``mcpServers`` values."""
+
+
+AgentMcpConfig = TypedDict(
+    "AgentMcpConfig",
+    {
+        "$schema": str,
+        "mcpServers": dict[str, AgentMcpServer],
+    },
+)
+"""Top-level ``mcp.json`` payload (Agent Plugins v1.0.0)."""
 
 
 class _CollectionDocsResultBase(TypedDict):
