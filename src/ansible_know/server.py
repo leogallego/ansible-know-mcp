@@ -1453,12 +1453,13 @@ async def package_as_plugin(
     write_plugin_json: Annotated[
         bool,
         "When true (default), write plugin.json with Agent Plugins v1.0.0 "
-        "manifest fields.",
+        "manifest fields. Required when write_tarball is true.",
     ] = True,
     write_tarball: Annotated[
         bool,
         "When true (default), also write {plugin_name}-{version}.tar.gz beside "
-        "the plugin directory (Pulp/AAP-friendly artifact).",
+        "the plugin directory (Pulp/AAP-friendly artifact). Requires "
+        "write_plugin_json=True.",
     ] = True,
     mcp_transport: Annotated[
         str,

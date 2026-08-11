@@ -64,7 +64,9 @@ Adopt Agent Plugins as the **primary** Layer-2 packaging format.
 
 8. `write_plugin_json=False` is an intentional escape hatch for staging
    trees that are **not** claimed as Agent Plugins–conformant packages.
-   Defaults write a valid `plugin.json`.
+   Defaults write a valid `plugin.json`. `write_tarball=True` requires
+   `write_plugin_json=True` so distribution artifacts always include the
+   required manifest.
 
 ### Explicitly out of scope for know-mcp packaging
 

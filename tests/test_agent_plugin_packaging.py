@@ -201,7 +201,11 @@ class TestPackageAsAgentPlugin:
         _write_skill_tree(skills, "netbox-netbox")
 
         result = package_as_agent_plugin(
-            skills, "netbox.netbox", out, write_plugin_json=False,
+            skills,
+            "netbox.netbox",
+            out,
+            write_plugin_json=False,
+            write_tarball=False,
         )
         assert result["plugin_json"] is None
         assert not (Path(result["plugin_dir"]) / "plugin.json").exists()
@@ -260,6 +264,56 @@ class TestPackageAsAgentPlugin:
         )
         assert result["archive"] is None
         assert not list(out.glob("*.tar.gz"))
+
+    def test_tarball_requires_plugin_json(self, tmp_path: Path) -> None:
+        skills = tmp_path / "skills"
+        _write_skill_tree(skills, "netbox-netbox")
+        with pytest.raises(ValidationError, match="write_tarball requires write_plugin_json"):
+            package_as_agent_plugin(
+                skills,
+                "netbox.netbox",
+                tmp_path / "out",
+                write_plugin_json=False,
+                write_tarball=True,
+            )
+
+    def test_archive_symlink_does_not_overwrite_sibling(self, tmp_path: Path) -> None:
+        skills = tmp_path / "skills"
+        out = tmp_path / "out"
+        out.mkdir()
+        _write_skill_tree(skills, "netbox-netbox")
+        victim = out / "victim.txt"
+        victim.write_text("keep-me\n")
+        archive_link = out / "ansible-netbox-netbox-agentplugin-3.2.0.tar.gz"
+        archive_link.symlink_to(victim)
+
+        result = package_as_agent_plugin(skills, "netbox.netbox", out)
+        archive = Path(result["archive"] or "")
+        assert archive.is_file()
+        assert not archive.is_symlink()
+        assert victim.read_text() == "keep-me\n"
+        assert tarfile.is_tarfile(archive)
+
+    def test_manifest_symlink_does_not_redirect_write(self, tmp_path: Path) -> None:
+        skills = tmp_path / "skills"
+        out = tmp_path / "out"
+        _write_skill_tree(skills, "netbox-netbox")
+        plugin_dir = out / "ansible-netbox-netbox-agentplugin"
+        plugin_dir.mkdir(parents=True)
+        outside = tmp_path / "outside-plugin.json"
+        outside.write_text("original\n")
+        (plugin_dir / "plugin.json").symlink_to(outside)
+        (plugin_dir / "mcp.json").symlink_to(outside)
+
+        result = package_as_agent_plugin(
+            skills, "netbox.netbox", out, write_tarball=False,
+        )
+        plugin_json = Path(result["plugin_json"] or "")
+        mcp_json = Path(result["mcp_json"] or "")
+        assert plugin_json.is_file() and not plugin_json.is_symlink()
+        assert mcp_json.is_file() and not mcp_json.is_symlink()
+        assert outside.read_text() == "original\n"
+        assert '"$schema"' in plugin_json.read_text()
 
     def test_tarball_excludes_leftover_symlinks_and_junk(self, tmp_path: Path) -> None:
         skills = tmp_path / "skills"

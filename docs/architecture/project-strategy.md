@@ -163,7 +163,7 @@ The standard specification for AI agent skills.
 1. ~~**Finalize issue #148**~~ — **Done** (closed; ADR-0007 Accepted)
 2. ~~**Draft next-mcp scan depth proposal**~~ — **Tracked** as [#200](https://github.com/leogallego/ansible-know-mcp/issues/200)
 3. ~~**#182** — multi-path `list_skills` / `get_skill`~~ (done: `ANSIBLE_KNOW_SKILLS_PATH`)
-4. **#149** — Lola packaging helper (Layer 2)
+4. ~~**#149** — Lola packaging helper (Layer 2)~~ — **Done** (deprecated wrap; prefer [#223](https://github.com/leogallego/ansible-know-mcp/issues/223) / [ADR-0009](adr/0009-agent-plugins-distribution.md))
 5. **#189 / #125** — FastMCP 4 / MCP 2026-07-28 session migration (blocked on stable release)
 
 ---

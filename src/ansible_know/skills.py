@@ -1024,6 +1024,40 @@ def _build_plugin_keywords(
     return sorted(keywords)[:MAX_PLUGIN_KEYWORDS]
 
 
+_PLUGIN_ROOT_ENTRIES = frozenset({"plugin.json", "mcp.json", "skills"})
+
+
+def _is_direct_child(path: Path, parent: Path) -> bool:
+    """Return True if *path* is a direct child of *parent* (no symlink follow)."""
+    try:
+        return path.parent.resolve() == parent.resolve()
+    except OSError:
+        return False
+
+
+def _unlink_symlink_or_file(path: Path, parent: Path) -> None:
+    """Unlink a direct-child file or symlink without following the target."""
+    if not _is_direct_child(path, parent):
+        raise ValidationError("Path escapes the allowed directory.")
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+
+
+def _prepare_regular_file(path: Path, parent: Path) -> Path:
+    """Ensure *path* is a writable regular file path under *parent*.
+
+    Unlinks an existing symlink first so later writes cannot redirect through
+    an in-tree link target.
+    """
+    if not _is_direct_child(path, parent):
+        raise ValidationError("Path escapes the allowed directory.")
+    if path.is_symlink():
+        path.unlink()
+    elif path.exists() and path.is_dir():
+        raise ValidationError(f"Expected a file path, found a directory: {path.name}")
+    return path
+
+
 def _write_plugin_json(
     plugin_root: Path,
     *,
@@ -1042,8 +1076,7 @@ def _write_plugin_json(
         or f"Ansible skills for the {collection_fqcn} collection",
         "keywords": _build_plugin_keywords(collection_fqcn, skill_names),
     }
-    plugin_json_path = plugin_root / "plugin.json"
-    validate_path_containment(plugin_json_path.resolve(), plugin_root)
+    plugin_json_path = _prepare_regular_file(plugin_root / "plugin.json", plugin_root)
     plugin_json_path.write_text(json.dumps(payload, indent=2) + "\n")
     return plugin_json_path
 
@@ -1078,13 +1111,9 @@ def _write_mcp_json(
             "ansible-know": server,
         },
     }
-    mcp_json_path = plugin_root / "mcp.json"
-    validate_path_containment(mcp_json_path.resolve(), plugin_root)
+    mcp_json_path = _prepare_regular_file(plugin_root / "mcp.json", plugin_root)
     mcp_json_path.write_text(json.dumps(payload, indent=2) + "\n")
     return mcp_json_path
-
-
-_PLUGIN_ROOT_ENTRIES = frozenset({"plugin.json", "mcp.json", "skills"})
 
 
 def _tar_safe_filter(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo | None:
@@ -1101,17 +1130,21 @@ def _scrub_plugin_root(plugin_root: Path) -> None:
 
     Containment checks the directory entry under *plugin_root* without
     following symlink targets (absolute links must still be removable).
+    Allowlisted names that are symlinks are also removed so later writes
+    cannot redirect through them.
     """
     root = plugin_root.resolve()
     for entry in list(plugin_root.iterdir()):
-        if entry.name in _PLUGIN_ROOT_ENTRIES:
-            continue
         try:
             if entry.parent.resolve() != root:
                 logger.warning(
                     "Skipping unexpected non-child entry under plugin root: %s",
                     entry.name,
                 )
+                continue
+            if entry.name in _PLUGIN_ROOT_ENTRIES:
+                if entry.is_symlink():
+                    entry.unlink()
                 continue
             if entry.is_symlink() or entry.is_file():
                 entry.unlink()
@@ -1122,14 +1155,16 @@ def _scrub_plugin_root(plugin_root: Path) -> None:
 
 
 def _remove_plugin_archives(output_dir: Path, plugin_name: str) -> None:
-    """Remove ``{plugin_name}-*.tar.gz`` artifacts under *output_dir*."""
+    """Remove ``{plugin_name}-*.tar.gz`` files and symlinks under *output_dir*."""
+    out = output_dir.resolve()
     for archive in sorted(output_dir.glob(f"{plugin_name}-*.tar.gz")):
         try:
-            resolved = archive.resolve()
-            validate_path_containment(resolved, output_dir)
-            if archive.is_symlink() or not archive.is_file():
+            if not _is_direct_child(archive, out):
                 continue
-            archive.unlink()
+            # Unlink the directory entry itself (including symlinks) so writes
+            # cannot follow an in-tree redirect into another output_dir file.
+            if archive.is_symlink() or archive.is_file():
+                archive.unlink()
         except (OSError, ValidationError) as exc:
             logger.warning("Could not remove stale archive %s: %s", archive.name, exc)
 
@@ -1144,13 +1179,14 @@ def _write_plugin_tarball(
     """Write ``{plugin_name}-{version}.tar.gz`` beside the plugin directory.
 
     Archives only allowlisted members (``plugin.json``, ``mcp.json``,
-    ``skills/``) and filters out symlink/hardlink members.
+    ``skills/``) and filters out symlink/hardlink members. The archive path
+    is opened as a literal child of *output_dir* after removing any prior
+    file or symlink with that name.
     """
     _scrub_plugin_root(plugin_root)
     _remove_plugin_archives(output_dir, plugin_name)
     archive_name = f"{plugin_name}-{_archive_version(version)}.tar.gz"
-    archive_path = (output_dir / archive_name).resolve()
-    validate_path_containment(archive_path, output_dir)
+    archive_path = _prepare_regular_file(output_dir / archive_name, output_dir)
     with tarfile.open(archive_path, "w:gz") as archive:
         for member_name in sorted(_PLUGIN_ROOT_ENTRIES):
             src = plugin_root / member_name
@@ -1206,11 +1242,14 @@ def package_as_agent_plugin(
             - When *include_mcp_config* is true, *mcp_transport* must be
               ``stdio`` or ``streamable-http``; *mcp_url* is required for
               ``streamable-http``.
+            - *write_tarball* requires *write_plugin_json* (distribution
+              artifacts must include required ``plugin.json``).
         Raises:
             FileNotFoundError: If the collection has no generated skills, or
                 none of those skills contain a ``SKILL.md``.
             ValidationError: On path escape, invalid plugin name, invalid MCP
-                transport/URL (including when the default name exceeds §5.5).
+                transport/URL, or ``write_tarball`` without ``write_plugin_json``
+                (including when the default name exceeds §5.5).
             OSError: On filesystem permission or I/O errors during mkdir,
                 copy, or manifest write (not silenced).
         Silences:
@@ -1225,6 +1264,11 @@ def package_as_agent_plugin(
     else:
         name = plugin_name
         validate_plugin_name(name)
+    if write_tarball and not write_plugin_json:
+        raise ValidationError(
+            "write_tarball requires write_plugin_json=True "
+            "(Agent Plugins packages must include plugin.json)."
+        )
     if include_mcp_config:
         validate_mcp_transport(mcp_transport)
         if mcp_transport == "streamable-http":
@@ -1249,7 +1293,9 @@ def package_as_agent_plugin(
     plugin_root.mkdir(parents=True, exist_ok=True)
 
     skills_out = plugin_root / "skills"
-    if skills_out.exists():
+    if skills_out.is_symlink():
+        _unlink_symlink_or_file(skills_out, plugin_root)
+    elif skills_out.exists():
         validate_path_containment(skills_out.resolve(), plugin_root)
         shutil.rmtree(skills_out)
     skills_out.mkdir(parents=True)
@@ -1299,9 +1345,8 @@ def package_as_agent_plugin(
                 skill_names=packaged,
             )
         )
-    elif plugin_json_file.is_file():
-        validate_path_containment(plugin_json_file.resolve(), plugin_root)
-        plugin_json_file.unlink()
+    elif plugin_json_file.is_symlink() or plugin_json_file.exists():
+        _unlink_symlink_or_file(plugin_json_file, plugin_root)
 
     mcp_json_path: str | None = None
     mcp_json_file = plugin_root / "mcp.json"
@@ -1313,9 +1358,8 @@ def package_as_agent_plugin(
                 mcp_url=mcp_url,
             )
         )
-    elif mcp_json_file.is_file():
-        validate_path_containment(mcp_json_file.resolve(), plugin_root)
-        mcp_json_file.unlink()
+    elif mcp_json_file.is_symlink() or mcp_json_file.exists():
+        _unlink_symlink_or_file(mcp_json_file, plugin_root)
 
     archive_path: str | None = None
     if write_tarball:
