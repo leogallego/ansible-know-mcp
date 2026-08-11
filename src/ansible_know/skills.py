@@ -28,14 +28,18 @@ from ansible_know.validation import (
     validate_install_path,
     validate_lola_module_name,
     validate_path_containment,
+    validate_plugin_name,
 )
 
 if TYPE_CHECKING:
     from ansible_know.types import (
+        AgentMcpConfig,
+        AgentPluginManifest,
         CollectionSkillContext,
         LolaMarketYml,
         ModuleMetadata,
         ModuleTagEntry,
+        PackageAsPluginResult,
         PackageForLolaResult,
         ParamDict,
         PluginManifestInput,
@@ -53,11 +57,13 @@ __all__ = [
     "PLUGIN_SKILL_DIR_RE",
     "collection_skill_name",
     "default_lola_module_name",
+    "default_plugin_name",
     "extract_skill_description",
     "fqcn_to_skill_name",
     "get_skill_sync",
     "list_skills_sync",
     "module_to_skill_name",
+    "package_as_agent_plugin",
     "package_collection_for_lola",
     "plugin_skill_name",
     "resolve_collection_skills_dir",
@@ -852,27 +858,8 @@ def package_collection_for_lola(
     collection_dir_name = collection_dir.name
     collection_skill_md = collection_dir / "SKILL.md"
 
-    has_collection_skill = collection_skill_md.is_file()
-
     # Plan packable skills before mutating any existing Lola module output.
-    nested_skill_dirs: list[Path] = []
-    for entry in sorted(collection_dir.iterdir()):
-        try:
-            if not entry.is_dir() or entry.is_symlink():
-                continue
-            if has_collection_skill and entry.name == collection_dir_name:
-                # Would overwrite the collection-level skill dirname.
-                logger.warning(
-                    "Skipping nested skill %r: name collides with collection skill",
-                    entry.name,
-                )
-                continue
-            if (entry / "SKILL.md").is_file():
-                nested_skill_dirs.append(entry)
-        except OSError as exc:
-            logger.warning("Skipping unreadable skill dir %s: %s", entry.name, exc)
-            continue
-
+    has_collection_skill, nested_skill_dirs = _plan_packable_skill_dirs(collection_dir)
     if not has_collection_skill and not nested_skill_dirs:
         raise FileNotFoundError(
             f"Collection '{collection_fqcn}' has no SKILL.md packages to wrap."
@@ -948,4 +935,246 @@ def package_collection_for_lola(
         "skill_count": len(packaged),
         "skills": packaged,
         "market_yml": market_yml_path,
+    }
+
+
+# --- Agent Plugins packaging (Layer 2; flatten only at package time) ---
+
+PLUGIN_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
+MCP_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json"
+
+
+def default_plugin_name(collection_fqcn: str) -> str:
+    """Return the default Agent Plugins ``name`` for a collection FQCN.
+
+    Uses ``ansible-{collection-kebab}``. Fails closed if that value violates
+    Agent Plugins §5.5 (e.g. longer than 64 characters) — callers must pass
+    an explicit ``plugin_name``.
+
+    Contract:
+        Preconditions:
+            - Callers SHOULD validate *collection_fqcn* with
+              ``validate_namespace()`` first.
+        Raises:
+            ValidationError: If the default name fails ``validate_plugin_name``.
+    """
+    name = f"ansible-{collection_skill_name(collection_fqcn)}"
+    validate_plugin_name(name)
+    return name
+
+
+def _plan_packable_skill_dirs(collection_dir: Path) -> tuple[bool, list[Path]]:
+    """Plan collection-level + nested skill dirs for packaging wraps."""
+    collection_dir_name = collection_dir.name
+    collection_skill_md = collection_dir / "SKILL.md"
+    has_collection_skill = collection_skill_md.is_file()
+
+    nested_skill_dirs: list[Path] = []
+    for entry in sorted(collection_dir.iterdir()):
+        try:
+            if not entry.is_dir() or entry.is_symlink():
+                continue
+            if has_collection_skill and entry.name == collection_dir_name:
+                logger.warning(
+                    "Skipping nested skill %r: name collides with collection skill",
+                    entry.name,
+                )
+                continue
+            if (entry / "SKILL.md").is_file():
+                nested_skill_dirs.append(entry)
+        except OSError as exc:
+            logger.warning("Skipping unreadable skill dir %s: %s", entry.name, exc)
+            continue
+    return has_collection_skill, nested_skill_dirs
+
+
+def _write_plugin_json(
+    plugin_root: Path,
+    *,
+    plugin_name: str,
+    collection_fqcn: str,
+    description: str,
+    version: str | None,
+) -> Path:
+    """Write closed-schema ``plugin.json`` under the plugin root."""
+    namespace, collection_name = split_collection_fqcn(collection_fqcn)
+    payload: AgentPluginManifest = {
+        "$schema": PLUGIN_SCHEMA,
+        "name": plugin_name,
+        "version": version or "0.0.0",
+        "description": description
+        or f"Ansible skills for the {collection_fqcn} collection",
+        "keywords": sorted({
+            "ansible",
+            namespace.lower(),
+            collection_name.replace("_", "-").lower(),
+        }),
+    }
+    plugin_json_path = plugin_root / "plugin.json"
+    validate_path_containment(plugin_json_path.resolve(), plugin_root)
+    plugin_json_path.write_text(json.dumps(payload, indent=2) + "\n")
+    return plugin_json_path
+
+
+def _write_mcp_json(plugin_root: Path) -> Path:
+    """Write Agent Plugins ``mcp.json`` pointing at know-mcp via uvx stdio."""
+    payload: AgentMcpConfig = {
+        "$schema": MCP_SCHEMA,
+        "mcpServers": {
+            "ansible-know": {
+                "type": "stdio",
+                "command": "uvx",
+                "args": ["ansible-know-mcp"],
+            },
+        },
+    }
+    mcp_json_path = plugin_root / "mcp.json"
+    validate_path_containment(mcp_json_path.resolve(), plugin_root)
+    mcp_json_path.write_text(json.dumps(payload, indent=2) + "\n")
+    return mcp_json_path
+
+
+def package_as_agent_plugin(
+    skills_dirs: Path | Sequence[Path],
+    collection_fqcn: str,
+    output_dir: Path,
+    *,
+    plugin_name: str | None = None,
+    include_mcp_config: bool = True,
+    write_plugin_json: bool = True,
+) -> PackageAsPluginResult:
+    """Wrap generated collection skills into an Agent Plugins directory.
+
+    Source layout (unchanged)::
+
+        {skills_dir}/{collection-kebab}/{skill}/SKILL.md
+
+    Target Agent Plugins layout::
+
+        {output_dir}/{plugin_name}/plugin.json
+        {output_dir}/{plugin_name}/mcp.json          # optional
+        {output_dir}/{plugin_name}/skills/{skill}/SKILL.md
+
+    Nested skill directories that contain ``SKILL.md`` are copied with supporting
+    files (symlink members are skipped). A collection-level ``SKILL.md`` is
+    packaged as ``skills/{collection-kebab}/SKILL.md``. ``MANIFEST.json`` is
+    not copied. Existing ``skills/`` under the plugin root is replaced.
+
+    Contract:
+        Preconditions:
+            - Callers MUST validate *collection_fqcn* with
+              ``validate_namespace()`` first.
+            - *output_dir* must be an allowed install path (validated here via
+              ``validate_install_path``).
+            - When *plugin_name* is not ``None``, it must already satisfy
+              Agent Plugins §5.5 (or it is validated here). Empty string is
+              invalid — pass ``None`` for the default name.
+        Raises:
+            FileNotFoundError: If the collection has no generated skills, or
+                none of those skills contain a ``SKILL.md``.
+            ValidationError: On path escape or invalid plugin name (including
+                when the default name exceeds §5.5 limits).
+            OSError: On filesystem permission or I/O errors during mkdir,
+                copy, or manifest write (not silenced).
+        Silences:
+            - Unreadable nested skill dirs (``OSError`` while iterating /
+              copying): logged and skipped; ``skill_count`` may omit them.
+            - Unreadable ``MANIFEST.json`` or collection skill description:
+              logged; version/description fall back to defaults.
+    """
+    resolved_output = validate_install_path(str(output_dir))
+    if plugin_name is None:
+        name = default_plugin_name(collection_fqcn)
+    else:
+        name = plugin_name
+        validate_plugin_name(name)
+
+    collection_dir = resolve_collection_skills_dir(skills_dirs, collection_fqcn)
+    collection_dir_name = collection_dir.name
+    collection_skill_md = collection_dir / "SKILL.md"
+
+    has_collection_skill, nested_skill_dirs = _plan_packable_skill_dirs(collection_dir)
+    if not has_collection_skill and not nested_skill_dirs:
+        raise FileNotFoundError(
+            f"Collection '{collection_fqcn}' has no SKILL.md packages to wrap."
+        )
+
+    plugin_root = (resolved_output / name).resolve()
+    validate_path_containment(plugin_root, resolved_output)
+    plugin_root.mkdir(parents=True, exist_ok=True)
+
+    skills_out = plugin_root / "skills"
+    if skills_out.exists():
+        validate_path_containment(skills_out.resolve(), plugin_root)
+        shutil.rmtree(skills_out)
+    skills_out.mkdir(parents=True)
+    validate_path_containment(skills_out.resolve(), plugin_root)
+
+    packaged: list[str] = []
+    if has_collection_skill:
+        dest = skills_out / collection_dir_name
+        dest.mkdir(parents=True, exist_ok=True)
+        validate_path_containment(dest.resolve(), plugin_root)
+        shutil.copy2(collection_skill_md, dest / "SKILL.md")
+        packaged.append(collection_dir_name)
+
+    for entry in nested_skill_dirs:
+        try:
+            dest = skills_out / entry.name
+            _copy_skill_tree(entry, dest, plugin_root)
+            packaged.append(entry.name)
+        except OSError as exc:
+            logger.warning("Skipping unreadable skill dir %s: %s", entry.name, exc)
+            continue
+
+    if not packaged:
+        raise FileNotFoundError(
+            f"Collection '{collection_fqcn}' has no SKILL.md packages to wrap."
+        )
+
+    description = ""
+    if collection_skill_md.is_file():
+        try:
+            description = extract_skill_description(collection_skill_md)
+        except OSError as exc:
+            logger.warning("Could not read collection skill description: %s", exc)
+
+    plugin_json_path: str | None = None
+    plugin_json_file = plugin_root / "plugin.json"
+    if write_plugin_json:
+        plugin_json_path = str(
+            _write_plugin_json(
+                plugin_root,
+                plugin_name=name,
+                collection_fqcn=collection_fqcn,
+                description=description,
+                version=_read_collection_version(collection_dir),
+            )
+        )
+    elif plugin_json_file.is_file():
+        validate_path_containment(plugin_json_file.resolve(), plugin_root)
+        plugin_json_file.unlink()
+
+    mcp_json_path: str | None = None
+    mcp_json_file = plugin_root / "mcp.json"
+    if include_mcp_config:
+        mcp_json_path = str(_write_mcp_json(plugin_root))
+    elif mcp_json_file.is_file():
+        validate_path_containment(mcp_json_file.resolve(), plugin_root)
+        mcp_json_file.unlink()
+
+    logger.info(
+        "Packaged %d skills for %s into Agent Plugin %s",
+        len(packaged),
+        collection_fqcn,
+        plugin_root,
+    )
+    return {
+        "collection": collection_fqcn,
+        "plugin_name": name,
+        "plugin_dir": str(plugin_root),
+        "skill_count": len(packaged),
+        "skills": packaged,
+        "plugin_json": plugin_json_path,
+        "mcp_json": mcp_json_path,
     }

@@ -1,6 +1,6 @@
 """Ansible Know MCP Server.
 
-Provides 19 tools, 6 resources, and 5 prompts for module, role, and plugin discovery,
+Provides 20 tools, 6 resources, and 5 prompts for module, role, and plugin discovery,
 documentation search, Galaxy collection discovery, and skill generation
 via the Model Context Protocol.
 """
@@ -12,6 +12,7 @@ import contextlib
 import json
 import logging
 import os
+import warnings
 from importlib.metadata import version as pkg_version
 from typing import Annotated, Any
 
@@ -36,6 +37,7 @@ from ansible_know.types import (
     GetRoleDocResult,
     ManifestResult,
     ModuleMetadata,
+    PackageAsPluginResult,
     PackageForLolaResult,
     PluginManifestInput,
     PluginMetadata,
@@ -53,6 +55,7 @@ from ansible_know.validation import (
     validate_keyword,
     validate_lola_module_name,
     validate_namespace,
+    validate_plugin_name,
     validate_plugin_type,
     validate_query,
     validate_skill_name,
@@ -1419,6 +1422,97 @@ async def generate_collection_skills(
 
 
 @mcp.tool(annotations=ToolAnnotations(idempotentHint=True, readOnlyHint=False, destructiveHint=True))
+async def package_as_plugin(
+    collection: Annotated[
+        str,
+        "Collection namespace whose generated skills to wrap (e.g. 'netbox.netbox').",
+    ],
+    output_dir: Annotated[
+        str,
+        "Parent directory where the Agent Plugin directory will be created "
+        "(e.g. '.' or '/tmp/agent-plugins').",
+    ],
+    source_dir: Annotated[
+        str | None,
+        "Optional skills root to read from. Defaults to ANSIBLE_KNOW_SKILLS_PATH "
+        "or SKILLS_DIR (same roots as list_skills).",
+    ] = None,
+    plugin_name: Annotated[
+        str | None,
+        "Optional Agent Plugins manifest name / directory name. Defaults to "
+        "'ansible-{collection-kebab}' (e.g. 'ansible-netbox-netbox'). Must "
+        "satisfy Agent Plugins §5.5 (1-64 chars, [a-z0-9.-]).",
+    ] = None,
+    include_mcp_config: Annotated[
+        bool,
+        "When true (default), write mcp.json with a stdio entry for "
+        "uvx ansible-know-mcp.",
+    ] = True,
+    write_plugin_json: Annotated[
+        bool,
+        "When true (default), write plugin.json with Agent Plugins v1.0.0 "
+        "manifest fields.",
+    ] = True,
+) -> PackageAsPluginResult | ErrorResponse:
+    """Wrap already-generated skills into an Agent Plugins directory.
+
+    Does not change ``generate_*`` output layout. Copies
+    ``skills/{collection-kebab}/{skill}/`` into
+    ``{output_dir}/{plugin}/skills/{skill}/`` and writes ``plugin.json``
+    (and optionally ``mcp.json``) per the Agent Plugins specification.
+    Replaces any existing ``skills/`` tree under the target plugin directory
+    (destructive but idempotent).
+
+    Returns: {"collection", "plugin_name", "plugin_dir", "skill_count", "skills",
+    "plugin_json", "mcp_json"} or {"error": str} on failure.
+    """
+    logger.info(
+        "package_as_plugin collection=%r output_dir=%r source_dir=%r plugin_name=%r",
+        collection,
+        output_dir,
+        source_dir,
+        plugin_name,
+    )
+    try:
+        validate_namespace(collection)
+        validate_install_path(output_dir)
+        if source_dir is not None:
+            validate_install_path(source_dir)
+        if plugin_name is not None:
+            validate_plugin_name(plugin_name)
+    except ValidationError as exc:
+        return {"error": str(exc)}
+
+    try:
+        from ansible_know.config import get_skills_dirs
+        from ansible_know.skills import package_as_agent_plugin
+
+        def _package() -> PackageAsPluginResult:
+            skills_dirs = (
+                [validate_install_path(source_dir)]
+                if source_dir is not None
+                else get_skills_dirs()
+            )
+            return package_as_agent_plugin(
+                skills_dirs,
+                collection,
+                validate_install_path(output_dir),
+                plugin_name=plugin_name,
+                include_mcp_config=include_mcp_config,
+                write_plugin_json=write_plugin_json,
+            )
+
+        return await run_in_executor(_package)
+    except FileNotFoundError as exc:
+        return {"error": sanitize_error(str(exc))}
+    except ValidationError as exc:
+        return {"error": str(exc)}
+    except Exception as exc:
+        logger.warning("package_as_plugin failed: %s", exc)
+        return {"error": sanitize_error(str(exc))}
+
+
+@mcp.tool(annotations=ToolAnnotations(idempotentHint=True, readOnlyHint=False, destructiveHint=True))
 async def package_for_lola(
     collection: Annotated[
         str,
@@ -1447,6 +1541,10 @@ async def package_for_lola(
 ) -> PackageForLolaResult | ErrorResponse:
     """Wrap already-generated skills into a Lola-compatible module directory.
 
+    .. deprecated::
+        Prefer :func:`package_as_plugin` (Agent Plugins). Kept for one release
+        cycle for backward compatibility.
+
     Does not change ``generate_*`` output layout. Copies
     ``skills/{collection-kebab}/{skill}/`` into
     ``{output_dir}/{module}/skills/{skill}/`` for marketplace /
@@ -1456,6 +1554,12 @@ async def package_for_lola(
     Returns: {"collection", "module_name", "module_dir", "skill_count", "skills",
     "market_yml"} or {"error": str} on failure.
     """
+    warnings.warn(
+        "package_for_lola is deprecated; use package_as_plugin (Agent Plugins)",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    logger.warning("package_for_lola is deprecated; use package_as_plugin")
     logger.info(
         "package_for_lola collection=%r output_dir=%r source_dir=%r module_name=%r",
         collection,

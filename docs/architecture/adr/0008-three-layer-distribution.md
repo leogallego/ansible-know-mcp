@@ -62,15 +62,23 @@ next-mcp's local scanner is shallow.
 Skills are generated once by a platform team, pushed to a GitHub repo,
 consumed by multiple developers.
 
-Two consumption paths:
+Primary packaging path:
+- **Agent Plugins (preferred):** Wrap generated skills with
+  ``package_as_plugin`` / Domain ``package_as_agent_plugin`` (#223) into
+  an Agent Plugins directory (`plugin.json`, flat `skills/{skill}/SKILL.md`,
+  optional `mcp.json` for know-mcp). Any conformant client can discover the
+  package. See [ADR-0009](0009-agent-plugins-distribution.md).
+
+Secondary / legacy paths:
 - **next-mcp SkillRegistry:** `type: "github"` source. Lola format
   detection can load nested skills **only** when the repo uses Lola
   layout (`{module}/skills/{skill}/SKILL.md`). Raw ansible-know output
   (`skills/{collection}/{module}/SKILL.md`) is **not** Lola layout —
-  wrap via #149 (or equivalent) before relying on GitHub Lola loading.
-  Vercel/generic GitHub loaders remain 1-level.
-- **Lola:** Wrap generated skills with ``package_for_lola`` (#149), then
-  distribute to 40+ agents via `lola install` / marketplace.
+  wrap via Agent Plugins (#223) or deprecated ``package_for_lola`` (#149)
+  before relying on GitHub Lola loading. Vercel/generic GitHub loaders
+  remain 1-level; Agent Plugins flat `skills/` matches that scan depth.
+- **Lola (deprecated):** ``package_for_lola`` (#149) remains for one
+  release cycle, then removal. Prefer Agent Plugins.
 
 **Value:** Persistence, sharing, version control, cross-agent reach.
 
@@ -104,8 +112,9 @@ generated once per collection version, served to all developers.
 - **Layer 1 gap (next-mcp)**: `_loadLocalSource` scans 1 level. Our
   2-level output (collection/skill) is within agentskills.io bounds but
   missed by the current implementation until upstream expands depth.
-- **Layer 2 packaging**: Lola/GitHub Lola consumption needs a wrap step
-  (#149); not automatic from raw nested trees.
+- **Layer 2 packaging**: Repository consumption needs a wrap step
+  (#223 Agent Plugins preferred; #149 Lola deprecated); not automatic
+  from raw nested trees.
 - **Layer 3 infrastructure**: remote deployment requires hosting,
   authentication, and monitoring. Not trivial for enterprise environments.
 - **Scope creep risk**: three layers could expand the project's scope
@@ -126,9 +135,10 @@ would break. Spec compliance makes the layers possible.
   Alignment details:
   [`docs/superpowers/specs/2026-08-02-skill-discoverability-alignment.md`](../../superpowers/specs/2026-08-02-skill-discoverability-alignment.md)
 - **Layer 2** (repository): generated skills pushed to a GitHub repo;
-  Lola packaging via MCP tool ``package_for_lola`` / Domain
-  ``package_collection_for_lola`` (#149) — wrap only; does not change
-  ``generate_*`` layout (ADR-0007).
+  Agent Plugins packaging via MCP tool ``package_as_plugin`` / Domain
+  ``package_as_agent_plugin`` (#223 / ADR-0009) — wrap only; does not
+  change ``generate_*`` layout (ADR-0007). Deprecated Lola wrap
+  ``package_for_lola`` (#149) kept for one release cycle.
 - **Layer 3** (remote): FastMCP HTTP/SSE transport (see ADR-0001). Not
   yet implemented — requires hosting, auth, and monitoring infrastructure
   (#71).
@@ -147,6 +157,8 @@ would break. Spec compliance makes the layers possible.
   defines the post-upstream integration path
 - [ADR-0007](0007-agentskills-spec-compliance.md) — one output format
   makes the three-layer model possible
+- [ADR-0009](0009-agent-plugins-distribution.md) — Agent Plugins as
+  primary Layer-2 packaging format
 
 ## Revision History
 
@@ -155,3 +167,4 @@ would break. Spec compliance makes the layers possible.
 | 2026-06-26 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Initial proposal |
 | 2026-08-03 | Leonardo Gallego (Assisted-by: Cursor) | Layer 1: project-scoped skills + AGENTS.md host discovery; correct Lola/GitHub claims; dual-config; scan-depth tracking |
 | 2026-08-03 | Leonardo Gallego (Assisted-by: Cursor) | Layer 1: optional `ANSIBLE_KNOW_SKILLS_PATH` multi-path reads (#182) |
+| 2026-08-11 | Leonardo Gallego (Assisted-by: Cursor (Grok 4.5)) | Layer 2: Agent Plugins primary (#223); Lola deprecated one cycle |

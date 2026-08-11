@@ -23,6 +23,7 @@ __all__ = [
     "validate_lola_module_name",
     "validate_namespace",
     "validate_path_containment",
+    "validate_plugin_name",
     "validate_plugin_type",
     "validate_query",
     "validate_skill_name",
@@ -44,10 +45,13 @@ _SKILL_NAME_RE = re.compile(r"^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)?$")
 _VERSION_RE = re.compile(r"^[a-zA-Z0-9._-]+$")
 _TAGS_RE = re.compile(r"^[a-zA-Z0-9_,-]+$")
 _LOLA_MODULE_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
+# Agent Plugins §5.5: lowercase alphanumeric, hyphen, period; no "--" / "..".
+_PLUGIN_NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?$")
 _SENSITIVE_PREFIXES = ("/etc", "/usr", "/bin", "/sbin", "/boot", "/proc", "/sys", "/dev")
 _PATH_RE = re.compile(r"/(?:home|tmp|usr|etc|var|opt)/\S+")
 # Allow "ansible-" + full kebab collection name (namespace max is 128).
 MAX_LOLA_MODULE_NAME_LENGTH = MAX_NAMESPACE_LENGTH + len("ansible-")
+MAX_PLUGIN_NAME_LENGTH = 64
 
 
 def validate_fqcn(name: str) -> None:
@@ -104,6 +108,36 @@ def validate_lola_module_name(name: str) -> None:
             "Invalid Lola module name: use 1-"
             f"{MAX_LOLA_MODULE_NAME_LENGTH} alphanumeric characters, "
             "dots, underscores, or hyphens (no path separators)."
+        )
+
+
+def validate_plugin_name(name: str) -> None:
+    """Validate an Agent Plugins ``plugin.json`` ``name`` field (§5.5).
+
+    Contract:
+        Preconditions:
+            - ``name`` length is 1–``MAX_PLUGIN_NAME_LENGTH`` (64).
+            - Character set is lowercase ``a-z``, ``0-9``, ``-``, ``.`` only.
+            - First and last characters are alphanumeric.
+            - No consecutive ``--`` or ``..``.
+            - No path separators (``/``, ``\\``).
+        Raises:
+            ValidationError: If any precondition fails (explicit check).
+    """
+    if (
+        not name
+        or len(name) > MAX_PLUGIN_NAME_LENGTH
+        or "/" in name
+        or "\\" in name
+        or "--" in name
+        or ".." in name
+        or not _PLUGIN_NAME_RE.match(name)
+    ):
+        raise ValidationError(
+            "Invalid plugin name: use 1-"
+            f"{MAX_PLUGIN_NAME_LENGTH} lowercase alphanumeric characters, "
+            "hyphens, or periods; must start and end alphanumeric; "
+            "no '--' or '..' (Agent Plugins §5.5)."
         )
 
 

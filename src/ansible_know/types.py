@@ -378,6 +378,41 @@ class LolaMarketYml(TypedDict):
     tags: list[str]
 
 
+class PackageAsPluginResult(TypedDict):
+    """Result of package_as_plugin tool / package_as_agent_plugin."""
+
+    collection: str
+    plugin_name: str
+    plugin_dir: str
+    skill_count: int
+    skills: list[str]
+    plugin_json: str | None
+    mcp_json: str | None
+
+
+AgentPluginManifest = TypedDict(
+    "AgentPluginManifest",
+    {
+        "$schema": str,
+        "name": str,
+        "version": str,
+        "description": str,
+        "keywords": list[str],
+    },
+)
+"""Closed-schema ``plugin.json`` payload (Agent Plugins v1.0.0)."""
+
+
+AgentMcpConfig = TypedDict(
+    "AgentMcpConfig",
+    {
+        "$schema": str,
+        "mcpServers": dict[str, dict[str, Any]],
+    },
+)
+"""Top-level ``mcp.json`` payload (Agent Plugins v1.0.0)."""
+
+
 class _CollectionDocsResultBase(TypedDict):
     """Required fields for batch collection docs result."""
 
