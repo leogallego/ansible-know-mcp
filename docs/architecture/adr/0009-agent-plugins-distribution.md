@@ -46,9 +46,10 @@ Adopt Agent Plugins as the **primary** Layer-2 packaging format.
 3. Deprecate `package_for_lola` for one release cycle (still functional with
    warning). Remove in a later release after consumers migrate.
 
-4. Default plugin name is `ansible-{collection-kebab}`. Names that violate
-   Agent Plugins §5.5 (including the 64-character limit) fail closed — callers
-   must supply an explicit `plugin_name`.
+4. Default plugin name is `ansible-{collection-kebab}-agentplugin` (distinct
+   from collection package names; signals Agent Plugins format). Names that
+   violate Agent Plugins §5.5 (including the 64-character limit) fail closed —
+   callers must supply an explicit `plugin_name`.
 
 5. Artifact format is **`.tar.gz`** (not ZIP) for consistency with Ansible
    collections and Pulp. Filename is `{plugin-name}-{version}.tar.gz`.
@@ -112,3 +113,4 @@ Adopt Agent Plugins as the **primary** Layer-2 packaging format.
 |------|--------|--------|
 | 2026-08-11 | Leonardo Gallego (Assisted-by: Cursor (Grok 4.5)) | Initial acceptance |
 | 2026-08-11 | Leonardo Gallego (Assisted-by: Cursor (Grok 4.5)) | tar.gz artifact, streamable-http mcp.json, richer keywords; clarify registry/harness out of scope |
+| 2026-08-11 | Leonardo Gallego (Assisted-by: Cursor (Grok 4.5)) | Default plugin name suffix `-agentplugin` to distinguish from collections |

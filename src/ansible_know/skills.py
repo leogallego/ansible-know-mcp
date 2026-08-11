@@ -953,9 +953,10 @@ MAX_PLUGIN_KEYWORDS = 64
 def default_plugin_name(collection_fqcn: str) -> str:
     """Return the default Agent Plugins ``name`` for a collection FQCN.
 
-    Uses ``ansible-{collection-kebab}``. Fails closed if that value violates
-    Agent Plugins §5.5 (e.g. longer than 64 characters) — callers must pass
-    an explicit ``plugin_name``.
+    Uses ``ansible-{collection-kebab}-agentplugin`` so artifacts are distinct
+    from Galaxy/Pulp collection names and clearly target the Agent Plugins
+    format. Fails closed if that value violates Agent Plugins §5.5 (e.g.
+    longer than 64 characters) — callers must pass an explicit ``plugin_name``.
 
     Contract:
         Preconditions:
@@ -964,7 +965,7 @@ def default_plugin_name(collection_fqcn: str) -> str:
         Raises:
             ValidationError: If the default name fails ``validate_plugin_name``.
     """
-    name = f"ansible-{collection_skill_name(collection_fqcn)}"
+    name = f"ansible-{collection_skill_name(collection_fqcn)}-agentplugin"
     validate_plugin_name(name)
     return name
 

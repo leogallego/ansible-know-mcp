@@ -1442,8 +1442,9 @@ async def package_as_plugin(
     plugin_name: Annotated[
         str | None,
         "Optional Agent Plugins manifest name / directory name. Defaults to "
-        "'ansible-{collection-kebab}' (e.g. 'ansible-netbox-netbox'). Must "
-        "satisfy Agent Plugins §5.5 (1-64 chars, [a-z0-9.-]).",
+        "'ansible-{collection-kebab}-agentplugin' "
+        "(e.g. 'ansible-netbox-netbox-agentplugin'). "
+        "Must satisfy Agent Plugins §5.5 (1-64 chars, [a-z0-9.-]).",
     ] = None,
     include_mcp_config: Annotated[
         bool,

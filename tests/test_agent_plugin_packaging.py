@@ -54,7 +54,7 @@ def _write_skill_tree(skills_root: Path, collection_kebab: str) -> Path:
 
 class TestValidatePluginName:
     def test_accepts_kebab_name(self) -> None:
-        validate_plugin_name("ansible-netbox-netbox")
+        validate_plugin_name("ansible-netbox-netbox-agentplugin")
 
     def test_accepts_single_char(self) -> None:
         validate_plugin_name("a")
@@ -96,7 +96,7 @@ class TestValidatePluginName:
 
 class TestDefaultPluginName:
     def test_prefixes_ansible(self) -> None:
-        assert default_plugin_name("netbox.netbox") == "ansible-netbox-netbox"
+        assert default_plugin_name("netbox.netbox") == "ansible-netbox-netbox-agentplugin"
 
     def test_overlong_fails_closed(self) -> None:
         # ansible- (8) + 60-char ns + "-" + 1 = already past 64 when long enough
@@ -139,7 +139,7 @@ class TestPackageAsAgentPlugin:
         result = package_as_agent_plugin(skills, "netbox.netbox", out)
 
         plugin_dir = Path(result["plugin_dir"])
-        assert result["plugin_name"] == "ansible-netbox-netbox"
+        assert result["plugin_name"] == "ansible-netbox-netbox-agentplugin"
         assert result["skill_count"] == 3
         assert set(result["skills"]) == {
             "netbox-netbox",
@@ -155,7 +155,7 @@ class TestPackageAsAgentPlugin:
 
         plugin_json = json.loads((plugin_dir / "plugin.json").read_text())
         assert plugin_json["$schema"] == PLUGIN_SCHEMA
-        assert plugin_json["name"] == "ansible-netbox-netbox"
+        assert plugin_json["name"] == "ansible-netbox-netbox-agentplugin"
         assert plugin_json["version"] == "3.2.0"
         assert plugin_json["description"] == "Collection overview"
         assert "ansible" in plugin_json["keywords"]
@@ -176,12 +176,12 @@ class TestPackageAsAgentPlugin:
         assert result["mcp_json"] == str(plugin_dir / "mcp.json")
 
         archive = Path(result["archive"] or "")
-        assert archive.name == "ansible-netbox-netbox-3.2.0.tar.gz"
+        assert archive.name == "ansible-netbox-netbox-agentplugin-3.2.0.tar.gz"
         assert archive.is_file()
         with tarfile.open(archive, "r:gz") as tf:
             names = tf.getnames()
-        assert "ansible-netbox-netbox/plugin.json" in names
-        assert "ansible-netbox-netbox/skills/netbox-device/SKILL.md" in names
+        assert "ansible-netbox-netbox-agentplugin/plugin.json" in names
+        assert "ansible-netbox-netbox-agentplugin/skills/netbox-device/SKILL.md" in names
 
     def test_skips_plugin_json_when_disabled(self, tmp_path: Path) -> None:
         skills = tmp_path / "skills"
