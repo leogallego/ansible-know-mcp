@@ -53,8 +53,9 @@ Adopt Agent Plugins as the **primary** Layer-2 packaging format.
 
 5. Artifact format is **`.tar.gz`** (not ZIP) for consistency with Ansible
    collections and Pulp. Filename is `{plugin-name}-{version}.tar.gz`.
-   Archives include only allowlisted members (`plugin.json`, `mcp.json`,
-   `skills/`); symlinks are omitted.
+   Archive members are at the **archive root** (`plugin.json`, `mcp.json`,
+   `skills/…`) — not nested under `{plugin-name}/`. Only allowlisted members
+   are included; symlinks are omitted.
 
 6. `mcp.json` supports `stdio` (default `uvx ansible-know-mcp`) and
    `streamable-http` (requires `mcp_url` for AAP-hosted know-mcp).

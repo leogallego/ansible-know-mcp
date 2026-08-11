@@ -1225,7 +1225,8 @@ def _write_plugin_tarball(
     """Write ``{plugin_name}-{version}.tar.gz`` beside the plugin directory.
 
     Archives only allowlisted members (``plugin.json``, ``mcp.json``,
-    ``skills/``) and filters out symlink/hardlink members. The archive path
+    ``skills/``) at the **archive root** (no wrapping ``{plugin_name}/``
+    directory) and filters out symlink/hardlink members. The archive path
     is opened as a literal child of *output_dir* after removing any prior
     file or symlink with that name.
     """
@@ -1240,7 +1241,7 @@ def _write_plugin_tarball(
                 continue
             archive.add(
                 src,
-                arcname=f"{plugin_name}/{member_name}",
+                arcname=member_name,
                 filter=_tar_safe_filter,
             )
     return archive_path
