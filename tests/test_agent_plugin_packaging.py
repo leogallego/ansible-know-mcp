@@ -192,8 +192,15 @@ class TestPackageAsAgentPlugin:
         assert archive.is_file()
         with tarfile.open(archive, "r:gz") as tf:
             names = tf.getnames()
-        assert "ansible-netbox-netbox-agentplugin/plugin.json" in names
-        assert "ansible-netbox-netbox-agentplugin/skills/netbox-device/SKILL.md" in names
+        plugin_name = result["plugin_name"]
+        assert "plugin.json" in names
+        assert any(
+            name.startswith("skills/") and name.endswith("/SKILL.md")
+            for name in names
+        )
+        assert "skills/netbox-device/SKILL.md" in names
+        assert not any(name == plugin_name or name.startswith(f"{plugin_name}/")
+                       for name in names)
 
     def test_skips_plugin_json_when_disabled(self, tmp_path: Path) -> None:
         skills = tmp_path / "skills"
@@ -332,9 +339,12 @@ class TestPackageAsAgentPlugin:
         with tarfile.open(result["archive"] or "", "r:gz") as tf:
             names = set(tf.getnames())
             members = tf.getmembers()
-        assert "ansible-netbox-netbox-agentplugin/plugin.json" in names
-        assert "ansible-netbox-netbox-agentplugin/extra.txt" not in names
-        assert "ansible-netbox-netbox-agentplugin/leak" not in names
+        plugin_name = result["plugin_name"]
+        assert "plugin.json" in names
+        assert "extra.txt" not in names
+        assert "leak" not in names
+        assert not any(name == plugin_name or name.startswith(f"{plugin_name}/")
+                       for name in names)
         assert all(not m.issym() and not m.islnk() for m in members)
 
     def test_removes_stale_versioned_archives(self, tmp_path: Path) -> None:
