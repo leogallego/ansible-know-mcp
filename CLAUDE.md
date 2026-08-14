@@ -16,6 +16,12 @@ Runtime requirement: `ansible-core` must be installed in the same environment (f
 
 ## Architecture
 
+Layer rules, hard checks, and known exceptions live in
+`docs/architecture/service-contracts.md` (ADRs under `docs/architecture/adr/`).
+PR / branch architecture review: use portable skill `git-review` (wired via
+`.git-pipeline.yml`); Python style via `pep8-review`. Do not revive a project
+`pr-architecture-review` skill — update contracts/ADRs when architecture drifts.
+
 ```
 src/ansible_know/
 ├── server.py              # FastMCP server: 20 tools, 6 resources, 5 prompts (entrypoint)

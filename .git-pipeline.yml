@@ -1,0 +1,22 @@
+# git-pipeline conventions for ansible-know-mcp
+version: 1
+default_branch: main
+branch_pattern: "<type>/<n>-<slug>"
+merge_method: merge
+stack_ci: serial
+labels: true
+attribution: "Assisted-by: Cursor (Grok 4.5)"
+test_commands:
+  - "uv run pytest tests/ -v"
+lint_commands:
+  - "uv run ruff check src/ tests/"
+always_load_review_skills:
+  - git-review
+  - pep8-review
+architecture:
+  contracts: docs/architecture/service-contracts.md
+  adr_dir: docs/architecture/adr/
+  strategy: docs/architecture/project-strategy.md
+claude_md_hash: ""
+forge:
+  provider: github
