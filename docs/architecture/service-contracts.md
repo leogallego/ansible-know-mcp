@@ -1,11 +1,17 @@
 # Service Contracts
 
-This document defines the formal contracts between architecture layers in the
-Ansible Know MCP Server. It describes how each layer *should* interact and
-flags violations found in the current codebase.
+Enforceable architecture rules for the Ansible Know MCP Server. Reviewed by
+`git-review` (ai-skills-git). **Hard rules** must be fixed before merge.
+**Soft guidelines** are advisory (PEP 8 / naming stay with `pep8-review`).
+
+This document is the sole source of truth for layer boundaries, allowed
+dependencies, and known exceptions. Do not duplicate these rules into a
+project review skill — update **this file** (and ADRs / strategy) when
+architecture drifts.
 
 Based on the architecture review in `docs/research/architecture-report.md`
-(2026-06-16) and updated after PR #60 (2026-06-17).
+(2026-06-16); updated through Agent Plugins packaging (2026-08-11) and
+git-review migration (2026-08-14).
 
 ## Layer Architecture
 
@@ -37,6 +43,40 @@ The server follows a 5-layer pipeline architecture adapted for MCP:
 **Data flows downward.** Each layer may depend on layers below it but never
 on layers above. The Transport layer is owned by the FastMCP framework; the
 Orchestration layer is the application's primary entry point.
+
+### Layer map (path → layer)
+
+Classify changed files with this table for `git-review`. Files that do not
+match (e.g. `README.md`, `pyproject.toml`, CI) do not require architecture
+review unless they change contracts/ADRs.
+
+| Path / pattern | Layer |
+|----------------|-------|
+| Framework config, transport setup | **Transport** |
+| `src/ansible_know/server.py` | **Orchestration** |
+| `src/ansible_know/parser.py` | **Domain** |
+| `src/ansible_know/skills.py` | **Domain** |
+| `src/ansible_know/collection_manifest.py` | **Domain** |
+| `src/ansible_know/docs.py` | **Domain** |
+| `src/ansible_know/resolution.py` | **Domain** |
+| `src/ansible_know/templates/*` | **Domain** (templates) |
+| `src/ansible_know/galaxy.py` | **External Access** |
+| `src/ansible_know/collections.py` | **External Access** |
+| `src/ansible_know/readme_parser.py` | **External Access** |
+| `src/ansible_know/redhat_docs.py` | **External Access** |
+| `src/ansible_know/cache.py` | **Foundation** |
+| `src/ansible_know/config.py` | **Foundation** |
+| `src/ansible_know/galaxy_config.py` | **Foundation** |
+| `src/ansible_know/async_utils.py` | **Foundation** |
+| `src/ansible_know/state.py` | **Foundation** |
+| `src/ansible_know/tagging.py` | **Foundation** |
+| `src/ansible_know/text_utils.py` | **Foundation** |
+| `src/ansible_know/validation.py` | **Foundation** |
+| `src/ansible_know/errors.py` | **Foundation** |
+| `src/ansible_know/types.py` | **Foundation** |
+| `src/ansible_know/manifest_builder.py` | **Build-time** (not runtime) |
+| `src/ansible_know/cli.py` | **CLI** (entrypoint) |
+| `tests/*` | **Test** (mirror the source layer under test) |
 
 ---
 
@@ -362,6 +402,21 @@ External     → Foundation (only)
 Foundation   → (no internal dependencies)
 ```
 
+### Anti-patterns (do not introduce)
+
+- **Domain → External Access** — e.g. `parser.py` importing `galaxy` /
+  `collections`. Domain depends on Foundation only.
+- **External Access → Domain** — e.g. `galaxy.py` importing `parser` /
+  `skills` for non-transformer use. (V-L3: lazy import of pure transformers
+  is the accepted exception — do not expand.)
+- **Foundation → any upper layer** — zero deps on Orchestration / Domain /
+  External Access.
+- **Orchestration business logic** — `server.py` must not implement
+  resolution strategies, data transforms, or caching; delegate to Domain.
+
+Do not add new layer-boundary crossings. If a PR must cross a boundary,
+document why and file a follow-up issue.
+
 ### Violations of Dependency Rules
 
 | ID | Severity | Description |
@@ -370,6 +425,124 @@ Foundation   → (no internal dependencies)
 | ~~V-L2~~ | ~~Warning~~ | ~~Orchestration (`server.py`) contains domain logic in `_resolve_module_doc()` and `_resolve_role_doc()` — these are domain-level resolution strategies, not orchestration.~~ **Fixed in PR #66** — Moved to `resolution.py`. |
 | V-L3 | Info | External Access (`galaxy.py`) lazy-imports Domain modules (`readme_parser.py` for `fetch_role_doc()`, `parser.py` for `transform_galaxy_to_ansible_doc_format()` in `fetch_module_doc()`). Both are pure data transformers — acceptable cross-layer calls that avoid duplicating domain logic. |
 | ~~V-L4~~ | ~~Warning~~ | ~~Domain (`parser.py`) imports External Access (`collections.py`) at the top level to get the collections path.~~ **Fixed in PR #69** — `parser.py` accepts `collections_path` as a parameter; callers (server.py, resolution.py) inject it from `collections.get_collections_path()`. |
+
+---
+
+## Hard rules
+
+Must-fix before merge (`git-review` Errors). Layer narrative and per-boundary
+detail live in the sections above; this list is the enforceable checklist.
+
+### Types / API surface
+
+- Structured returns use `TypedDict`s from `types.py` (`ModuleMetadata`,
+  `RoleMetadata`, `DocProvenance`, `ParamDict`, `EntryPointInfo`, tool result
+  types) — not bare `dict[str, Any]` at public boundaries.
+- New structured shapes get a `TypedDict` in `types.py`.
+- Errors use `errors.py` hierarchy (`AnsibleKnowError` subclasses). Do not
+  raise bare `Exception` / `ValueError` from tool or Domain paths.
+- Tool inputs are validated in Orchestration (`validation.py`) before Domain
+  or External Access calls.
+
+### Async / sync
+
+- Blocking I/O (subprocess, filesystem, sync network) called from async
+  handlers MUST go through `run_in_executor()` / `_run_in_executor()`.
+- Subprocess: `subprocess.run(..., capture_output=True, text=True, timeout=…)`.
+  No `Popen` / `os.system` for tool paths.
+- Use `asyncio.get_running_loop()` — never deprecated `get_event_loop()`.
+
+### State
+
+- Process-wide state → `SharedState` (lifespan). Per-session → `ServerState`
+  via `SessionManager` (`state.py`).
+- New caches SHOULD use `BoundedCache` (`cache.py`). No ad-hoc
+  `OrderedDict` + `Lock` patterns.
+- Collection install state → `CollectionManager` (per-session). No module-level
+  collection state.
+- State touched from executor threads MUST use `threading.Lock`. Async-only
+  shared mutation SHOULD use `asyncio.Lock` when concurrent coroutines mutate.
+
+### Public API / MCP surface
+
+- Modules with `__all__` must list new public symbols (or use `_` prefix for
+  internal).
+- No cross-module calls to another module's `_private()` helpers — promote to
+  public if shared.
+- New MCP tools include `ToolAnnotations` (`readOnlyHint` / `idempotentHint` /
+  `destructiveHint` as appropriate). Resources need clear names/descriptions.
+
+### Security / boundary
+
+- Validate tool inputs (`_FQCN_RE`, `_NAMESPACE_RE`, etc.) before use.
+- Paths from user input: `validate_path_containment()` /
+  `validate_install_path()`.
+- User-facing errors: `sanitize_error()` (no filesystem paths).
+- Subprocess args as lists — no string-interpolated shells from user input.
+- Galaxy credentials: `_sanitize_credential()` (strip control chars).
+- Large payloads: `truncate_response()` where applicable.
+
+### ADR / strategy
+
+- ADR-0006 (upstream-first): do not add knowledge tools that overlap next-mcp;
+  focus on skill generation and sharing.
+- ADR-0007: generated skills kebab-case; `metadata.fqcn` / `collection` /
+  `plugin-type` / `compatibility`; validate with `agentskills validate`.
+- ADR-0008 / ADR-0009: three-layer distribution; Layer 2 prefers Agent Plugins
+  (`package_as_plugin`); `package_for_lola` is deprecated.
+- PRs that contradict an ADR must update the ADR or document the deviation.
+- Tools marked for upstream deprecation (search_modules, search_plugins,
+  search_collections, ensure_collection, get_module_doc, get_plugin_doc,
+  get_role_doc, clear_cache): maintain only — no new features.
+
+---
+
+## Soft guidelines
+
+- PEP 8 naming, None comparisons, bare `except`, sequence truthiness →
+  `pep8-review` (always-loaded). Do not duplicate here.
+- Prefer fixing residual untyped internals opportunistically (Info), not as
+  merge blockers when TypedDicts already exist at the MCP boundary.
+- Architecture drift in a PR (new modules, layer moves, ADR edits) → update
+  **this file** and ADRs before merge; do not revive a project review skill.
+
+---
+
+## Severity calibration
+
+Used by `git-review` when classifying findings. PEP 8 / naming / `None`
+comparisons / bare `except` → `pep8-review` (not listed here).
+
+| Severity | When (this repo) | Action |
+|----------|------------------|--------|
+| Error | New layer-boundary violation; thread-safety bug on shared/executor state; security-boundary miss (validation, path containment, `sanitize_error`, credential sanitize, subprocess list-args); ADR contradiction without ADR update | Block merge |
+| Warning | Missing TypedDict / validation / `__all__` at a public boundary; cross-module `_private` use; new ad-hoc cache/state instead of `BoundedCache` / `SharedState`/`ServerState`; new features on upstream-deprecated tools; layer map or this file stale vs the diff | Fix or file follow-up before merge |
+| Info | Residual internal `dict[str, Any]` where TypedDicts exist; minor naming; missing annotations on non-boundary helpers; accepted exceptions (e.g. V-L3) unchanged | Note; fix opportunistically |
+
+---
+
+## Known exceptions
+
+Open / accepted exceptions appear in the violation tables above. Do not worsen
+them. Current open dependency exception:
+
+| ID | Severity | Summary | Status |
+|----|----------|---------|--------|
+| V-L3 | Info | `galaxy.py` lazy-imports Domain transformers | Accepted — do not expand |
+
+Resolved historical IDs (V-T*, V-D*, V-E*, V-S*, V-L1/L2/L4, V-D6, …) remain
+struck through in the layer sections for audit trail.
+
+---
+
+## Companion skills
+
+| When files match | Load skill (if installed) |
+|------------------|---------------------------|
+| Architecture / layer / ADR review | `git-review` (always-load via `.git-pipeline.yml`) |
+| `*.py` generally | `pep8-review` (always-load) |
+| Types / signatures | `tighten-types`, `contract-docstrings` |
+| Exception paths | `try-except` |
 
 ---
 
