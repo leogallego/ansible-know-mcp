@@ -402,10 +402,20 @@ External     → Foundation (only)
 Foundation   → (no internal dependencies)
 ```
 
+### Anti-patterns (do not introduce)
+
+- **Domain → External Access** — e.g. `parser.py` importing `galaxy` /
+  `collections`. Domain depends on Foundation only.
+- **External Access → Domain** — e.g. `galaxy.py` importing `parser` /
+  `skills` for non-transformer use. (V-L3: lazy import of pure transformers
+  is the accepted exception — do not expand.)
+- **Foundation → any upper layer** — zero deps on Orchestration / Domain /
+  External Access.
+- **Orchestration business logic** — `server.py` must not implement
+  resolution strategies, data transforms, or caching; delegate to Domain.
+
 Do not add new layer-boundary crossings. If a PR must cross a boundary,
-document why and file a follow-up issue. Orchestration must delegate business
-logic to Domain — not implement resolution strategies, transforms, or caching
-inline in `server.py`.
+document why and file a follow-up issue.
 
 ### Violations of Dependency Rules
 
@@ -495,6 +505,19 @@ detail live in the sections above; this list is the enforceable checklist.
   merge blockers when TypedDicts already exist at the MCP boundary.
 - Architecture drift in a PR (new modules, layer moves, ADR edits) → update
   **this file** and ADRs before merge; do not revive a project review skill.
+
+---
+
+## Severity calibration
+
+Used by `git-review` when classifying findings. PEP 8 / naming / `None`
+comparisons / bare `except` → `pep8-review` (not listed here).
+
+| Severity | When (this repo) | Action |
+|----------|------------------|--------|
+| Error | New layer-boundary violation; thread-safety bug on shared/executor state; security-boundary miss (validation, path containment, `sanitize_error`, credential sanitize, subprocess list-args); ADR contradiction without ADR update | Block merge |
+| Warning | Missing TypedDict / validation / `__all__` at a public boundary; cross-module `_private` use; new ad-hoc cache/state instead of `BoundedCache` / `SharedState`/`ServerState`; new features on upstream-deprecated tools; layer map or this file stale vs the diff | Fix or file follow-up before merge |
+| Info | Residual internal `dict[str, Any]` where TypedDicts exist; minor naming; missing annotations on non-boundary helpers; accepted exceptions (e.g. V-L3) unchanged | Note; fix opportunistically |
 
 ---
 
