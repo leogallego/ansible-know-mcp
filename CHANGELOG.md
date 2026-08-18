@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-18
+
+### Added
+
+- Agent Plugins packaging via `package_as_plugin` — `plugin.json`, flat `skills/`, optional `mcp.json` (#223, #224)
+- Standalone Galaxy role search and docs — `search_standalone_roles`, `get_standalone_role_doc` for 2-part `namespace.role` names (#230, #232)
+- Per-collection index pointers in `AGENTS.md` (module count, version, SKILL.md path) (#222, #225)
+
+### Deprecated
+
+- `package_for_lola` — still works, emits a deprecation warning; remove after one release cycle (#223)
+
+### Fixed
+
+- Emit Agent Plugin tarball members at archive root (`plugin.json`, `skills/`) for PAH/Pulp ingest (#226, #228)
+
+### Changed
+
+- Steer agents toward `get_collection_manifest` before `get_collection_docs` (#231)
+
+### Chore
+
+- Migrate architecture review to git-review; contracts as source of truth (#229)
+- Bump `actions/setup-python` 6.3.0 → 7.0.0, `astral-sh/setup-uv` 8.2.0 → 9.0.0, `actions/checkout` 7.0.0 → 7.0.1, `pypa/gh-action-pypi-publish` 1.14.0 → 1.14.2
+
 ## [0.8.0] - 2026-08-08
 
 ### Added
@@ -236,6 +261,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OWASP security hardening: FQCN input validation, path traversal protection, error sanitization, output size limits, audit logging
 - 77 tests covering tools, parser, skills, docs, collection manifests, and security
 
+[0.9.0]: https://github.com/leogallego/ansible-know-mcp/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/leogallego/ansible-know-mcp/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/leogallego/ansible-know-mcp/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/leogallego/ansible-know-mcp/compare/v0.6.0...v0.6.1
