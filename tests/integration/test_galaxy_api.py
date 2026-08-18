@@ -86,3 +86,25 @@ class TestRealGalaxyAPIRoles:
         if result["count"] > 0:
             first = result["collections"][0]
             assert "role_count" in first
+
+
+class TestRealGalaxyAPIV1Roles:
+    @pytest.mark.asyncio
+    async def test_search_standalone_roles_rhel9_cis(self):
+        from ansible_know.galaxy_v1 import GalaxyV1Client
+        async with GalaxyV1Client() as client:
+            result = await client.search_roles("rhel9_cis")
+        assert result["count"] >= 1
+        names = [r["role_name"] for r in result["roles"]]
+        assert any("rhel9_cis" in n for n in names)
+
+    @pytest.mark.asyncio
+    async def test_fetch_ansible_lockdown_rhel9_cis(self):
+        from ansible_know.galaxy_v1 import GalaxyV1Client
+        async with GalaxyV1Client() as client:
+            meta, prov = await client.fetch_standalone_role_doc(
+                "ansible-lockdown.rhel9_cis",
+            )
+        assert meta["role_name"] == "ansible-lockdown.rhel9_cis"
+        assert meta["content_type"] == "standalone_role"
+        assert prov["doc_source"] in ("galaxy_v1_readme", "galaxy_v1_metadata")

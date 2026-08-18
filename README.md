@@ -58,6 +58,8 @@ Together with [Ansible Devtools MCP](https://github.com/ansible/ansible-dev-tool
  | get_module_doc             |  | environment_info         |  | galaxy.*     |
  | get_plugin_doc             |  |                          |  |              |
  | get_role_doc               |  | TEST                     |  |              |
+ | search_standalone_roles    |  |                          |  |              |
+ | get_standalone_role_doc    |  |                          |  |              |
  | get_collection_docs        |  | ansible_lint             |  |              |
  | get_collection_manifest    |  | ansible_navigator        |  |              |
  | search_docs                |  |                          |  |              |
@@ -242,6 +244,8 @@ claude mcp add ansible-know --transport http https://know.ansible.ar/mcp
 | `get_module_doc(module_name)` | Full structured docs: params, examples, API detection. Falls back to Galaxy if not installed locally |
 | `get_plugin_doc(plugin_name, plugin_type)` | Full structured plugin documentation with Galaxy fallback |
 | `get_role_doc(role_name)` | Role documentation with three-tier resolution: local ansible-doc, Galaxy README, or graceful degradation |
+| `search_standalone_roles(query, tags?)` | Search Galaxy standalone (legacy v1) roles by keyword |
+| `get_standalone_role_doc(role_name)` | Structured docs for a 2-part `namespace.role` from Galaxy README HTML |
 | `get_collection_docs(collection_namespace, version?)` | Get all module docs for a collection from Galaxy in a single call |
 | `get_collection_manifest(collection_namespace)` | Collection-level manifest with per-module and per-role summaries |
 | `search_docs(query, source?, topic?, audience?, core_only?)` | Search documentation manifests for conceptual guides (up to 20 matches) |

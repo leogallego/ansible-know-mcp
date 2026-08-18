@@ -31,6 +31,7 @@ __all__ = [
     "validate_plugin_type",
     "validate_query",
     "validate_skill_name",
+    "validate_standalone_role_name",
     "validate_tags",
     "validate_version",
 ]
@@ -83,6 +84,39 @@ def validate_namespace(ns: str) -> None:
             "Invalid collection namespace: expected format 'namespace.collection' "
             "with alphanumeric/underscore segments."
         )
+
+
+_STANDALONE_ROLE_SEGMENT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+
+
+def validate_standalone_role_name(name: str) -> None:
+    """Validate a Galaxy standalone role identifier ``namespace.role``."""
+    if not name or "/" in name or "\\" in name:
+        raise ValidationError(
+            "Invalid standalone role name: expected format 'namespace.role' "
+            "with alphanumeric, hyphen, or underscore segments."
+        )
+    parts = name.split(".")
+    if len(parts) == 3:
+        raise ValidationError(
+            "Invalid standalone role name: expected 'namespace.role'. "
+            "Collection roles use get_role_doc() with a 3-part FQCN."
+        )
+    if len(parts) != 2:
+        raise ValidationError(
+            "Invalid standalone role name: expected format 'namespace.role' "
+            "with alphanumeric, hyphen, or underscore segments."
+        )
+    for part in parts:
+        if (
+            not part
+            or len(part) > MAX_NAMESPACE_LENGTH
+            or not _STANDALONE_ROLE_SEGMENT_RE.match(part)
+        ):
+            raise ValidationError(
+                "Invalid standalone role name: expected format 'namespace.role' "
+                "with alphanumeric, hyphen, or underscore segments."
+            )
 
 
 def validate_lola_module_name(name: str) -> None:

@@ -1753,6 +1753,76 @@ class TestSearchCollectionsTool:
         assert "error" in result
 
 
+class TestSearchStandaloneRolesTool:
+    @pytest.mark.asyncio
+    async def test_returns_results(self):
+        mock_result = {
+            "query": "rhel9_cis",
+            "count": 1,
+            "roles": [{"role_name": "ansible-lockdown.rhel9_cis", "download_count": 9}],
+        }
+        with patch(
+            "ansible_know.resolution.search_standalone_roles",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ):
+            from ansible_know.server import search_standalone_roles
+            result = await search_standalone_roles("rhel9_cis")
+        assert result["count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_rejects_empty_query(self):
+        from ansible_know.server import search_standalone_roles
+        result = await search_standalone_roles("")
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_handles_galaxy_error(self):
+        from ansible_know.errors import GalaxyError
+        with patch(
+            "ansible_know.resolution.search_standalone_roles",
+            new_callable=AsyncMock,
+            side_effect=GalaxyError("timeout"),
+        ):
+            from ansible_know.server import search_standalone_roles
+            result = await search_standalone_roles("cis")
+        assert "error" in result
+
+
+class TestGetStandaloneRoleDocTool:
+    @pytest.mark.asyncio
+    async def test_returns_doc(self):
+        mock_result = {
+            "role_name": "ansible-lockdown.rhel9_cis",
+            "content_type": "standalone_role",
+            "doc_source": "galaxy_v1_readme",
+            "entry_points": {"main": {"description": "", "options": []}},
+        }
+        with patch(
+            "ansible_know.resolution.resolve_standalone_role_doc",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ):
+            from ansible_know.server import get_standalone_role_doc
+            result = await get_standalone_role_doc("ansible-lockdown.rhel9_cis")
+        assert result["content_type"] == "standalone_role"
+
+    @pytest.mark.asyncio
+    async def test_rejects_three_part_fqcn(self):
+        from ansible_know.server import get_standalone_role_doc
+        result = await get_standalone_role_doc(
+            "fedora.linux_system_roles.timesync",
+        )
+        assert "error" in result
+        assert "get_role_doc" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_get_role_doc_still_requires_three_part(self):
+        from ansible_know.server import get_role_doc
+        result = await get_role_doc("ansible-lockdown.rhel9_cis")
+        assert "error" in result
+
+
 class TestLifespanHttpClient:
     @pytest.mark.asyncio
     async def test_get_module_doc_passes_lifespan_http_client(self, mock_ansible_doc):
@@ -2337,11 +2407,13 @@ class TestClearCache:
         from ansible_know.server import clear_cache
 
         with patch("ansible_know.galaxy.clear_cache") as mock_galaxy, \
+             patch("ansible_know.galaxy_v1.clear_cache") as mock_galaxy_v1, \
              patch("ansible_know.docs.clear_cache") as mock_docs:
             result = await clear_cache()
 
-        assert result == {"cleared": ["galaxy_versions", "galaxy_blobs", "doc_manifests", "doc_pages"]}
+        assert result == {"cleared": ["galaxy_versions", "galaxy_blobs", "galaxy_v1", "doc_manifests", "doc_pages"]}
         mock_galaxy.assert_called_once()
+        mock_galaxy_v1.assert_called_once()
         mock_docs.assert_called_once()
 
     @pytest.mark.asyncio
@@ -2349,11 +2421,13 @@ class TestClearCache:
         from ansible_know.server import clear_cache
 
         with patch("ansible_know.galaxy.clear_cache") as mock_galaxy, \
+             patch("ansible_know.galaxy_v1.clear_cache") as mock_galaxy_v1, \
              patch("ansible_know.docs.clear_cache") as mock_docs:
             result = await clear_cache(scope="galaxy")
 
-        assert result == {"cleared": ["galaxy_versions", "galaxy_blobs"]}
+        assert result == {"cleared": ["galaxy_versions", "galaxy_blobs", "galaxy_v1"]}
         mock_galaxy.assert_called_once()
+        mock_galaxy_v1.assert_called_once()
         mock_docs.assert_not_called()
 
     @pytest.mark.asyncio
@@ -2361,11 +2435,13 @@ class TestClearCache:
         from ansible_know.server import clear_cache
 
         with patch("ansible_know.galaxy.clear_cache") as mock_galaxy, \
+             patch("ansible_know.galaxy_v1.clear_cache") as mock_galaxy_v1, \
              patch("ansible_know.docs.clear_cache") as mock_docs:
             result = await clear_cache(scope="docs")
 
         assert result == {"cleared": ["doc_manifests", "doc_pages"]}
         mock_galaxy.assert_not_called()
+        mock_galaxy_v1.assert_not_called()
         mock_docs.assert_called_once()
 
     @pytest.mark.asyncio

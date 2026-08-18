@@ -256,6 +256,51 @@ class CollectionSearchResult(TypedDict):
     collections: list[CollectionInfo]
 
 
+class StandaloneRoleSearchEntry(TypedDict, total=False):
+    """Single standalone role from search_standalone_roles."""
+
+    role_name: str
+    description: str
+    tags: list[str]
+    latest_version: str
+    download_count: int
+    github_user: str
+    github_repo: str
+    source: str
+
+
+class StandaloneRoleSearchResult(TypedDict):
+    """Result of search_standalone_roles tool."""
+
+    query: str
+    count: int
+    roles: list[StandaloneRoleSearchEntry]
+
+
+class _GetStandaloneRoleDocResultBase(TypedDict):
+    role_name: str
+    content_type: str
+    doc_source: str
+
+
+class GetStandaloneRoleDocResult(_GetStandaloneRoleDocResultBase, total=False):
+    """Result of get_standalone_role_doc. No ``error`` field — failures are ErrorResponse."""
+
+    short_description: str
+    entry_points: dict[str, EntryPointInfo]
+    dependencies: list[str]
+    examples: str
+    tags: list[str]
+    latest_version: str
+    github_user: str
+    github_repo: str
+    github_branch: str
+    download_count: int
+    doc_version: str
+    doc_warning: str
+    doc_source_server: str
+
+
 class _GetModuleDocResultBase(ModuleMetadata):
     """Required fields for get_module_doc tool return."""
 
@@ -493,3 +538,29 @@ class GalaxyClientFactory(Protocol):
         config: GalaxyServerConfig,
         http_client: httpx.AsyncClient | None = None,
     ) -> GalaxyDocClient: ...
+
+
+class GalaxyV1DocClient(Protocol):
+    """v1 standalone-role client. Not a GalaxyDocClient."""
+
+    async def search_roles(
+        self, query: str, tags: str | None = None,
+    ) -> dict[str, Any]: ...
+
+    async def fetch_standalone_role_doc(
+        self, role_name: str,
+    ) -> tuple[dict[str, Any], DocProvenance]: ...
+
+    async def __aenter__(self) -> GalaxyV1DocClient: ...
+
+    async def __aexit__(self, *exc: object) -> None: ...
+
+
+class GalaxyV1ClientFactory(Protocol):
+    """Factory that creates GalaxyV1DocClient instances from config."""
+
+    def __call__(
+        self,
+        config: GalaxyServerConfig,
+        http_client: httpx.AsyncClient | None = None,
+    ) -> GalaxyV1DocClient: ...

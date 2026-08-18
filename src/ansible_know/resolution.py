@@ -20,9 +20,12 @@ if TYPE_CHECKING:
         CollectionDocsResult,
         ErrorResponse,
         GalaxyClientFactory,
+        GalaxyV1ClientFactory,
         GetModuleDocResult,
         GetPluginDocResult,
         GetRoleDocResult,
+        GetStandaloneRoleDocResult,
+        StandaloneRoleSearchResult,
     )
 
 from ansible_know.async_utils import run_in_executor
@@ -37,6 +40,8 @@ __all__ = [
     "resolve_module_doc",
     "resolve_plugin_doc",
     "resolve_role_doc",
+    "resolve_standalone_role_doc",
+    "search_standalone_roles",
     "search_galaxy_collections",
 ]
 
@@ -53,6 +58,33 @@ async def _try_galaxy_servers(
     servers: list[GalaxyServerConfig],
     operation: Callable[..., Awaitable[Any]],
     client_factory: GalaxyClientFactory,
+    http_client: httpx.AsyncClient | None = None,
+) -> Any:
+    """Try an operation across multiple Galaxy servers in priority order.
+
+    Returns the first successful result. Raises the last GalaxyError if all fail.
+    """
+    from ansible_know.errors import GalaxyError
+
+    last_exc: GalaxyError | None = None
+    for server in servers:
+        try:
+            async with client_factory(
+                server, http_client=_select_http_client(http_client, server),
+            ) as client:
+                return await operation(client)
+        except GalaxyError as exc:
+            logger.info("Galaxy server '%s' failed: %s", server.name, exc)
+            last_exc = exc
+    if last_exc is not None:
+        raise last_exc
+    raise GalaxyError("No Galaxy servers configured")
+
+
+async def _try_v1_servers(
+    servers: list[GalaxyServerConfig],
+    operation: Callable[..., Awaitable[Any]],
+    client_factory: GalaxyV1ClientFactory,
     http_client: httpx.AsyncClient | None = None,
 ) -> Any:
     """Try an operation across multiple Galaxy servers in priority order.
@@ -469,3 +501,93 @@ async def search_galaxy_collections(
         "count": len(all_collections),
         "collections": all_collections,
     }
+
+
+async def search_standalone_roles(
+    query: str,
+    tags: str | None = None,
+    http_client: httpx.AsyncClient | None = None,
+    galaxy_servers: list[GalaxyServerConfig] | None = None,
+    v1_client_factory: GalaxyV1ClientFactory | None = None,
+) -> StandaloneRoleSearchResult:
+    """Search all configured Galaxy servers concurrently for standalone roles."""
+    from ansible_know.errors import GalaxyError
+
+    if v1_client_factory is None:
+        raise GalaxyError("No client factory configured for Galaxy search")
+
+    servers = _get_servers(galaxy_servers)
+
+    async def _query_server(server):
+        async with v1_client_factory(
+            server, http_client=_select_http_client(http_client, server),
+        ) as client:
+            result = await client.search_roles(query, tags=tags)
+        return server.name, result
+
+    tasks = [_query_server(s) for s in servers]
+    outcomes = await asyncio.gather(*tasks, return_exceptions=True)
+
+    all_roles: list[dict[str, Any]] = []
+    seen_role_names: set[str] = set()
+    errors: list[str] = []
+
+    for i, outcome in enumerate(outcomes):
+        if isinstance(outcome, Exception):
+            logger.info(
+                "search_roles on '%s' failed: %s",
+                servers[i].name, outcome,
+            )
+            errors.append(f"{servers[i].name}: {outcome}")
+            continue
+        server_name, result = outcome
+        for role in result.get("roles", []):
+            role_name = role.get("role_name", "")
+            if role_name not in seen_role_names:
+                role["source"] = server_name
+                all_roles.append(role)
+                seen_role_names.add(role_name)
+
+    if not all_roles and errors:
+        raise GalaxyError(f"All Galaxy servers failed: {'; '.join(errors)}")
+
+    all_roles.sort(key=lambda r: r.get("download_count", 0), reverse=True)
+
+    return {
+        "query": query,
+        "count": len(all_roles),
+        "roles": all_roles,
+    }
+
+
+async def resolve_standalone_role_doc(
+    role_name: str,
+    http_client: httpx.AsyncClient | None = None,
+    galaxy_servers: list[GalaxyServerConfig] | None = None,
+    v1_client_factory: GalaxyV1ClientFactory | None = None,
+) -> GetStandaloneRoleDocResult | ErrorResponse:
+    """Resolve standalone role docs from configured Galaxy v1 servers."""
+    from ansible_know.errors import GalaxyError
+
+    if v1_client_factory is None:
+        return {"error": "No Galaxy client configured for standalone roles"}
+
+    servers = _get_servers(galaxy_servers)
+
+    async def _fetch(client):
+        return await client.fetch_standalone_role_doc(role_name)
+
+    try:
+        role_doc, galaxy_meta = await _try_v1_servers(
+            servers, _fetch, v1_client_factory, http_client,
+        )
+        result = dict(role_doc)
+        result["doc_source"] = galaxy_meta.get("doc_source", "")
+        result["doc_version"] = galaxy_meta.get("doc_version", "")
+        if "doc_warning" in galaxy_meta:
+            result["doc_warning"] = galaxy_meta["doc_warning"]
+        if "doc_source_server" in galaxy_meta:
+            result["doc_source_server"] = galaxy_meta["doc_source_server"]
+        return result
+    except GalaxyError as exc:
+        return {"error": sanitize_error(str(exc))}
