@@ -26,6 +26,7 @@ from ansible_know.validation import (
     validate_path_containment,
     validate_query,
     validate_skill_name,
+    validate_standalone_role_name,
     validate_tags,
     validate_version,
 )
@@ -85,6 +86,37 @@ class TestValidateFqcn:
     def test_rejects_empty_segments(self):
         with pytest.raises(ValidationError):
             validate_fqcn("a..c")
+
+
+class TestValidateStandaloneRoleName:
+    def test_accepts_hyphenated_namespace(self):
+        validate_standalone_role_name("ansible-lockdown.rhel9_cis")
+
+    def test_accepts_mixed_case(self):
+        validate_standalone_role_name("MindPointGroup.RHEL9_CIS")
+
+    def test_accepts_underscore_role(self):
+        validate_standalone_role_name("geerlingguy.elasticsearch_curator")
+
+    def test_rejects_empty(self):
+        with pytest.raises(ValidationError):
+            validate_standalone_role_name("")
+
+    def test_rejects_one_part(self):
+        with pytest.raises(ValidationError):
+            validate_standalone_role_name("rhel9_cis")
+
+    def test_rejects_three_part_and_points_at_get_role_doc(self):
+        with pytest.raises(ValidationError, match="get_role_doc"):
+            validate_standalone_role_name("fedora.linux_system_roles.timesync")
+
+    def test_rejects_path_slash(self):
+        with pytest.raises(ValidationError):
+            validate_standalone_role_name("foo/bar.role")
+
+    def test_rejects_leading_hyphen_segment(self):
+        with pytest.raises(ValidationError):
+            validate_standalone_role_name("-bad.role")
 
 
 class TestValidateNamespace:
