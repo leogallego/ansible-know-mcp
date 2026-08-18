@@ -73,10 +73,11 @@ with `GalaxyClient`.
 ```text
 server.py
   search_standalone_roles / get_standalone_role_doc
-    → resolution.resolve_standalone_role_search
+    → resolution.search_standalone_roles
     → resolution.resolve_standalone_role_doc
         → GalaxyV1Client   (v1 only)
             → shared httpx.AsyncClient + GalaxyServerConfig
+            → _select_http_client (skip shared client when validate_certs is false)
 
 GalaxyClient               (v3 only — unchanged)
   via GalaxyDocClient Protocol
@@ -118,6 +119,8 @@ Live-checked against `galaxy.ansible.com`.
 | Versions (unused here) | GET | `/api/v1/roles/{id}/versions/` |
 
 Pagination: `page_size` default 10, max 1000 (`LegacyRolesSetPagination`).
+List JSON is DRF: `{count, next, previous, results: [...]}` — not v3
+`{data, meta}`. Parse `results`.
 
 ### 5.2 Filters that work
 
@@ -126,7 +129,7 @@ and return the full catalog, ~37k roles).
 
 | Param | Behavior |
 |-------|----------|
-| `keywords` | Contains match on namespace name, role name, **or** description. Use this for search. |
+| `keywords` | Case-sensitive `contains` on namespace name, role name, **or** description. Use this for search. |
 | `autocomplete` | Same contains logic as `keywords`. Do not use (redundant). |
 | `namespace` | Exact, case-insensitive (`__iexact`) |
 | `name` | Exact (model field) |
@@ -253,7 +256,8 @@ async def fetch_standalone_role_doc(
 `fetch_standalone_role_doc` maps parsed README to the same metadata keys as
 `GalaxyClient.fetch_role_doc` (`role_name`, `short_description`,
 `entry_points.main.options`, `dependencies`, `examples`), plus v1 fields
-`tags`, `latest_version`, `github_user`, `github_repo`, `download_count`.
+`tags`, `latest_version`, `github_user`, `github_repo`, `github_branch`,
+`download_count`.
 
 Provenance:
 
@@ -273,9 +277,12 @@ A **separate** `BoundedCache` for v1 search/content, keyed by
 `_version_cache` / `_blob_cache`. TTL 3600s. Memory-only is fine (search
 payloads are small; HTML can be large — cap cache entries, e.g. max_size 50).
 
-`clear_cache` in `galaxy.py` should also clear the v1 cache (call a
-`galaxy_v1.clear_cache()` from the existing `clear_cache` tool path) so
-operators have one switch.
+**Operator switch:** the MCP `clear_cache` tool in `server.py` already
+clears `galaxy` and `docs` as two independent modules. When `scope` is
+`galaxy` or omitted, also call `galaxy_v1.clear_cache()`. Do **not**
+import `galaxy_v1` from `galaxy.py` — that would be the only v3→v1
+coupling. `galaxy.clear_cache()` stays v3-only. Add a `galaxy_v1` entry
+to the tool's `cleared` list (e.g. `"galaxy_v1"`).
 
 ---
 
@@ -295,7 +302,9 @@ that in the tool docstring.
 Resolution: query all configured Galaxy servers concurrently (same gather
 pattern as `search_galaxy_collections`). Skip servers that raise (no v1,
 404, timeout). Dedupe on `{username}.{name}`. Rank by `download_count`
-descending. If every server fails, return `{"error": ...}`.
+descending. Empty merged results are **success** (`count: 0`). If every
+server fails, **raise** `GalaxyError` (server.py turns it into
+`{"error": ...}`), matching `search_galaxy_collections`.
 
 Result TypedDict `StandaloneRoleSearchResult`:
 
@@ -305,7 +314,7 @@ Result TypedDict `StandaloneRoleSearchResult`:
     "count": int,
     "roles": [
         {
-            "role": str,              # username.name
+            "role_name": str,         # username.name (same key as get-doc)
             "description": str,
             "tags": list[str],
             "latest_version": str,
@@ -337,14 +346,15 @@ Result TypedDict `GetStandaloneRoleDocResult` — same optional fields as
 |-------|--------|
 | `role_name` | Echo the 2-part identifier |
 | `content_type` | `"standalone_role"` (not `"role"`) |
-| `doc_source` | `galaxy_v1_readme` / `galaxy_v1_metadata` / `unavailable` |
-| `short_description`, `entry_points`, `dependencies`, `examples` | From parser when HTML present |
-| `tags`, `latest_version`, `github_user`, `github_repo` | From list payload |
+| `doc_source` | `galaxy_v1_readme` or `galaxy_v1_metadata` on success. Do not return a success payload with `unavailable` — that case is `ErrorResponse`. |
+| `short_description`, `entry_points`, `dependencies`, `examples` | From parser when HTML present. If HTML is empty, `short_description` is the v1 `description` field; `dependencies` fall back to `summary_fields.dependencies`. When HTML is present, parser dependencies win; if the parser returns none, still fall back to `summary_fields.dependencies`. |
+| `tags`, `latest_version`, `github_user`, `github_repo`, `github_branch` | From list payload |
 | `doc_version`, `doc_warning`, `doc_source_server` | Provenance |
-| `error` | Only when unavailable |
+| `error` | Not used on the success TypedDict. Not-found and all-servers-failed are `ErrorResponse` (`{"error": str}`) only. |
 
-Never return raw `readme_html`. Apply `truncate_response` on the tool
-boundary like other doc tools.
+Never return raw `readme_html`. Do not call `truncate_response` on the
+result dict (it takes `str`; only skill-render tools use it). Structured
+doc tools return the TypedDict as-is.
 
 No local ansible-doc attempt.
 
@@ -367,7 +377,7 @@ Server instructions and tool descriptions must say:
 - Collection roles → `search_collections` / `get_role_doc` (3-part FQCN)
 - Standalone Galaxy roles → these two tools (2-part `namespace.role`)
 
-Update `CLAUDE.md` tool table (counts + two rows). Update
+Update `CLAUDE.md` and `README.md` tool tables (this branch has **20** tools → **22**) and `server.py` module docstring / FastMCP `instructions` (add standalone search/get-doc to the workflow). Update
 `docs/architecture/service-contracts.md` External Access table:
 `galaxy_v1.py` → `resolution.py`; `readme_parser.py` consumers include
 `galaxy_v1.py`. Layer map: `galaxy_v1.py` → External Access.
@@ -385,7 +395,7 @@ async def search_standalone_roles(
     http_client: httpx.AsyncClient | None = None,
     galaxy_servers: list[GalaxyServerConfig] | None = None,
     v1_client_factory: GalaxyV1ClientFactory | None = None,
-) -> dict[str, Any]: ...
+) -> dict[str, Any]: ...  # raises GalaxyError if every server fails
 
 async def resolve_standalone_role_doc(
     role_name: str,
@@ -396,14 +406,29 @@ async def resolve_standalone_role_doc(
 ```
 
 `GalaxyV1ClientFactory` is a Protocol in `types.py` parallel to
-`GalaxyClientFactory`, returning `GalaxyV1Client` (or a small Protocol with
-the three async methods). **Do not** extend `GalaxyDocClient`.
+`GalaxyClientFactory`, returning a context manager with
+`search_roles` and `fetch_standalone_role_doc`. **Do not** extend
+`GalaxyDocClient`.
+
+Do **not** reuse `_try_galaxy_servers` as currently typed
+(`GalaxyClientFactory` → `GalaxyDocClient`). Duplicate a small
+`_try_v1_servers` with the same first-success / last-`GalaxyError` loop
+and `GalaxyV1ClientFactory`. Do not genericize the v3 helper.
 
 `server.py` injects a `_galaxy_v1_factory(ctx)` closure analogous to
-`_galaxy_factory`. Orchestration: validate → call resolution → return.
+`_galaxy_factory` (no enrichment semaphore). Orchestration: validate →
+call resolution → return.
 
 Try servers in configured order for get-doc (first success wins). Search
-queries all servers and merges.
+queries all servers and merges; **raises** `GalaxyError` when every
+server fails (empty hits are success). Both paths must use
+`_select_http_client` (do not inject the shared httpx client when
+`validate_certs` is false).
+
+If public Galaxy is disabled (`ANSIBLE_KNOW_NO_PUBLIC_GALAXY=1`) and no
+configured server speaks v1, the tools return the “does not support
+standalone roles” error. That is expected — standalone roles are a public
+Galaxy catalog.
 
 ---
 
@@ -414,9 +439,9 @@ queries all servers and merges.
 | Validation failure | `{"error": str}` |
 | No v1 on any configured server | `{"error": "... does not support standalone roles (Galaxy v1)"}` |
 | Role not found | `{"error": "Standalone role '{name}' not found"}` |
-| HTTP/timeout on a server (search) | Skip server; if all fail, `{"error": ...}` |
+| HTTP/timeout on a server (search) | Skip server; empty merge is success; if all fail, resolution raises `GalaxyError` → tool `{"error": ...}` |
 | HTTP/timeout on get-doc after all servers | `{"error": ...}` sanitized |
-| Empty README HTML | Success with `doc_source: galaxy_v1_metadata` and `doc_warning` |
+| Empty README HTML | Success with `doc_source: galaxy_v1_metadata`, v1 description/tags, and `doc_warning` |
 
 v1 exceptions must not set `GalaxyClient._discovery_failed`.
 
@@ -431,14 +456,17 @@ Unit tests mock HTTP (no live Galaxy). Integration tests stay opt-in
 |------|----------|
 | `tests/test_galaxy_v1.py` | `keywords` + `order_by=-download_count` + `page_size=10`; `tags` first-segment only; lookup uses `namespace`+`name` **not** `owner__username`; content parse → entry_points; empty HTML → `galaxy_v1_metadata`; 404 on v1 → `GalaxyError`; hyphenated `ansible-lockdown.rhel9_cis`; discovery requires v1 and does **not** require v3 |
 | `tests/test_validation.py` | Accept hyphens/mixed case; reject 1-part, 3-part, empty, `/` |
-| `tests/test_resolution.py` | Multi-server: v1-less server skipped, v1 server used; all-fail → error; search dedupe |
-| `tests/test_server.py` | Both tools success + validation error; `get_role_doc` still requires 3-part FQCN |
-| `tests/test_galaxy.py` | Existing v3 tests still pass; `clear_cache` clears v1 cache too |
+| `tests/test_resolution.py` | Multi-server: v1-less server skipped, v1 server used; all-fail **raises** `GalaxyError`; search dedupe; empty hits succeed |
+| `tests/test_server.py` | Both tools success + validation error; `get_role_doc` still requires 3-part FQCN; `clear_cache(scope=galaxy)` also calls `galaxy_v1.clear_cache` |
+| `tests/test_galaxy.py` | Existing v3 tests still pass (no v1 import) |
 | `tests/integration/test_galaxy_api.py` | Optional live `keywords=rhel9_cis` and `get ansible-lockdown.rhel9_cis` |
 
-**Isolation test (required):** mock v1 404 (or missing `v1` in
-`available_versions`) and assert `GalaxyClient.search_collections` /
-`fetch_module_doc` still succeed with v3 fixtures.
+**Isolation test (required):** construct both clients from the same config +
+httpx mock. A v1 404 / missing `v1` in `available_versions` must not set
+`GalaxyClient._discovery_failed` and must not change `_v3_path`. v3
+`search_collections` / `fetch_module_doc` on that same `GalaxyClient`
+instance must still succeed. A tautological “v3 works in a test that never
+constructs V1Client” is not sufficient.
 
 ---
 
@@ -450,16 +478,15 @@ Unit tests mock HTTP (no live Galaxy). Integration tests stay opt-in
 | `src/ansible_know/validation.py` | Add `validate_standalone_role_name` |
 | `src/ansible_know/types.py` | Search/doc TypedDicts + `GalaxyV1ClientFactory` Protocol |
 | `src/ansible_know/resolution.py` | `search_standalone_roles`, `resolve_standalone_role_doc` |
-| `src/ansible_know/server.py` | Two tools, factory, instructions |
-| `src/ansible_know/galaxy.py` | `clear_cache()` also clears v1 cache (no v1 methods) |
+| `src/ansible_know/server.py` | Two tools, factory, instructions, `clear_cache` also calls `galaxy_v1.clear_cache` |
+| `src/ansible_know/galaxy.py` | **Unchanged** (v3-only; do not import v1) |
 | `tests/test_galaxy_v1.py` | **Create** |
 | `tests/test_validation.py` | New validator cases |
-| `tests/test_resolution.py` | Standalone resolution |
-| `tests/test_server.py` | Tool wiring |
-| `tests/test_galaxy.py` | Cache clear coupling |
+| `tests/test_resolution.py` | **Modify** — standalone search/get-doc resolution |
+| `tests/test_server.py` | Tool wiring + cache-clear coupling |
 | `CLAUDE.md` | Tool table |
 | `docs/architecture/service-contracts.md` | Layer map + External Access row |
-| `README.md` | Tool table (if it lists tools) |
+| `README.md` | Tool table (required — it lists tools) |
 
 No template or `skills.py` changes in this issue.
 
@@ -469,7 +496,7 @@ No template or `skills.py` changes in this issue.
 
 ```text
 search_standalone_roles("rhel9_cis")
-  → {roles: [{role: "ansible-lockdown.rhel9_cis", download_count: ..., ...}]}
+  → {roles: [{role_name: "ansible-lockdown.rhel9_cis", download_count: ..., ...}]}
 
 get_standalone_role_doc("ansible-lockdown.rhel9_cis")
   → {content_type: "standalone_role", doc_source: "galaxy_v1_readme",
@@ -511,3 +538,6 @@ search_collections("timesync") → get_role_doc("fedora.linux_system_roles.times
 | `content_type` | `standalone_role` |
 | Local ansible-doc | No |
 | GitHub / skills / install | Follow-up issues |
+| v3 `clear_cache` | Stays v3-only; MCP tool also clears v1 |
+| Multi-server get-doc | New `_try_v1_servers`; do not extend `GalaxyDocClient` |
+| Search all-fail | Raise `GalaxyError` (match collection search) |
