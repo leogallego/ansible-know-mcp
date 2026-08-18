@@ -656,7 +656,11 @@ async def get_collection_manifest(
     collection_namespace: Annotated[str, "Collection namespace (e.g. 'netbox.netbox')"],
     ctx: Context | None = None,
 ) -> ManifestResult | ErrorResponse:
-    """Get collection-level manifest with per-module summaries.
+    """Get a lightweight collection overview: module/role/plugin names with one-line descriptions.
+
+    Prefer this over get_collection_docs when exploring a collection — it
+    returns a compact summary suitable for deciding which modules to drill
+    into with get_module_doc.
 
     Returns cached MANIFEST.json if available, otherwise generates on-demand
     (metadata extraction only, no skill generation).
@@ -775,7 +779,12 @@ async def get_collection_docs(
     version: Annotated[str | None, "Optional version (e.g. '3.23.0'). If omitted, uses latest."] = None,
     ctx: Context | None = None,
 ) -> CollectionDocsResult | ErrorResponse:
-    """Get full module documentation for all modules in a collection from Galaxy.
+    """Get full parameter-level documentation for every module in a collection from Galaxy.
+
+    WARNING: output can be very large (100 KB+) for collections with many modules.
+    Use get_collection_manifest first for a compact overview, then get_module_doc
+    for the specific modules you need.  Reserve this tool for batch operations
+    that genuinely need all parameter details at once (e.g. skill generation).
 
     Returns all module docs in a single API call without installing the collection.
     Result shape: {"modules": {fqcn: {module_name, short_description, params, examples, is_api_module}, ...},
