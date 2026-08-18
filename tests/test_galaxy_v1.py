@@ -1,0 +1,215 @@
+"""Tests for ansible_know.galaxy_v1."""
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import httpx
+import pytest
+
+from ansible_know.errors import GalaxyError
+from tests.conftest import SAMPLE_ROLE_README_HTML
+
+SAMPLE_ROLE = {
+    "id": 42,
+    "username": "ansible-lockdown",
+    "name": "rhel9_cis",
+    "description": "CIS Benchmark for RHEL 9",
+    "github_user": "ansible-lockdown",
+    "github_repo": "RHEL9-CIS",
+    "github_branch": "devel",
+    "download_count": 9000,
+    "summary_fields": {
+        "tags": ["system", "security"],
+        "versions": [{"name": "1.2.3"}],
+        "dependencies": [{"namespace": "geerlingguy", "name": "repo"}],
+    },
+}
+
+SAMPLE_LIST = {"count": 1, "next": None, "previous": None, "results": [SAMPLE_ROLE]}
+
+
+def _mock_http(json_body, status=200):
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = json_body
+    mock_resp.content = b"{}"
+    mock_resp.headers = {}
+    if status >= 400:
+        mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "err", request=MagicMock(), response=MagicMock(status_code=status),
+        )
+    else:
+        mock_resp.raise_for_status.return_value = None
+    mock_client = AsyncMock()
+    mock_client.get.return_value = mock_resp
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    return mock_client
+
+
+def _skip_discovery(client):
+    client._api_root = "https://galaxy.ansible.com/api"
+    client._v1_path = "v1/"
+    return client
+
+
+class TestSearchRoles:
+    @pytest.mark.asyncio
+    async def test_uses_keywords_order_by_page_size(self):
+        from ansible_know.galaxy_v1 import GalaxyV1Client
+        mock_client = _mock_http(SAMPLE_LIST)
+        with patch("ansible_know.galaxy_v1.httpx.AsyncClient", return_value=mock_client):
+            gc = _skip_discovery(GalaxyV1Client())
+            result = await gc.search_roles("rhel9_cis")
+        params = mock_client.get.call_args.kwargs["params"]
+        assert params["keywords"] == "rhel9_cis"
+        assert params["order_by"] == "-download_count"
+        assert params["page_size"] == "10"
+        assert "search" not in params
+        assert "keyword" not in params
+        url = mock_client.get.call_args.args[0]
+        assert url.endswith("/api/v1/roles/")
+        assert result["roles"][0]["role_name"] == "ansible-lockdown.rhel9_cis"
+
+    @pytest.mark.asyncio
+    async def test_tags_sends_first_segment_only(self):
+        from ansible_know.galaxy_v1 import GalaxyV1Client
+        mock_client = _mock_http(SAMPLE_LIST)
+        with patch("ansible_know.galaxy_v1.httpx.AsyncClient", return_value=mock_client):
+            gc = _skip_discovery(GalaxyV1Client())
+            await gc.search_roles("cis", tags="system,security")
+        params = mock_client.get.call_args.kwargs["params"]
+        assert params["tags"] == "system"
+
+    @pytest.mark.asyncio
+    async def test_does_not_call_content_during_search(self):
+        from ansible_know.galaxy_v1 import GalaxyV1Client
+        mock_client = _mock_http(SAMPLE_LIST)
+        with patch("ansible_know.galaxy_v1.httpx.AsyncClient", return_value=mock_client):
+            gc = _skip_discovery(GalaxyV1Client())
+            await gc.search_roles("rhel9_cis")
+        urls = [c.args[0] for c in mock_client.get.call_args_list]
+        assert all("/content/" not in u for u in urls)
+
+
+class TestFetchRoleByName:
+    @pytest.mark.asyncio
+    async def test_lookup_uses_namespace_and_name_not_owner(self):
+        from ansible_know.galaxy_v1 import GalaxyV1Client
+        mock_client = _mock_http(SAMPLE_LIST)
+        with patch("ansible_know.galaxy_v1.httpx.AsyncClient", return_value=mock_client):
+            gc = _skip_discovery(GalaxyV1Client())
+            role = await gc.fetch_role_by_name("ansible-lockdown", "rhel9_cis")
+        params = mock_client.get.call_args.kwargs["params"]
+        assert params["namespace"] == "ansible-lockdown"
+        assert params["name"] == "rhel9_cis"
+        assert "owner__username" not in params
+        assert role["id"] == 42
+
+    @pytest.mark.asyncio
+    async def test_empty_results_raises(self):
+        from ansible_know.galaxy_v1 import GalaxyV1Client
+        mock_client = _mock_http({"count": 0, "results": []})
+        with patch("ansible_know.galaxy_v1.httpx.AsyncClient", return_value=mock_client):
+            gc = _skip_discovery(GalaxyV1Client())
+            with pytest.raises(GalaxyError, match="not found"):
+                await gc.fetch_role_by_name("missing", "role")
+
+
+class TestFetchStandaloneRoleDoc:
+    @pytest.mark.asyncio
+    async def test_parses_readme_html(self):
+        from ansible_know.galaxy_v1 import GalaxyV1Client
+        list_resp = MagicMock()
+        list_resp.json.return_value = SAMPLE_LIST
+        list_resp.content = b"{}"
+        list_resp.headers = {}
+        list_resp.raise_for_status.return_value = None
+        content_resp = MagicMock()
+        content_resp.json.return_value = {
+            "readme": "README.md",
+            "readme_html": SAMPLE_ROLE_README_HTML,
+        }
+        content_resp.content = b"{}"
+        content_resp.headers = {}
+        content_resp.raise_for_status.return_value = None
+        mock_client = AsyncMock()
+        mock_client.get.side_effect = [list_resp, content_resp]
+        with patch("ansible_know.galaxy_v1.httpx.AsyncClient", return_value=mock_client):
+            gc = _skip_discovery(GalaxyV1Client())
+            meta, prov = await gc.fetch_standalone_role_doc(
+                "ansible-lockdown.rhel9_cis",
+            )
+        content_url = mock_client.get.call_args_list[1].args[0]
+        assert content_url.endswith("/api/v1/roles/42/content/")
+        assert meta["content_type"] == "standalone_role"
+        assert meta["role_name"] == "ansible-lockdown.rhel9_cis"
+        assert prov["doc_source"] == "galaxy_v1_readme"
+        assert "main" in meta["entry_points"]
+        assert meta["github_branch"] == "devel"
+        assert "geerlingguy.repo" in meta["dependencies"] or meta["dependencies"]
+
+    @pytest.mark.asyncio
+    async def test_empty_html_is_metadata_success(self):
+        from ansible_know.galaxy_v1 import GalaxyV1Client
+        list_resp = MagicMock()
+        list_resp.json.return_value = SAMPLE_LIST
+        list_resp.content = b"{}"
+        list_resp.headers = {}
+        list_resp.raise_for_status.return_value = None
+        content_resp = MagicMock()
+        content_resp.json.return_value = {"readme": "README.md", "readme_html": ""}
+        content_resp.content = b"{}"
+        content_resp.headers = {}
+        content_resp.raise_for_status.return_value = None
+        mock_client = AsyncMock()
+        mock_client.get.side_effect = [list_resp, content_resp]
+        with patch("ansible_know.galaxy_v1.httpx.AsyncClient", return_value=mock_client):
+            gc = _skip_discovery(GalaxyV1Client())
+            meta, prov = await gc.fetch_standalone_role_doc(
+                "ansible-lockdown.rhel9_cis",
+            )
+        assert prov["doc_source"] == "galaxy_v1_metadata"
+        assert meta["short_description"] == "CIS Benchmark for RHEL 9"
+        assert "doc_warning" in prov
+
+    @pytest.mark.asyncio
+    async def test_hyphenated_name_roundtrip(self):
+        from ansible_know.galaxy_v1 import GalaxyV1Client
+        list_resp = MagicMock()
+        list_resp.json.return_value = SAMPLE_LIST
+        list_resp.content = b"{}"
+        list_resp.headers = {}
+        list_resp.raise_for_status.return_value = None
+        content_resp = MagicMock()
+        content_resp.json.return_value = {"readme": "README.md", "readme_html": "<p>x</p>"}
+        content_resp.content = b"{}"
+        content_resp.headers = {}
+        content_resp.raise_for_status.return_value = None
+        mock_client = AsyncMock()
+        mock_client.get.side_effect = [list_resp, content_resp]
+        with patch("ansible_know.galaxy_v1.httpx.AsyncClient", return_value=mock_client):
+            gc = _skip_discovery(GalaxyV1Client())
+            meta, _ = await gc.fetch_standalone_role_doc("ansible-lockdown.rhel9_cis")
+        params = mock_client.get.call_args_list[0].kwargs["params"]
+        assert params["namespace"] == "ansible-lockdown"
+        assert params["name"] == "rhel9_cis"
+        assert meta["role_name"] == "ansible-lockdown.rhel9_cis"
+
+
+class TestV1Discovery:
+    @pytest.mark.asyncio
+    async def test_requires_v1_not_v3(self):
+        from ansible_know.galaxy_v1 import GalaxyV1Client
+        mock_client = _mock_http({"available_versions": {"v3": "v3/"}})
+        with patch("ansible_know.galaxy_v1.httpx.AsyncClient", return_value=mock_client):
+            gc = GalaxyV1Client(base_url="https://hub.example")
+            with pytest.raises(GalaxyError, match="v1"):
+                await gc.search_roles("cis")
+
+    @pytest.mark.asyncio
+    async def test_v1_http_404_raises_galaxy_error(self):
+        from ansible_know.galaxy_v1 import GalaxyV1Client
+        mock_client = _mock_http({}, status=404)
+        with patch("ansible_know.galaxy_v1.httpx.AsyncClient", return_value=mock_client):
+            gc = _skip_discovery(GalaxyV1Client())
+            with pytest.raises(GalaxyError):
+                await gc.search_roles("cis")
