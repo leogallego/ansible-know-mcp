@@ -733,6 +733,8 @@ async def search_standalone_roles(
 
         state = await _get_state(ctx)
         http_client = _get_http_client(ctx)
+        # Spec §7.1: tool boundary sends only first tag segment.
+        # GalaxyV1Client._first_tag is defense-in-depth.
         v1_tags = tags.split(",", 1)[0].strip() if tags else None
         return await resolution.search_standalone_roles(
             query,
