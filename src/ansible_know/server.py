@@ -1,6 +1,6 @@
 """Ansible Know MCP Server.
 
-Provides 20 tools, 6 resources, and 5 prompts for module, role, and plugin discovery,
+Provides 22 tools, 6 resources, and 5 prompts for module, role, and plugin discovery,
 documentation search, Galaxy collection discovery, and skill generation
 via the Model Context Protocol.
 """
@@ -35,6 +35,7 @@ from ansible_know.types import (
     GetModuleDocResult,
     GetPluginDocResult,
     GetRoleDocResult,
+    GetStandaloneRoleDocResult,
     ManifestResult,
     ModuleMetadata,
     PackageAsPluginResult,
@@ -43,6 +44,7 @@ from ansible_know.types import (
     PluginMetadata,
     SearchDocsEntry,
     SkillEntry,
+    StandaloneRoleSearchResult,
     VersionInfo,
 )
 from ansible_know.validation import (
@@ -61,6 +63,7 @@ from ansible_know.validation import (
     validate_plugin_type,
     validate_query,
     validate_skill_name,
+    validate_standalone_role_name,
     validate_tags,
     validate_version,
 )
@@ -172,8 +175,10 @@ mcp = FastMCP(
         "(2) ensure_collection to install one for this session, "
         "(3) search_modules/search_plugins/get_collection_manifest to find content, "
         "(4) get_module_doc, get_role_doc, or get_plugin_doc for structured docs, "
-        "(5) search_docs for conceptual guides, then fetch_doc to retrieve full content, "
-        "(6) generate_skill, generate_role_skill, or generate_plugin_skill for skill packages. "
+        "(5) for standalone/legacy Galaxy roles, use search_standalone_roles then "
+        "get_standalone_role_doc with a 2-part namespace.role identifier, "
+        "(6) search_docs for conceptual guides, then fetch_doc to retrieve full content, "
+        "(7) generate_skill, generate_role_skill, or generate_plugin_skill for skill packages. "
         "Resources: server://version for version and upgrade status, "
         "galaxy://installed for session collections, "
         "docs://sources for configured doc sources, "
@@ -197,6 +202,15 @@ def _galaxy_factory(ctx: Context | None = None):
             config, http_client=http_client,
             enrichment_semaphore=semaphore,
         )
+
+    return _factory
+
+
+def _galaxy_v1_factory(ctx: Context | None = None):
+    from ansible_know.galaxy_v1 import GalaxyV1Client
+
+    def _factory(config, http_client=None):
+        return GalaxyV1Client.from_config(config, http_client=http_client)
 
     return _factory
 
@@ -487,6 +501,42 @@ async def get_role_doc(
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+async def get_standalone_role_doc(
+    role_name: Annotated[
+        str,
+        "Standalone role identifier from search_standalone_roles (namespace.role).",
+    ],
+    ctx: Context | None = None,
+) -> GetStandaloneRoleDocResult | ErrorResponse:
+    """Get standalone role documentation for a 2-part namespace.role identifier.
+
+    Use this for standalone roles discovered with search_standalone_roles.
+    This tool does not replace get_role_doc for collection roles.
+    """
+    logger.info("get_standalone_role_doc role=%r", role_name)
+    await _maybe_warn_upgrade(ctx)
+    try:
+        validate_standalone_role_name(role_name)
+    except ValidationError as exc:
+        return {"error": str(exc)}
+
+    try:
+        from ansible_know import resolution
+
+        state = await _get_state(ctx)
+        http_client = _get_http_client(ctx)
+        return await resolution.resolve_standalone_role_doc(
+            role_name,
+            v1_client_factory=_galaxy_v1_factory(ctx),
+            http_client=http_client,
+            galaxy_servers=state.galaxy_servers,
+        )
+    except Exception as exc:
+        logger.warning("get_standalone_role_doc failed: %s", exc)
+        return {"error": sanitize_error(str(exc))}
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_plugin_doc(
     plugin_name: Annotated[str, "Fully-qualified plugin name (e.g. 'netbox.netbox.nb_lookup')"],
     plugin_type: Annotated[
@@ -648,6 +698,51 @@ async def search_collections(
         )
     except Exception as exc:
         logger.warning("search_collections failed: %s", exc)
+        return {"error": sanitize_error(str(exc))}
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+async def search_standalone_roles(
+    query: Annotated[str, "Search keyword for Galaxy standalone/legacy roles (keywords search)"],
+    tags: Annotated[
+        str | None,
+        "Optional Galaxy tag filter. If comma-separated, only the first tag segment is used.",
+    ] = None,
+    ctx: Context | None = None,
+) -> StandaloneRoleSearchResult | ErrorResponse:
+    """Search Galaxy standalone/legacy roles by keyword.
+
+    This targets standalone (2-part) roles. Collection roles use
+    search_collections/get_role_doc. tags accepts a single Galaxy tag; if
+    comma-separated values are provided, only the first segment is sent.
+
+    If public Galaxy is disabled and no configured server supports v1 role
+    endpoints, expect a v1-unsupported error.
+    """
+    logger.info("search_standalone_roles query=%r tags=%r", query, tags)
+    await _maybe_warn_upgrade(ctx)
+    try:
+        validate_query(query)
+        if tags:
+            validate_tags(tags)
+    except ValidationError as exc:
+        return {"error": str(exc)}
+
+    try:
+        from ansible_know import resolution
+
+        state = await _get_state(ctx)
+        http_client = _get_http_client(ctx)
+        v1_tags = tags.split(",", 1)[0].strip() if tags else None
+        return await resolution.search_standalone_roles(
+            query,
+            tags=v1_tags,
+            v1_client_factory=_galaxy_v1_factory(ctx),
+            http_client=http_client,
+            galaxy_servers=state.galaxy_servers,
+        )
+    except Exception as exc:
+        logger.warning("search_standalone_roles failed: %s", exc)
         return {"error": sanitize_error(str(exc))}
 
 
@@ -1644,13 +1739,15 @@ _VALID_CACHE_SCOPES = {"galaxy", "docs"}
 async def clear_cache(
     scope: Annotated[
         str | None,
-        "Cache scope to clear: 'galaxy' (version + docs-blob), 'docs' (doc manifests), "
+        "Cache scope to clear: 'galaxy' (version + docs-blob + standalone-role v1), "
+        "'docs' (doc manifests), "
         "or omit to clear all caches.",
     ] = None,
 ) -> ClearCacheResult | ErrorResponse:
     """Clear server caches.
 
-    Clears Galaxy version/docs-blob caches, doc manifest/page caches, or both.
+    Clears Galaxy version/docs-blob caches, standalone-role v1 caches,
+    doc manifest/page caches, or both.
     Useful when cached data becomes stale during long-running sessions.
     """
     logger.info("clear_cache scope=%r", scope)
@@ -1663,6 +1760,9 @@ async def clear_cache(
         from ansible_know import galaxy
         galaxy.clear_cache()
         cleared.extend(["galaxy_versions", "galaxy_blobs"])
+        from ansible_know import galaxy_v1
+        galaxy_v1.clear_cache()
+        cleared.append("galaxy_v1")
 
     if scope in (None, "docs"):
         from ansible_know import docs
