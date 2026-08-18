@@ -213,3 +213,44 @@ class TestV1Discovery:
             gc = _skip_discovery(GalaxyV1Client())
             with pytest.raises(GalaxyError):
                 await gc.search_roles("cis")
+
+
+class TestV1DoesNotPoisonV3:
+    @pytest.mark.asyncio
+    async def test_missing_v1_does_not_set_v3_discovery_failed(self):
+        from ansible_know.galaxy import GalaxyClient
+        from ansible_know.galaxy_config import GalaxyServerConfig
+        from ansible_know.galaxy_v1 import GalaxyV1Client
+
+        config = GalaxyServerConfig(
+            name="hub", url="https://hub.example/api",
+        )
+        v3_only = {"available_versions": {"v3": "v3/"}}
+        search_payload = {
+            "data": [],
+            "meta": {"count": 0},
+        }
+
+        def _route(url, **kwargs):
+            resp = MagicMock()
+            resp.content = b"{}"
+            resp.headers = {}
+            resp.raise_for_status.return_value = None
+            if "collection-versions" in str(url) or "search" in str(url):
+                resp.json.return_value = search_payload
+            else:
+                resp.json.return_value = v3_only
+            return resp
+
+        shared = AsyncMock()
+        shared.get.side_effect = _route
+        v3 = GalaxyClient.from_config(config, http_client=shared)
+        v1 = GalaxyV1Client.from_config(config, http_client=shared)
+        with pytest.raises(GalaxyError, match="v1"):
+            await v1.search_roles("cis")
+        assert v3._discovery_failed is False
+        assert v3._v3_path is None
+        result = await v3.search_collections("net")
+        assert result["count"] == 0
+        assert v3._discovery_failed is False
+        assert v3._v3_path == "v3/"
