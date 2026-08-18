@@ -21,10 +21,10 @@ if TYPE_CHECKING:
         ErrorResponse,
         GalaxyClientFactory,
         GalaxyV1ClientFactory,
-        GetStandaloneRoleDocResult,
         GetModuleDocResult,
         GetPluginDocResult,
         GetRoleDocResult,
+        GetStandaloneRoleDocResult,
         StandaloneRoleSearchResult,
     )
 
