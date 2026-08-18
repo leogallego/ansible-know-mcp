@@ -560,3 +560,157 @@ class TestResolveCollectionModuleDocs:
             )
 
         mock_fetch.assert_called_once_with("netbox.netbox", version="3.20.0")
+
+
+class _FakeV1:
+    def __init__(self, search=None, doc=None, error=None):
+        self._search = search
+        self._doc = doc
+        self._error = error
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return None
+
+    async def search_roles(self, query, tags=None):
+        if self._error:
+            raise self._error
+        return self._search
+
+    async def fetch_standalone_role_doc(self, role_name):
+        if self._error:
+            raise self._error
+        return self._doc
+
+
+def _v1_factory_map(mapping):
+    def _factory(config, http_client=None):
+        return mapping[config.name]
+    return _factory
+
+
+class TestSearchStandaloneRoles:
+    @pytest.mark.asyncio
+    async def test_merges_and_ranks(self):
+        from ansible_know.galaxy_config import GalaxyServerConfig
+        from ansible_know.resolution import search_standalone_roles
+        s1 = GalaxyServerConfig(name="galaxy", url="https://galaxy.ansible.com")
+        s2 = GalaxyServerConfig(name="hub", url="https://hub.example")
+        f1 = _FakeV1(search={"roles": [
+            {"role_name": "a.one", "download_count": 10},
+        ]})
+        f2 = _FakeV1(search={"roles": [
+            {"role_name": "b.two", "download_count": 50},
+        ]})
+        result = await search_standalone_roles(
+            "cis", galaxy_servers=[s1, s2],
+            v1_client_factory=_v1_factory_map({"galaxy": f1, "hub": f2}),
+        )
+        assert result["count"] == 2
+        assert result["roles"][0]["role_name"] == "b.two"
+        assert result["roles"][0]["source"] == "hub"
+
+    @pytest.mark.asyncio
+    async def test_dedupes_by_role_name(self):
+        from ansible_know.galaxy_config import GalaxyServerConfig
+        from ansible_know.resolution import search_standalone_roles
+        s1 = GalaxyServerConfig(name="galaxy", url="https://galaxy.ansible.com")
+        s2 = GalaxyServerConfig(name="hub", url="https://hub.example")
+        hit = {"role_name": "a.one", "download_count": 1}
+        result = await search_standalone_roles(
+            "cis", galaxy_servers=[s1, s2],
+            v1_client_factory=_v1_factory_map({
+                "galaxy": _FakeV1(search={"roles": [hit]}),
+                "hub": _FakeV1(search={"roles": [hit]}),
+            }),
+        )
+        assert result["count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_skips_v1_less_server(self):
+        from ansible_know.galaxy_config import GalaxyServerConfig
+        from ansible_know.resolution import search_standalone_roles
+        s1 = GalaxyServerConfig(name="hub", url="https://hub.example")
+        s2 = GalaxyServerConfig(name="galaxy", url="https://galaxy.ansible.com")
+        result = await search_standalone_roles(
+            "cis", galaxy_servers=[s1, s2],
+            v1_client_factory=_v1_factory_map({
+                "hub": _FakeV1(error=GalaxyError("does not support Galaxy API v1")),
+                "galaxy": _FakeV1(search={"roles": [
+                    {"role_name": "a.one", "download_count": 1},
+                ]}),
+            }),
+        )
+        assert result["count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_empty_hits_succeed(self):
+        from ansible_know.galaxy_config import GalaxyServerConfig
+        from ansible_know.resolution import search_standalone_roles
+        s1 = GalaxyServerConfig(name="galaxy", url="https://galaxy.ansible.com")
+        result = await search_standalone_roles(
+            "zzzz", galaxy_servers=[s1],
+            v1_client_factory=_v1_factory_map({
+                "galaxy": _FakeV1(search={"roles": []}),
+            }),
+        )
+        assert result == {"query": "zzzz", "count": 0, "roles": []}
+
+    @pytest.mark.asyncio
+    async def test_all_fail_raises(self):
+        from ansible_know.galaxy_config import GalaxyServerConfig
+        from ansible_know.resolution import search_standalone_roles
+        s1 = GalaxyServerConfig(name="galaxy", url="https://galaxy.ansible.com")
+        with pytest.raises(GalaxyError, match="All Galaxy servers failed"):
+            await search_standalone_roles(
+                "cis", galaxy_servers=[s1],
+                v1_client_factory=_v1_factory_map({
+                    "galaxy": _FakeV1(error=GalaxyError("timeout")),
+                }),
+            )
+
+
+class TestResolveStandaloneRoleDoc:
+    @pytest.mark.asyncio
+    async def test_first_success_wins(self):
+        from ansible_know.galaxy_config import GalaxyServerConfig
+        from ansible_know.resolution import resolve_standalone_role_doc
+        s1 = GalaxyServerConfig(name="hub", url="https://hub.example")
+        s2 = GalaxyServerConfig(name="galaxy", url="https://galaxy.ansible.com")
+        doc = ({
+            "role_name": "ansible-lockdown.rhel9_cis",
+            "content_type": "standalone_role",
+            "short_description": "CIS",
+            "entry_points": {"main": {"description": "CIS", "options": []}},
+            "dependencies": [],
+            "examples": "",
+        }, {"doc_source": "galaxy_v1_readme", "doc_version": "1.0"})
+        result = await resolve_standalone_role_doc(
+            "ansible-lockdown.rhel9_cis",
+            galaxy_servers=[s1, s2],
+            v1_client_factory=_v1_factory_map({
+                "hub": _FakeV1(error=GalaxyError("does not support Galaxy API v1")),
+                "galaxy": _FakeV1(doc=doc),
+            }),
+        )
+        assert result["doc_source"] == "galaxy_v1_readme"
+        assert "error" not in result
+
+    @pytest.mark.asyncio
+    async def test_not_found_is_error_response(self):
+        from ansible_know.galaxy_config import GalaxyServerConfig
+        from ansible_know.resolution import resolve_standalone_role_doc
+        s1 = GalaxyServerConfig(name="galaxy", url="https://galaxy.ansible.com")
+        result = await resolve_standalone_role_doc(
+            "missing.role",
+            galaxy_servers=[s1],
+            v1_client_factory=_v1_factory_map({
+                "galaxy": _FakeV1(error=GalaxyError(
+                    "Standalone role 'missing.role' not found"
+                )),
+            }),
+        )
+        assert result == {"error": "Standalone role 'missing.role' not found"}
+        assert "doc_source" not in result
