@@ -24,7 +24,7 @@ PR / branch architecture review: use portable skill `git-review` (wired via
 
 ```
 src/ansible_know/
-├── server.py              # FastMCP server: 20 tools, 6 resources, 5 prompts (entrypoint)
+├── server.py              # FastMCP server: 22 tools, 6 resources, 5 prompts (entrypoint)
 ├── parser.py              # ansible-doc wrapper — module discovery and metadata extraction
 ├── resolution.py          # local-then-Galaxy doc resolution + multi-server search
 ├── readme_parser.py       # Parse Galaxy role README HTML into structured data
@@ -35,6 +35,7 @@ src/ansible_know/
 ├── docs.py                # multi-manifest documentation client (httpx)
 ├── text_utils.py          # RTD + Red Hat markdown cleaning (Foundation)
 ├── galaxy.py              # Galaxy v3 API client — search, docs-blob, format conversion
+├── galaxy_v1.py           # Galaxy v1 API client — standalone role search and README fetch
 ├── redhat_docs.py         # Red Hat Documentation MCP client — JSON-RPC over Streamable HTTP (External Access)
 ├── tagging.py             # Tag derivation from module metadata (Foundation)
 ├── manifest_builder.py    # Build-time: generate doc manifests from objects.inv/sitemap
@@ -51,6 +52,8 @@ src/ansible_know/
 | `get_module_doc` | read-only | Get full module documentation |
 | `get_plugin_doc` | read-only | Get full plugin documentation |
 | `get_role_doc` | read-only | Get full role documentation (local or Galaxy README) |
+| `search_standalone_roles` | read-only | Search Galaxy standalone (legacy v1) roles by keyword |
+| `get_standalone_role_doc` | read-only | Structured docs for a 2-part `namespace.role` from Galaxy README HTML |
 | `search_docs` | read-only | Search conceptual doc manifests |
 | `fetch_doc` | read-only | Fetch a docs.ansible.com or docs.redhat.com page as clean Markdown |
 | `search_collections` | read-only | Search Galaxy for collections by keyword |

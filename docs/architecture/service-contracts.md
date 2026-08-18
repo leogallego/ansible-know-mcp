@@ -30,8 +30,9 @@ The server follows a 5-layer pipeline architecture adapted for MCP:
 │                    collection_manifest.py, docs.py,      │
 │                    resolution.py                         │
 ├─────────────────────────────────────────────────────────┤
-│  External Access   galaxy.py, collections.py,           │
-│                    readme_parser.py, redhat_docs.py      │
+│  External Access   galaxy.py, galaxy_v1.py,             │
+│                    collections.py, readme_parser.py,     │
+│                    redhat_docs.py                          │
 ├─────────────────────────────────────────────────────────┤
 │  Foundation        async_utils.py, cache.py, config.py,  │
 │                    galaxy_config.py, state.py,            │
@@ -61,6 +62,7 @@ review unless they change contracts/ADRs.
 | `src/ansible_know/resolution.py` | **Domain** |
 | `src/ansible_know/templates/*` | **Domain** (templates) |
 | `src/ansible_know/galaxy.py` | **External Access** |
+| `src/ansible_know/galaxy_v1.py` | **External Access** |
 | `src/ansible_know/collections.py` | **External Access** |
 | `src/ansible_know/readme_parser.py` | **External Access** |
 | `src/ansible_know/redhat_docs.py` | **External Access** |
@@ -97,7 +99,7 @@ decorated tool, resource, and prompt handler functions. FastMCP manages:
 
 | Element | File | Registration |
 |---------|------|--------------|
-| 20 tool handlers | `server.py` | `@mcp.tool(annotations=ToolAnnotations(...))` |
+| 22 tool handlers | `server.py` | `@mcp.tool(annotations=ToolAnnotations(...))` |
 | 6 resource handlers | `server.py` | `@mcp.resource(uri, ...)` |
 | 5 prompt handlers | `server.py` | `@mcp.prompt` |
 | Lifespan hook | `server.py` | `@lifespan` decorator on `app_lifespan()` |
@@ -149,7 +151,7 @@ business logic. Domain modules are imported lazily to avoid loading
 | `collection_manifest` | `generate_manifest()`, `load_cached_manifest()` | `collection_manifest.py` |
 | `docs` | `search_docs()`, `fetch_doc_content()` | `docs.py` |
 | `collections` | `ensure_collection()`, `list_installed()` | `collections.py` |
-| `resolution` | `resolve_module_doc()`, `resolve_role_doc()`, `search_galaxy_collections()`, `clear_missing_namespace()` | `resolution.py` |
+| `resolution` | `resolve_module_doc()`, `resolve_role_doc()`, `search_galaxy_collections()`, `search_standalone_roles()`, `resolve_standalone_role_doc()`, `clear_missing_namespace()` | `resolution.py` |
 
 ### Types Crossing This Boundary
 
@@ -205,8 +207,9 @@ the process boundary: the Galaxy REST API, the `ansible-doc` CLI, the
 | External Access Module | Consumers | File |
 |------------------------|-----------|------|
 | `galaxy.py` (`GalaxyClient`) | `resolution.py` (via `GalaxyDocClient` Protocol) | `galaxy.py` |
+| `galaxy_v1.py` (`GalaxyV1Client`) | `resolution.py` | `galaxy_v1.py` |
 | `collections.py` | `server.py`, `resolution.py` | `collections.py` |
-| `readme_parser.py` | `galaxy.py` | `readme_parser.py` |
+| `readme_parser.py` | `galaxy.py`, `galaxy_v1.py` | `readme_parser.py` |
 | `redhat_docs.py` (`RedHatDocsClient`) | `server.py` (via `SharedState`) | `redhat_docs.py` |
 
 `GalaxyClient` is the primary class in the codebase. It acts as an async HTTP
