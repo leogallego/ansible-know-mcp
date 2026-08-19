@@ -54,6 +54,66 @@ def _first_tag(tags: str | None) -> str | None:
     return tags.split(",", 1)[0].strip() or None
 
 
+_TOKEN_SPLIT_RE = re.compile(r"[\s\-_]+")
+MAX_SEARCH_TOKENS = 4
+_SEARCH_STOPWORDS = frozenset({
+    "a", "an", "the", "to", "for", "of", "on", "in", "and", "or",
+    "i", "me", "my", "we", "you",
+    "some", "any", "something", "want", "need", "get", "please",
+    "find", "search", "looking",
+    "role", "roles", "ansible", "galaxy",
+    "manage", "management", "install", "setup", "configure", "config",
+    "with", "from", "that", "this", "is", "be", "how", "can", "use", "using",
+})
+
+
+def _search_tokens(query: str) -> list[str]:
+    """Split a search string into Galaxy v1 ``keywords`` AND tokens.
+
+    Galaxy ``getlist('keywords')`` ANDs each value as a case-sensitive
+    substring of namespace, name, or description. A single ``keywords``
+    with spaces looks for that exact phrase, so ``win openssh`` misses
+    ``win_openssh``.
+    """
+    lowered = query.strip().lower()
+    if not lowered:
+        return []
+    parts = [part for part in _TOKEN_SPLIT_RE.split(lowered) if part]
+    tokens: list[str] = []
+    seen: set[str] = set()
+    for part in parts:
+        if part in _SEARCH_STOPWORDS or len(part) < 2:
+            continue
+        if part not in seen:
+            seen.add(part)
+            tokens.append(part)
+    if not tokens:
+        return [lowered]
+    if len(tokens) > MAX_SEARCH_TOKENS:
+        keep = set(sorted(tokens, key=len, reverse=True)[:MAX_SEARCH_TOKENS])
+        tokens = [token for token in tokens if token in keep]
+    return tokens
+
+
+def _canonicalize_role_parts(namespace: str, name: str) -> tuple[str, str]:
+    """Lowercase a standalone role identifier. Namespace hyphens stay as-is."""
+    return namespace.lower(), name.lower()
+
+
+def _role_name_candidates(name: str) -> list[str]:
+    """Try lowercase name as stored, then hyphen/underscore swap.
+
+    ``ssh-hardening`` and ``rhel9_cis`` both exist; GitHub repos like
+    ``RHEL9-CIS`` are stored with underscores. Do not rewrite on first try.
+    """
+    lowered = name.lower()
+    out = [lowered]
+    for alt in (lowered.replace("-", "_"), lowered.replace("_", "-")):
+        if alt not in out:
+            out.append(alt)
+    return out
+
+
 def _normalize_dependencies(raw: object) -> list[str]:
     if not isinstance(raw, list):
         return []
@@ -358,7 +418,7 @@ class GalaxyV1Client:
     async def _api_get(
         self,
         path: str,
-        params: dict[str, str] | None = None,
+        params: dict[str, str | list[str]] | None = None,
         timeout: httpx.Timeout = TIMEOUT_DEFAULT,
     ) -> dict[str, Any]:
         url = path if path.startswith(("http://", "https://")) else f"{self._base}{path}"
@@ -405,7 +465,7 @@ class GalaxyV1Client:
     async def _safe_api_get(
         self,
         path: str,
-        params: dict[str, str] | None = None,
+        params: dict[str, str | list[str]] | None = None,
         timeout: httpx.Timeout = TIMEOUT_DEFAULT,
     ) -> dict[str, Any]:
         """Wrap _api_get with network error handling."""
@@ -418,35 +478,62 @@ class GalaxyV1Client:
 
     async def search_roles(self, query: str, tags: str | None = None) -> dict[str, Any]:
         await self._discover_api_root()
-        cache_key = (*self._cache_identity(), "search", query, tags or "")
+        tokens = _search_tokens(query)
+        cache_key = (*self._cache_identity(), "search", "\x1f".join(tokens), tags or "")
         cached = _v1_cache.get(cache_key)
         if cached is not None:
-            return cached
-        params = {
-            "keywords": query,
-            "order_by": "-download_count",
-            "page_size": "10",
-        }
-        tag = _first_tag(tags)
-        if tag:
-            params["tags"] = tag
-        data = await self._safe_api_get(self._build_v1_url("roles"), params=params)
-        hits = data.get("results") or []
-        mapped = [_map_search_hit(item) for item in hits if isinstance(item, dict)]
+            cached_out = dict(cached)
+            cached_out["query"] = query
+            return cached_out
+        if not tokens:
+            return {"query": query, "count": 0, "roles": []}
+
+        async def _list(keywords: str | list[str]) -> list[dict[str, Any]]:
+            params: dict[str, str | list[str]] = {
+                "keywords": keywords,
+                "order_by": "-download_count",
+                "page_size": "10",
+            }
+            tag = _first_tag(tags)
+            if tag:
+                params["tags"] = tag
+            data = await self._safe_api_get(
+                self._build_v1_url("roles"), params=params,
+            )
+            hits = data.get("results") or []
+            return [
+                _map_search_hit(item) for item in hits if isinstance(item, dict)
+            ]
+
+        keywords: str | list[str] = tokens[0] if len(tokens) == 1 else tokens
+        mapped = await _list(keywords)
+        if not mapped and len(tokens) > 1:
+            longest = max(tokens, key=len)
+            mapped = await _list(longest)
         result = {"query": query, "count": len(mapped), "roles": mapped}
         _v1_cache.put(cache_key, result)
         return result
 
     async def fetch_role_by_name(self, namespace: str, name: str) -> dict[str, Any]:
         await self._discover_api_root()
-        params = {"namespace": namespace, "name": name, "page_size": "1"}
-        data = await self._safe_api_get(self._build_v1_url("roles"), params=params)
-        results = data.get("results") or []
-        if not results:
-            raise GalaxyError(
-                f"Standalone role '{namespace}.{name}' not found"
+        namespace, name = _canonicalize_role_parts(namespace, name)
+        last_name = name
+        for candidate in _role_name_candidates(name):
+            last_name = candidate
+            params: dict[str, str | list[str]] = {
+                "namespace": namespace,
+                "name": candidate,
+                "page_size": "1",
+            }
+            data = await self._safe_api_get(
+                self._build_v1_url("roles"), params=params,
             )
-        return results[0]
+            results = data.get("results") or []
+            if results:
+                return results[0]
+        raise GalaxyError(
+            f"Standalone role '{namespace}.{last_name}' not found"
+        )
 
     async def fetch_role_content(self, role_id: int) -> dict[str, Any]:
         await self._discover_api_root()
@@ -466,6 +553,7 @@ class GalaxyV1Client:
         from ansible_know.readme_parser import parse_role_readme
 
         namespace, _, name = role_name.partition(".")
+        namespace, name = _canonicalize_role_parts(namespace, name)
         role = await self.fetch_role_by_name(namespace, name)
         content = await self.fetch_role_content(int(role["id"]))
         html = content.get("readme_html") or ""
@@ -496,8 +584,10 @@ class GalaxyV1Client:
                 "description": var.get("description", ""),
                 "aliases": var.get("aliases", []),
             })
+        username = role.get("username") or namespace
+        role_slug = role.get("name") or name
         metadata = {
-            "role_name": role_name,
+            "role_name": f"{username}.{role_slug}",
             "content_type": "standalone_role",
             "short_description": short,
             "entry_points": {

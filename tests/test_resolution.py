@@ -659,6 +659,38 @@ class TestSearchStandaloneRoles:
         assert result == {"query": "zzzz", "count": 0, "roles": []}
 
     @pytest.mark.asyncio
+    async def test_empty_hits_succeed_when_v1_less_siblings_error(self):
+        """Hub v1-less errors must not turn a successful empty Galaxy search
+        into 'All Galaxy servers failed'.
+        """
+        from ansible_know.galaxy_config import GalaxyServerConfig
+        from ansible_know.resolution import search_standalone_roles
+        certified = GalaxyServerConfig(
+            name="certified", url="https://console.redhat.com/api/automation-hub/",
+        )
+        validated = GalaxyServerConfig(
+            name="validated", url="https://console.redhat.com/api/automation-hub/",
+        )
+        galaxy = GalaxyServerConfig(
+            name="galaxy", url="https://galaxy.ansible.com",
+        )
+        no_v1 = GalaxyError("does not support Galaxy API v1")
+        result = await search_standalone_roles(
+            "lockdown RHEL9-CIS",
+            galaxy_servers=[certified, validated, galaxy],
+            v1_client_factory=_v1_factory_map({
+                "certified": _FakeV1(error=no_v1),
+                "validated": _FakeV1(error=no_v1),
+                "galaxy": _FakeV1(search={"roles": []}),
+            }),
+        )
+        assert result == {
+            "query": "lockdown RHEL9-CIS",
+            "count": 0,
+            "roles": [],
+        }
+
+    @pytest.mark.asyncio
     async def test_all_fail_raises(self):
         from ansible_know.galaxy_config import GalaxyServerConfig
         from ansible_know.resolution import search_standalone_roles
