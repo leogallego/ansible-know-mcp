@@ -400,15 +400,10 @@ docker run -p 9090:9090 \
   ansible-know-mcp
 ```
 
-## Development
+## Contributing
 
-```bash
-git clone https://github.com/leogallego/ansible-know-mcp.git
-cd ansible-know-mcp
-uv venv && source .venv/bin/activate
-uv pip install -e ".[dev]"
-pytest
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing,
+architecture guidelines, and how to add new MCP tools.
 
 ## Acknowledgments
 
