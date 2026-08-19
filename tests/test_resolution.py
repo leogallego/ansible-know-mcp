@@ -349,6 +349,46 @@ class TestSearchGalaxyCollections:
         assert result["count"] == 1
 
     @pytest.mark.asyncio
+    async def test_empty_hits_succeed_when_siblings_error(self):
+        """Hub errors must not turn a successful empty Galaxy search
+        into 'All Galaxy servers failed'.
+        """
+        from ansible_know.errors import GalaxyError
+        from ansible_know.galaxy_config import GalaxyServerConfig
+        from ansible_know.resolution import search_galaxy_collections
+
+        certified = GalaxyServerConfig(
+            name="certified", url="https://console.redhat.com/api/automation-hub/",
+        )
+        validated = GalaxyServerConfig(
+            name="validated", url="https://console.redhat.com/api/automation-hub/",
+        )
+        galaxy = GalaxyServerConfig(
+            name="galaxy", url="https://galaxy.ansible.com",
+        )
+        empty_result = {"query": "zzzz", "count": 0, "collections": []}
+        hub_error = GalaxyError("401 Unauthorized")
+
+        with patch("ansible_know.galaxy.GalaxyClient.search_collections") as mock_search:
+            call_count = 0
+
+            async def side_effect(query, tags=None):
+                nonlocal call_count
+                call_count += 1
+                if call_count < 3:
+                    raise hub_error
+                return empty_result
+
+            mock_search.side_effect = side_effect
+            result = await search_galaxy_collections(
+                "zzzz",
+                galaxy_servers=[certified, validated, galaxy],
+                client_factory=FACTORY,
+            )
+
+        assert result == {"query": "zzzz", "count": 0, "collections": []}
+
+    @pytest.mark.asyncio
     async def test_all_servers_fail_raises(self):
         from ansible_know.errors import GalaxyError
         from ansible_know.galaxy_config import GalaxyServerConfig

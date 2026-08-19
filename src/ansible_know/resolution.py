@@ -453,7 +453,12 @@ async def search_galaxy_collections(
     galaxy_servers: list[GalaxyServerConfig] | None = None,
     client_factory: GalaxyClientFactory | None = None,
 ) -> dict[str, Any]:
-    """Search all configured Galaxy servers concurrently, merge and dedupe results."""
+    """Search all configured Galaxy servers concurrently, merge and dedupe results.
+
+    A successful search response with zero collections is success, even if
+    other servers error (401, timeout, discovery failure). Raises
+    GalaxyError only when no server returns a search response.
+    """
     from ansible_know.errors import GalaxyError
 
     if client_factory is None:
@@ -474,6 +479,7 @@ async def search_galaxy_collections(
     all_collections: list[dict[str, Any]] = []
     seen_namespaces: set[str] = set()
     errors: list[str] = []
+    search_ok = 0
 
     for i, outcome in enumerate(outcomes):
         if isinstance(outcome, Exception):
@@ -483,6 +489,7 @@ async def search_galaxy_collections(
             )
             errors.append(f"{servers[i].name}: {outcome}")
             continue
+        search_ok += 1
         server_name, result = outcome
         for coll in result.get("collections", []):
             ns = coll.get("namespace", "")
@@ -491,8 +498,11 @@ async def search_galaxy_collections(
                 all_collections.append(coll)
                 seen_namespaces.add(ns)
 
-    if not all_collections and errors:
-        raise GalaxyError(f"All Galaxy servers failed: {'; '.join(errors)}")
+    if search_ok == 0:
+        raise GalaxyError(
+            f"All Galaxy servers failed: {'; '.join(errors)}"
+            if errors else "No Galaxy servers configured"
+        )
 
     all_collections.sort(key=lambda c: c.get("download_count", 0), reverse=True)
 
