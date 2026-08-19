@@ -510,7 +510,12 @@ async def search_standalone_roles(
     galaxy_servers: list[GalaxyServerConfig] | None = None,
     v1_client_factory: GalaxyV1ClientFactory | None = None,
 ) -> StandaloneRoleSearchResult:
-    """Search all configured Galaxy servers concurrently for standalone roles."""
+    """Search configured Galaxy servers concurrently for standalone roles.
+
+    A successful v1 response with zero roles is success, even if other
+    servers lack v1 (typical Automation Hub) or time out. Raises
+    GalaxyError only when no server returns a v1 search response.
+    """
     from ansible_know.errors import GalaxyError
 
     if v1_client_factory is None:
@@ -531,6 +536,7 @@ async def search_standalone_roles(
     all_roles: list[dict[str, Any]] = []
     seen_role_names: set[str] = set()
     errors: list[str] = []
+    v1_ok = 0
 
     for i, outcome in enumerate(outcomes):
         if isinstance(outcome, Exception):
@@ -540,6 +546,7 @@ async def search_standalone_roles(
             )
             errors.append(f"{servers[i].name}: {outcome}")
             continue
+        v1_ok += 1
         server_name, result = outcome
         for role in result.get("roles", []):
             role_name = role.get("role_name", "")
@@ -548,8 +555,11 @@ async def search_standalone_roles(
                 all_roles.append(role)
                 seen_role_names.add(role_name)
 
-    if not all_roles and errors:
-        raise GalaxyError(f"All Galaxy servers failed: {'; '.join(errors)}")
+    if v1_ok == 0:
+        raise GalaxyError(
+            f"All Galaxy servers failed: {'; '.join(errors)}"
+            if errors else "No Galaxy servers configured"
+        )
 
     all_roles.sort(key=lambda r: r.get("download_count", 0), reverse=True)
 

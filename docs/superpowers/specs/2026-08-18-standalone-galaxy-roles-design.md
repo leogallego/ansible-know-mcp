@@ -301,10 +301,29 @@ that in the tool docstring.
 
 Resolution: query all configured Galaxy servers concurrently (same gather
 pattern as `search_galaxy_collections`). Skip servers that raise (no v1,
-404, timeout). Dedupe on `{username}.{name}`. Rank by `download_count`
-descending. Empty merged results are **success** (`count: 0`). If every
-server fails, **raise** `GalaxyError` (server.py turns it into
-`{"error": ...}`), matching `search_galaxy_collections`.
+404, timeout) — typical Automation Hub / certified / validated endpoints.
+Do **not** restrict search to `galaxy.ansible.com` by URL; private
+galaxy-ng may expose v1. Dedupe on `{username}.{name}`. Rank by
+`download_count` descending (that ranking is the relevance pass — do not
+permute letter-case variants).
+
+Send ``keywords`` as **repeated** query params (Galaxy ``getlist`` AND):
+tokenize on whitespace / hyphen / underscore, lowercase, drop stopwords
+(``role``, ``manage``, ``want``, ``ansible``, …). ``win openssh`` becomes
+``keywords=win&keywords=openssh``, which matches ``win_openssh``. A single
+phrase ``keywords=win openssh`` does **not** match.
+
+If the AND returns zero hits and more than one token remains, retry with
+the **longest** token only (so ``windows openssh`` still finds
+``win_openssh`` via ``openssh``).
+
+Empty merged results are **success** (`count: 0`) whenever **at least one**
+server returned a v1 response. A v1 200 with zero roles plus Hub
+`does not support Galaxy API v1` errors is still success — not
+`All Galaxy servers failed`. Raise `GalaxyError` only when **no** server
+returns a v1 search response. Do not copy `search_galaxy_collections`'
+`if not hits and errors` condition; that treats Hub-only failures plus
+an empty public-Galaxy hit list as total failure.
 
 Result TypedDict `StandaloneRoleSearchResult`:
 
@@ -337,14 +356,18 @@ Read-only. Parameter:
 - `role_name: str` — `validate_standalone_role_name` (new)
 
 Split into `(namespace, name)` on the **first** dot (exactly two segments).
-Lookup via `namespace` + `name`, then `/content/`, then parse.
+Lowercase both segments. Keep namespace hyphens (`ansible-lockdown` is not
+`ansible_lockdown`). For the role name, try the lowercase spelling first,
+then the hyphen/underscore swap (`ssh-hardening` hits immediately;
+`RHEL9-CIS` misses as `rhel9-cis` then hits as `rhel9_cis`). Lookup via
+`namespace` + `name`, then `/content/`, then parse.
 
 Result TypedDict `GetStandaloneRoleDocResult` — same optional fields as
 `GetRoleDocResult` plus standalone extras:
 
 | Field | Notes |
 |-------|--------|
-| `role_name` | Echo the 2-part identifier |
+| `role_name` | Galaxy canonical `{username}.{name}` after lookup, not the raw caller spelling |
 | `content_type` | `"standalone_role"` (not `"role"`) |
 | `doc_source` | `galaxy_v1_readme` or `galaxy_v1_metadata` on success. Do not return a success payload with `unavailable` — that case is `ErrorResponse`. |
 | `short_description`, `entry_points`, `dependencies`, `examples` | From parser when HTML present. If HTML is empty, `short_description` is the v1 `description` field; `dependencies` fall back to `summary_fields.dependencies`. When HTML is present, parser dependencies win; if the parser returns none, still fall back to `summary_fields.dependencies`. |
@@ -363,7 +386,7 @@ No local ansible-doc attempt.
 New `validate_standalone_role_name(name: str) -> None` in `validation.py`.
 
 - Exactly two segments separated by `.`
-- Each segment: `[A-Za-z0-9][A-Za-z0-9_-]*` (hyphen + mixed case)
+- Each segment: `[A-Za-z0-9][A-Za-z0-9_-]*` (hyphen + mixed case accepted; lookup canonicalizes)
 - Length cap: reuse `MAX_NAMESPACE_LENGTH` per segment (128)
 - Reject 3-part FQCNs with an error that points at `get_role_doc`
 - Reject empty / path characters
@@ -420,10 +443,17 @@ and `GalaxyV1ClientFactory`. Do not genericize the v3 helper.
 call resolution → return.
 
 Try servers in configured order for get-doc (first success wins). Search
-queries all servers and merges; **raises** `GalaxyError` when every
-server fails (empty hits are success). Both paths must use
+queries all servers and merges; **raises** `GalaxyError` only when every
+server fails to return a v1 response. Empty hits from a v1-capable
+server are success even if v1-less siblings error. Both paths must use
 `_select_http_client` (do not inject the shared httpx client when
 `validate_certs` is false).
+
+Lookup: lowercase both segments. Try role-name as stored, then hyphen
+swap / underscore swap. Search tokenizes into repeated ``keywords``
+params; empty AND falls back to the longest token. Search does not
+globally replace hyphens in free text (``ansible-lockdown`` as a
+keyword must remain hyphenated until tokenized).
 
 If public Galaxy is disabled (`ANSIBLE_KNOW_NO_PUBLIC_GALAXY=1`) and no
 configured server speaks v1, the tools return the “does not support
@@ -439,7 +469,7 @@ Galaxy catalog.
 | Validation failure | `{"error": str}` |
 | No v1 on any configured server | `{"error": "... does not support standalone roles (Galaxy v1)"}` |
 | Role not found | `{"error": "Standalone role '{name}' not found"}` |
-| HTTP/timeout on a server (search) | Skip server; empty merge is success; if all fail, resolution raises `GalaxyError` → tool `{"error": ...}` |
+| HTTP/timeout / no-v1 on a server (search) | Skip that server; a v1 200 with zero roles is success; raise `GalaxyError` only if **no** server returned v1 |
 | HTTP/timeout on get-doc after all servers | `{"error": ...}` sanitized |
 | Empty README HTML | Success with `doc_source: galaxy_v1_metadata`, v1 description/tags, and `doc_warning` |
 
@@ -454,9 +484,9 @@ Unit tests mock HTTP (no live Galaxy). Integration tests stay opt-in
 
 | File | Coverage |
 |------|----------|
-| `tests/test_galaxy_v1.py` | `keywords` + `order_by=-download_count` + `page_size=10`; `tags` first-segment only; lookup uses `namespace`+`name` **not** `owner__username`; content parse → entry_points; empty HTML → `galaxy_v1_metadata`; 404 on v1 → `GalaxyError`; hyphenated `ansible-lockdown.rhel9_cis`; discovery requires v1 and does **not** require v3 |
+| `tests/test_galaxy_v1.py` | Repeated ``keywords`` AND tokens; stopwords dropped; empty AND falls back to longest token; lookup tries hyphen form then underscore; hyphenated names like ``ssh-hardening`` hit first; namespace underscores are not rewritten to hyphens; ``tags`` first-segment only; lookup uses ``namespace``+``name`` **not** ``owner__username``; content parse → entry_points; empty HTML → ``galaxy_v1_metadata``; 404 on v1 → ``GalaxyError``; discovery requires v1 and does **not** require v3 |
 | `tests/test_validation.py` | Accept hyphens/mixed case; reject 1-part, 3-part, empty, `/` |
-| `tests/test_resolution.py` | Multi-server: v1-less server skipped, v1 server used; all-fail **raises** `GalaxyError`; search dedupe; empty hits succeed |
+| `tests/test_resolution.py` | Multi-server: v1-less server skipped, v1 server used; all-fail **raises** `GalaxyError`; search dedupe; empty hits succeed **including when v1-less siblings error** (the Hub+empty combination; testing skip-with-hits and empty-alone separately is not enough) |
 | `tests/test_server.py` | Both tools success + validation error; `get_role_doc` still requires 3-part FQCN; `clear_cache(scope=galaxy)` also calls `galaxy_v1.clear_cache` |
 | `tests/test_galaxy.py` | Existing v3 tests still pass (no v1 import) |
 | `tests/integration/test_galaxy_api.py` | Optional live `keywords=rhel9_cis` and `get ansible-lockdown.rhel9_cis` |
