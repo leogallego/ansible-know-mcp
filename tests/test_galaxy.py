@@ -1670,6 +1670,40 @@ class TestFetchRoleDoc:
         assert role_meta["role_name"] == "some.col.empty_role"
         assert role_meta["entry_points"]["main"]["options"] == []
 
+    @pytest.mark.asyncio
+    async def test_variables_missing_name_raises_galaxy_error(self):
+        blob = {
+            "docs_blob": {
+                "contents": [
+                    {
+                        "content_type": "role",
+                        "content_name": "timesync",
+                        "doc_strings": {},
+                        "readme_html": "<p>x</p>",
+                    },
+                ],
+            },
+        }
+
+        async def mock_api_get(self_client, path, params=None, timeout=None):
+            if "versions/" in path and "docs-blob" not in path:
+                return SAMPLE_VERSIONS_RESPONSE
+            if "docs-blob" in path:
+                return blob
+            return {}
+
+        parsed = {"variables": [{"type": "str", "description": "no name"}]}
+        with _mock_api_get_context(mock_api_get):
+            with patch(
+                "ansible_know.readme_parser.parse_role_readme",
+                return_value=parsed,
+            ):
+                client = GalaxyClient()
+                with pytest.raises(GalaxyError, match="Malformed Galaxy payload"):
+                    await client.fetch_role_doc(
+                        "fedora.linux_system_roles.timesync",
+                    )
+
 
 class TestSearchCollectionsRoleCount:
     @pytest.mark.asyncio

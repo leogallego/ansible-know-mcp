@@ -688,16 +688,21 @@ class GalaxyClient:
         parsed = parse_role_readme(readme_html)
 
         options: list[dict[str, Any]] = []
-        for var in parsed.get("variables", []):
-            options.append({
-                "name": var["name"],
-                "type": var.get("type") or "str",
-                "required": bool(var.get("required")),
-                "default": var.get("default"),
-                "choices": var.get("choices"),
-                "description": var.get("description", ""),
-                "aliases": var.get("aliases", []),
-            })
+        try:
+            for var in parsed.get("variables") or []:
+                options.append({
+                    "name": var["name"],
+                    "type": var.get("type") or "str",
+                    "required": bool(var.get("required")),
+                    "default": var.get("default"),
+                    "choices": var.get("choices"),
+                    "description": var.get("description", ""),
+                    "aliases": var.get("aliases", []),
+                })
+        except (KeyError, TypeError, ValueError) as exc:
+            raise GalaxyError(
+                f"Malformed Galaxy payload for role '{role_name}'"
+            ) from exc
 
         role_metadata: dict[str, Any] = {
             "role_name": role_name,
