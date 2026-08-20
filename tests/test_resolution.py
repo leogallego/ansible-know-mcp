@@ -625,6 +625,23 @@ class _FakeV1:
         return self._doc
 
 
+class _FakeGalaxy:
+    def __init__(self, doc=None, error=None):
+        self._doc = doc
+        self._error = error
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return None
+
+    async def fetch_role_doc(self, role_name, version=None):
+        if self._error:
+            raise self._error
+        return self._doc
+
+
 def _v1_factory_map(mapping):
     def _factory(config, http_client=None):
         return mapping[config.name]
@@ -786,3 +803,97 @@ class TestResolveStandaloneRoleDoc:
         )
         assert result == {"error": "Standalone role 'missing.role' not found"}
         assert "doc_source" not in result
+
+    @pytest.mark.asyncio
+    async def test_malformed_payload_falls_through_to_next_server(self):
+        from ansible_know.galaxy_config import GalaxyServerConfig
+        from ansible_know.resolution import resolve_standalone_role_doc
+        s1 = GalaxyServerConfig(name="hub", url="https://hub.example")
+        s2 = GalaxyServerConfig(name="galaxy", url="https://galaxy.ansible.com")
+        doc = ({
+            "role_name": "ansible-lockdown.rhel9_cis",
+            "content_type": "standalone_role",
+            "short_description": "CIS",
+            "entry_points": {"main": {"description": "CIS", "options": []}},
+            "dependencies": [],
+            "examples": "",
+        }, {"doc_source": "galaxy_v1_readme", "doc_version": "1.0"})
+        result = await resolve_standalone_role_doc(
+            "ansible-lockdown.rhel9_cis",
+            galaxy_servers=[s1, s2],
+            v1_client_factory=_v1_factory_map({
+                "hub": _FakeV1(error=KeyError("id")),
+                "galaxy": _FakeV1(doc=doc),
+            }),
+        )
+        assert result["doc_source"] == "galaxy_v1_readme"
+        assert "error" not in result
+
+    @pytest.mark.asyncio
+    async def test_all_malformed_payloads_surface_galaxy_error(self):
+        from ansible_know.galaxy_config import GalaxyServerConfig
+        from ansible_know.resolution import resolve_standalone_role_doc
+        s1 = GalaxyServerConfig(name="hub", url="https://hub.example")
+        s2 = GalaxyServerConfig(name="galaxy", url="https://galaxy.ansible.com")
+        result = await resolve_standalone_role_doc(
+            "ansible-lockdown.rhel9_cis",
+            galaxy_servers=[s1, s2],
+            v1_client_factory=_v1_factory_map({
+                "hub": _FakeV1(error=KeyError("id")),
+                "galaxy": _FakeV1(error=TypeError("not a mapping")),
+            }),
+        )
+        assert "error" in result
+        assert "Malformed Galaxy payload" in result["error"]
+        assert "doc_source" not in result
+
+
+class TestResolveRoleDocMalformedPayload:
+    @pytest.mark.asyncio
+    async def test_malformed_payload_falls_through_to_next_server(
+        self, mock_ansible_doc, missing,
+    ):
+        mock_ansible_doc.return_value = "{}"
+        from ansible_know.galaxy_config import GalaxyServerConfig
+        from ansible_know.resolution import resolve_role_doc
+        s1 = GalaxyServerConfig(name="hub", url="https://hub.example")
+        s2 = GalaxyServerConfig(name="galaxy", url="https://galaxy.ansible.com")
+        galaxy_role_meta = {
+            "role_name": "fedora.linux_system_roles.timesync",
+            "short_description": "Configure time synchronization",
+            "entry_points": {"main": {"description": "Configure time sync", "options": []}},
+            "dependencies": [], "examples": "",
+        }
+        galaxy_meta = {"doc_source": "galaxy", "doc_version": "1.121.0"}
+        result = await resolve_role_doc(
+            "fedora.linux_system_roles.timesync",
+            galaxy_servers=[s1, s2],
+            client_factory=_v1_factory_map({
+                "hub": _FakeGalaxy(error=KeyError("name")),
+                "galaxy": _FakeGalaxy(doc=(galaxy_role_meta, galaxy_meta)),
+            }),
+            missing_collections=missing,
+        )
+        assert result["doc_source"] == "galaxy_readme"
+        assert "error" not in result
+
+    @pytest.mark.asyncio
+    async def test_all_malformed_payloads_surface_galaxy_error(
+        self, mock_ansible_doc, missing,
+    ):
+        mock_ansible_doc.return_value = "{}"
+        from ansible_know.galaxy_config import GalaxyServerConfig
+        from ansible_know.resolution import resolve_role_doc
+        s1 = GalaxyServerConfig(name="hub", url="https://hub.example")
+        s2 = GalaxyServerConfig(name="galaxy", url="https://galaxy.ansible.com")
+        result = await resolve_role_doc(
+            "fedora.linux_system_roles.timesync",
+            galaxy_servers=[s1, s2],
+            client_factory=_v1_factory_map({
+                "hub": _FakeGalaxy(error=KeyError("name")),
+                "galaxy": _FakeGalaxy(error=ValueError("invalid id")),
+            }),
+            missing_collections=missing,
+        )
+        assert result["doc_source"] == "unavailable"
+        assert "Malformed Galaxy payload" in result["error"]

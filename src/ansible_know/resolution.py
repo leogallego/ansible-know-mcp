@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     )
 
 from ansible_know.async_utils import run_in_executor
-from ansible_know.errors import AnsibleDocError
+from ansible_know.errors import AnsibleDocError, GalaxyError
 from ansible_know.validation import extract_collection_fqcn, sanitize_error, validate_plugin_type
 
 logger = logging.getLogger("ansible_know")
@@ -54,6 +54,15 @@ def _select_http_client(
     return http_client if server.validate_certs else None
 
 
+def _wrap_galaxy_server_error(exc: BaseException) -> GalaxyError:
+    """Treat parse/shape errors as server failure so later servers still run."""
+    if isinstance(exc, GalaxyError):
+        return exc
+    wrapped = GalaxyError(f"Malformed Galaxy payload: {exc}")
+    wrapped.__cause__ = exc
+    return wrapped
+
+
 async def _try_galaxy_servers(
     servers: list[GalaxyServerConfig],
     operation: Callable[..., Awaitable[Any]],
@@ -63,9 +72,9 @@ async def _try_galaxy_servers(
     """Try an operation across multiple Galaxy servers in priority order.
 
     Returns the first successful result. Raises the last GalaxyError if all fail.
+    KeyError, TypeError, and ValueError from a 200 with a bad JSON body are
+    wrapped as GalaxyError so fallback continues (HTTP/not-found already are).
     """
-    from ansible_know.errors import GalaxyError
-
     last_exc: GalaxyError | None = None
     for server in servers:
         try:
@@ -73,9 +82,9 @@ async def _try_galaxy_servers(
                 server, http_client=_select_http_client(http_client, server),
             ) as client:
                 return await operation(client)
-        except GalaxyError as exc:
-            logger.info("Galaxy server '%s' failed: %s", server.name, exc)
-            last_exc = exc
+        except (GalaxyError, KeyError, TypeError, ValueError) as exc:
+            last_exc = _wrap_galaxy_server_error(exc)
+            logger.info("Galaxy server '%s' failed: %s", server.name, last_exc)
     if last_exc is not None:
         raise last_exc
     raise GalaxyError("No Galaxy servers configured")
@@ -90,9 +99,9 @@ async def _try_v1_servers(
     """Try an operation across multiple Galaxy servers in priority order.
 
     Returns the first successful result. Raises the last GalaxyError if all fail.
+    KeyError, TypeError, and ValueError from a 200 with a bad JSON body are
+    wrapped as GalaxyError so fallback continues (HTTP/not-found already are).
     """
-    from ansible_know.errors import GalaxyError
-
     last_exc: GalaxyError | None = None
     for server in servers:
         try:
@@ -100,9 +109,9 @@ async def _try_v1_servers(
                 server, http_client=_select_http_client(http_client, server),
             ) as client:
                 return await operation(client)
-        except GalaxyError as exc:
-            logger.info("Galaxy server '%s' failed: %s", server.name, exc)
-            last_exc = exc
+        except (GalaxyError, KeyError, TypeError, ValueError) as exc:
+            last_exc = _wrap_galaxy_server_error(exc)
+            logger.info("Galaxy server '%s' failed: %s", server.name, last_exc)
     if last_exc is not None:
         raise last_exc
     raise GalaxyError("No Galaxy servers configured")

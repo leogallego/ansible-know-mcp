@@ -354,6 +354,40 @@ class TestFetchStandaloneRoleDoc:
         assert params["name"] == "rhel9_cis"
         assert meta["role_name"] == "ansible-lockdown.rhel9_cis"
 
+    @pytest.mark.asyncio
+    async def test_list_payload_missing_id_raises_galaxy_error(self):
+        from ansible_know.galaxy_v1 import GalaxyV1Client
+        role = {k: v for k, v in SAMPLE_ROLE.items() if k != "id"}
+        list_payload = {
+            "count": 1, "next": None, "previous": None, "results": [role],
+        }
+        mock_client = _mock_http(list_payload)
+        with patch("ansible_know.galaxy_v1.httpx.AsyncClient", return_value=mock_client):
+            gc = _skip_discovery(GalaxyV1Client())
+            with pytest.raises(GalaxyError, match="Malformed Galaxy payload"):
+                await gc.fetch_standalone_role_doc("ansible-lockdown.rhel9_cis")
+
+    @pytest.mark.asyncio
+    async def test_variables_missing_name_raises_galaxy_error(self):
+        from ansible_know.galaxy_v1 import GalaxyV1Client
+        list_resp = _json_response(SAMPLE_LIST)
+        content_resp = _json_response({
+            "readme": "README.md", "readme_html": "<p>x</p>",
+        })
+        mock_client = AsyncMock()
+        mock_client.get.side_effect = [list_resp, content_resp]
+        parsed = {"variables": [{"type": "str", "description": "no name"}]}
+        with patch("ansible_know.galaxy_v1.httpx.AsyncClient", return_value=mock_client):
+            with patch(
+                "ansible_know.readme_parser.parse_role_readme",
+                return_value=parsed,
+            ):
+                gc = _skip_discovery(GalaxyV1Client())
+                with pytest.raises(GalaxyError, match="Malformed Galaxy payload"):
+                    await gc.fetch_standalone_role_doc(
+                        "ansible-lockdown.rhel9_cis",
+                    )
+
 
 class TestV1Discovery:
     @pytest.mark.asyncio

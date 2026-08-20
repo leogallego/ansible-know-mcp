@@ -555,7 +555,14 @@ class GalaxyV1Client:
         namespace, _, name = role_name.partition(".")
         namespace, name = _canonicalize_role_parts(namespace, name)
         role = await self.fetch_role_by_name(namespace, name)
-        content = await self.fetch_role_content(int(role["id"]))
+        try:
+            role_id = int(role["id"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise GalaxyError(
+                f"Malformed Galaxy payload for standalone role "
+                f"'{namespace}.{name}'"
+            ) from exc
+        content = await self.fetch_role_content(role_id)
         html = content.get("readme_html") or ""
         parsed = parse_role_readme(html)
         summary = role.get("summary_fields") or {}
@@ -574,16 +581,22 @@ class GalaxyV1Client:
         tags = [t for t in tags if t]
         short = parsed.get("description") or role.get("description") or ""
         options = []
-        for var in parsed.get("variables") or []:
-            options.append({
-                "name": var["name"],
-                "type": var.get("type") or "str",
-                "required": bool(var.get("required")),
-                "default": var.get("default"),
-                "choices": var.get("choices"),
-                "description": var.get("description", ""),
-                "aliases": var.get("aliases", []),
-            })
+        try:
+            for var in parsed.get("variables") or []:
+                options.append({
+                    "name": var["name"],
+                    "type": var.get("type") or "str",
+                    "required": bool(var.get("required")),
+                    "default": var.get("default"),
+                    "choices": var.get("choices"),
+                    "description": var.get("description", ""),
+                    "aliases": var.get("aliases", []),
+                })
+        except (KeyError, TypeError, ValueError) as exc:
+            raise GalaxyError(
+                f"Malformed Galaxy payload for standalone role "
+                f"'{namespace}.{name}'"
+            ) from exc
         username = role.get("username") or namespace
         role_slug = role.get("name") or name
         metadata = {
