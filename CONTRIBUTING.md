@@ -20,9 +20,17 @@ a public issue.
 
 ## Development Setup
 
+[Fork the repository on GitHub], then clone your fork:
+
 ```bash
-git clone https://github.com/<your-fork>/ansible-know-mcp.git
+git clone git@github.com:<your-username>/ansible-know-mcp.git
 cd ansible-know-mcp
+git remote add upstream git@github.com:leogallego/ansible-know-mcp.git
+```
+
+Install dependencies:
+
+```bash
 uv venv && source .venv/bin/activate
 uv sync --extra dev
 ```
@@ -43,16 +51,35 @@ uv run pytest tests/ -v --run-integration
 
 ## Making Changes
 
-1. **Fork** the repository and create a branch from `main`.
-2. **Write tests** for your changes. All core changes must include tests.
+All contributions come from branches on your **fork** — contributors do not
+push branches to the upstream repository.
+
+1. **Sync your fork** before starting new work:
+   ```bash
+   git fetch upstream main
+   git checkout main
+   git merge upstream/main
+   git push origin main
+   ```
+2. **Create a branch** from `main`:
+   ```bash
+   git checkout -b your-branch-name
+   ```
+3. **Write tests** for your changes. All core changes must include tests.
    Unit tests mock `_run_ansible_doc` so ansible-core is not required.
-3. **Run the test suite** before opening a PR:
+4. **Run the test suite** before opening a PR:
    ```bash
    uv run ruff check src/ tests/
    uv run pytest tests/ -v --cov=ansible_know
    ```
-4. **Open a pull request** against `main`. CI runs lint and tests across
-   Python 3.10-3.13 automatically.
+5. **Push to your fork** and open a pull request against `main`:
+   ```bash
+   git push origin your-branch-name
+   ```
+   CI runs lint and tests across Python 3.10-3.13 automatically.
+
+[Fork the repository on GitHub]:
+  https://docs.github.com/en/get-started/quickstart/contributing-to-projects
 
 ## Architecture
 
