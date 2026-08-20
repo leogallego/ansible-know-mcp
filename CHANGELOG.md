@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing yet.
 
+## [0.9.1] - 2026-08-19
+
+### Fixed
+
+- `search_standalone_roles` empty v1 hits + Hub errors is success (#240)
+- `search_collections` same empty-hits + sibling-error merge (#241)
+- Malformed Galaxy payloads are server failure so multi-server fallback continues (#234)
+
 ## [0.9.0] - 2026-08-18
 
 ### Added
@@ -263,6 +271,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OWASP security hardening: FQCN input validation, path traversal protection, error sanitization, output size limits, audit logging
 - 77 tests covering tools, parser, skills, docs, collection manifests, and security
 
+[0.9.1]: https://github.com/leogallego/ansible-know-mcp/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/leogallego/ansible-know-mcp/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/leogallego/ansible-know-mcp/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/leogallego/ansible-know-mcp/compare/v0.6.1...v0.7.0
