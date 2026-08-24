@@ -448,6 +448,95 @@ class TestValidateDocUrl:
         with pytest.raises(ValidationError):
             validate_doc_url("http://docs.redhat.com/page")
 
+    def test_valid_cop_intro_url(self):
+        validate_doc_url(
+            "https://raw.githubusercontent.com/redhat-cop/automation-good-practices/main/README.adoc"
+        )
+
+    def test_valid_cop_section_url(self):
+        validate_doc_url(
+            "https://raw.githubusercontent.com/redhat-cop/automation-good-practices/main/naming_conventions/README.adoc"
+        )
+
+    def test_rejects_other_github_repo(self):
+        with pytest.raises(ValidationError):
+            validate_doc_url(
+                "https://raw.githubusercontent.com/ansible/ansible/devel/README.adoc"
+            )
+
+    def test_rejects_cop_contribute(self):
+        with pytest.raises(ValidationError):
+            validate_doc_url(
+                "https://raw.githubusercontent.com/redhat-cop/automation-good-practices/main/CONTRIBUTE.adoc"
+            )
+
+    def test_rejects_github_pages(self):
+        with pytest.raises(ValidationError):
+            validate_doc_url(
+                "https://redhat-cop.github.io/automation-good-practices/"
+            )
+
+    def test_rejects_github_blob_url(self):
+        with pytest.raises(ValidationError):
+            validate_doc_url(
+                "https://github.com/redhat-cop/automation-good-practices/blob/main/README.adoc"
+            )
+
+    def test_rejects_cop_http(self):
+        with pytest.raises(ValidationError):
+            validate_doc_url(
+                "http://raw.githubusercontent.com/redhat-cop/automation-good-practices/main/README.adoc"
+            )
+
+    def test_rejects_cop_path_dotdot(self):
+        with pytest.raises(ValidationError):
+            validate_doc_url(
+                "https://raw.githubusercontent.com/redhat-cop/automation-good-practices/main/../README.adoc"
+            )
+
+    def test_rejects_unknown_cop_section(self):
+        with pytest.raises(ValidationError):
+            validate_doc_url(
+                "https://raw.githubusercontent.com/redhat-cop/automation-good-practices/main/unknown/README.adoc"
+            )
+
+    def test_cop_query_string_is_ignored(self):
+        validate_doc_url(
+            "https://raw.githubusercontent.com/redhat-cop/automation-good-practices/main/README.adoc?raw=1"
+        )
+
+    def test_rejects_cop_userinfo(self):
+        with pytest.raises(ValidationError):
+            validate_doc_url(
+                "https://user:pass@raw.githubusercontent.com/redhat-cop/"
+                "automation-good-practices/main/README.adoc"
+            )
+
+    def test_rejects_cop_fragment(self):
+        with pytest.raises(ValidationError):
+            validate_doc_url(
+                "https://raw.githubusercontent.com/redhat-cop/"
+                "automation-good-practices/main/README.adoc#section"
+            )
+
+    def test_rejects_cop_slash_in_ref(self):
+        with pytest.raises(ValidationError):
+            validate_doc_url(
+                "https://raw.githubusercontent.com/redhat-cop/"
+                "automation-good-practices/feature/foo/README.adoc"
+            )
+
+    def test_error_names_three_origins(self):
+        with pytest.raises(ValidationError, match="CoP raw GitHub README.adoc"):
+            validate_doc_url("https://example.com/docs/page.html")
+
+    def test_cop_doc_files_has_fourteen_pages(self):
+        from ansible_know.validation import COP_DOC_FILES
+
+        assert len(COP_DOC_FILES) == 14
+        assert "README.adoc" in COP_DOC_FILES
+        assert "naming_conventions/README.adoc" in COP_DOC_FILES
+
 
 class TestExtractCollectionFqcn:
     def test_three_part_fqcn(self):

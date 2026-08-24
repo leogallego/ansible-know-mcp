@@ -54,8 +54,8 @@ src/ansible_know/
 | `get_role_doc` | read-only | Get full role documentation (local or Galaxy README) |
 | `search_standalone_roles` | read-only | Search Galaxy standalone (legacy v1) roles by keyword |
 | `get_standalone_role_doc` | read-only | Structured docs for a 2-part `namespace.role` from Galaxy README HTML |
-| `search_docs` | read-only | Search conceptual doc manifests |
-| `fetch_doc` | read-only | Fetch a docs.ansible.com or docs.redhat.com page as clean Markdown |
+| `search_docs` | read-only | Search conceptual doc manifests (pass `source=` for CoP / AAP / lint) |
+| `fetch_doc` | read-only | Fetch a docs.ansible.com, docs.redhat.com, or CoP raw GitHub README.adoc page as clean Markdown |
 | `search_collections` | read-only | Search Galaxy for collections by keyword |
 | `get_collection_manifest` | read-only | Get collection-level module and role summary |
 | `get_collection_docs` | read-only | Get all module docs for a collection from Galaxy |
@@ -107,11 +107,12 @@ src/ansible_know/
 - `get_role_doc` uses three-tier resolution: local ansible-doc → Galaxy readme_html → graceful degradation.
 - `text_utils.clean_rtd_markdown` (Foundation) strips breadcrumbs/artifacts from RTD markdown responses.
 - `fetch_doc_content` in `docs.py` uses Cloudflare's `Accept: text/markdown` content negotiation, raises `AnsibleKnowError` on content-type mismatch, size/token limits, or redirect to unexpected domain.
-- RTD Search API (`_search_rtd_api`) serves as fallback when manifest search returns empty (only when no filters caused the empty result).
 - Doc manifests shipped as JSON in `src/ansible_know/data/`, loaded from disk (no HTTP at startup).
 - `manifest_builder.py` generates manifests at build time from objects.inv and sitemap sources (requires `[build]` optional deps: `sphobjinv`, `defusedxml`).
 - `redhat_docs.py` (`RedHatDocsClient`) connects to `docs-mcp.api.redhat.com` via JSON-RPC over Streamable HTTP. Manages MCP sessions lazily (connect on first fetch, auto-reconnect on 404 expiry). Lives in `SharedState` — transport client, not a data cache.
-- `fetch_doc` routes `docs.redhat.com` URLs through `RedHatDocsClient`, `docs.ansible.com` URLs through Cloudflare content negotiation.
+- `fetch_doc` routes `docs.redhat.com` URLs through `RedHatDocsClient`, `docs.ansible.com` URLs through Cloudflare content negotiation, and CoP good-practices raw GitHub README.adoc URLs through `docs.fetch_cop_content` (`clean_asciidoc`).
+- `search_docs` source routing: `ansible-core` (or omit) for official HOWTO; `ansible-lint` for rules; matching ecosystem source for navigator/builder/creator/molecule; `aap-2.5`/`aap-2.6`/`aap-2.7` for AAP product; `cop-good-practices` for CoP opinionated practices (users often say "best practices" — do not invent `cop-best-practices`). Omitting `source` may miss CoP — retry with `source="cop-good-practices"`. GitHub Pages `redhat-cop.github.io/automation-good-practices` is citation only.
+- RTD Search API (`_search_rtd_api`) is Sphinx gap-fill only: unknown `source` errors with valid keys; `topic`/`audience`/`core_only` still suppress RTD; AAP/CoP misses return `[]` and do not call `_search_rtd_api`. Do not add `source` to `has_filters`.
 - `text_utils.clean_redhat_markdown` strips Red Hat docs boilerplate (Legal Notice, Copy link artifacts).
 - AAP 2.5/2.6/2.7 doc manifests shipped as static JSON in `data/`, built by `scripts/build_aap_manifests.py`.
 

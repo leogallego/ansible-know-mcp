@@ -252,6 +252,16 @@ DEFAULT_DOC_SOURCES: dict[str, dict[str, str]] = {
         "file": str(_PKG_DIR / "data" / "aap_27_manifest.json"),
         "description": "Red Hat AAP 2.7 — installation, mesh, self-service, metrics, AI features",
     },
+    "cop-good-practices": {
+        "file": str(_PKG_DIR / "data" / "cop_good_practices_manifest.json"),
+        "description": (
+            "Red Hat CoP Automation Good Practices (GPA; people often search "
+            "'best practices'): role design, naming, inventories, CaC, testing, "
+            "Git workflow — not ansible-core HOWTO and not AAP product manuals. "
+            "Published site: https://redhat-cop.github.io/automation-good-practices/ "
+            "(citation only; fetch uses raw GitHub AsciiDoc)."
+        ),
+    },
 }
 
 def get_doc_sources() -> dict[str, dict[str, str]]:

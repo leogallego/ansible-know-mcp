@@ -2627,3 +2627,70 @@ class TestGetCollectionDocsTool:
 
         result = await get_collection_docs("a.b.c")
         assert "error" in result
+
+
+class TestFetchDocCopDispatch:
+    COP_URL = (
+        "https://raw.githubusercontent.com/redhat-cop/automation-good-practices"
+        "/main/naming_conventions/README.adoc"
+    )
+
+    @pytest.mark.asyncio
+    async def test_cop_url_calls_fetch_cop_content(self):
+        from ansible_know.server import fetch_doc
+
+        fake = {
+            "content": "# Naming conventions\n",
+            "title": "Naming conventions",
+            "tokens": 4,
+            "source_url": self.COP_URL,
+        }
+        with (
+            patch(
+                "ansible_know.docs.fetch_cop_content",
+                new_callable=AsyncMock,
+                return_value=fake,
+            ) as mock_cop,
+            patch(
+                "ansible_know.docs.fetch_doc_content",
+                new_callable=AsyncMock,
+            ) as mock_rtd,
+            patch(
+                "ansible_know.redhat_docs.fetch_redhat_doc",
+                new_callable=AsyncMock,
+            ) as mock_rh,
+        ):
+            result = await fetch_doc(self.COP_URL)
+        assert result["title"] == "Naming conventions"
+        mock_cop.assert_awaited_once()
+        mock_rtd.assert_not_called()
+        mock_rh.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_invalid_cop_url_returns_error_without_http(self):
+        from ansible_know.server import fetch_doc
+
+        with (
+            patch(
+                "ansible_know.docs.fetch_cop_content",
+                new_callable=AsyncMock,
+            ) as mock_cop,
+            patch(
+                "ansible_know.docs.fetch_doc_content",
+                new_callable=AsyncMock,
+            ) as mock_rtd,
+        ):
+            result = await fetch_doc(
+                "https://raw.githubusercontent.com/octocat/Hello-World/master/README"
+            )
+        assert "error" in result
+        mock_cop.assert_not_called()
+        mock_rtd.assert_not_called()
+
+
+class TestReviewPlaybookCopHint:
+    def test_review_playbook_mentions_cop_source(self):
+        from ansible_know.server import review_playbook
+
+        result = review_playbook("- hosts: all\n  tasks: []")
+        assert "cop-good-practices" in result
