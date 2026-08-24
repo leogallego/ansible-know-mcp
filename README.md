@@ -260,6 +260,7 @@ claude mcp add ansible-know --transport http https://know.ansible.ar/mcp
 | Navigator / builder / creator / molecule | matching source name |
 | AAP product manuals | `aap-2.5` / `aap-2.6` / `aap-2.7` |
 | CoP opinionated practices (role design, naming, CaC, Git; users often say **best practices**) | **`cop-good-practices`** (not `cop-best-practices`) |
+| Unsure which corpus | omit `source` (CoP may be missing; retry with `cop-good-practices`) |
 
 Published CoP site (citation only, not a fetch_doc URL): https://redhat-cop.github.io/automation-good-practices/
 

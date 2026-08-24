@@ -1,4 +1,4 @@
-"""Text cleaning utilities for RTD / docs markdown content (Foundation layer)."""
+"""Text cleaning utilities for RTD markdown, Red Hat docs, and AsciiDoc (Foundation layer)."""
 
 from __future__ import annotations
 

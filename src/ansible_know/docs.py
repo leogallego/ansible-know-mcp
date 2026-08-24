@@ -452,6 +452,7 @@ async def fetch_cop_content(
             url,
             headers={"Accept": "text/plain", "User-Agent": USER_AGENT},
             follow_redirects=True,
+            timeout=30.0,
         )
 
     if not is_allowed_cop_raw_url(str(resp.url)):

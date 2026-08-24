@@ -639,7 +639,8 @@ async def fetch_doc(
     max_tokens: Annotated[
         int | None,
         "If set, return error instead of content when the page exceeds this token count. "
-        "Checked after fetching via the x-markdown-tokens response header.",
+        "docs.ansible.com uses the x-markdown-tokens response header; CoP and "
+        "Embed estimate tokens from the fetched body.",
     ] = None,
     ctx: Context | None = None,
 ) -> FetchDocResult | ErrorResponse:

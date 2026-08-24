@@ -1278,6 +1278,10 @@ class TestFetchCopContent:
         assert result["source_url"] == COP_NAMING_URL
         assert result["tokens"] > 0
         mock_client.get.assert_awaited_once()
+        get_kwargs = mock_client.get.await_args.kwargs
+        assert get_kwargs["headers"]["Accept"] == "text/plain"
+        assert get_kwargs["follow_redirects"] is True
+        assert get_kwargs["timeout"] == 30.0
 
     @pytest.mark.asyncio
     async def test_cache_hit_skips_get(self):
@@ -1308,6 +1312,27 @@ class TestFetchCopContent:
             ),
         )
         with pytest.raises(AnsibleKnowError, match="content type"):
+            await fetch_cop_content(COP_NAMING_URL, http_client=mock_client)
+
+    @pytest.mark.asyncio
+    async def test_missing_content_type_is_allowed(self):
+        clear_cache()
+        mock_client = AsyncMock()
+        resp = _cop_response(COP_NAMING_URL)
+        resp.headers = {}
+        mock_client.get = AsyncMock(return_value=resp)
+        result = await fetch_cop_content(COP_NAMING_URL, http_client=mock_client)
+        assert result["title"] == "Naming conventions"
+
+    @pytest.mark.asyncio
+    async def test_oversized_body_raises(self):
+        clear_cache()
+        mock_client = AsyncMock()
+        huge = "x" * (docs_mod.MAX_DOC_FETCH_SIZE + 1)
+        mock_client.get = AsyncMock(
+            return_value=_cop_response(COP_NAMING_URL, text=huge),
+        )
+        with pytest.raises(AnsibleKnowError, match="too large"):
             await fetch_cop_content(COP_NAMING_URL, http_client=mock_client)
 
     @pytest.mark.asyncio

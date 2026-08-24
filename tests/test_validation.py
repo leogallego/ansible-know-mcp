@@ -505,6 +505,27 @@ class TestValidateDocUrl:
             "https://raw.githubusercontent.com/redhat-cop/automation-good-practices/main/README.adoc?raw=1"
         )
 
+    def test_rejects_cop_userinfo(self):
+        with pytest.raises(ValidationError):
+            validate_doc_url(
+                "https://user:pass@raw.githubusercontent.com/redhat-cop/"
+                "automation-good-practices/main/README.adoc"
+            )
+
+    def test_rejects_cop_fragment(self):
+        with pytest.raises(ValidationError):
+            validate_doc_url(
+                "https://raw.githubusercontent.com/redhat-cop/"
+                "automation-good-practices/main/README.adoc#section"
+            )
+
+    def test_rejects_cop_slash_in_ref(self):
+        with pytest.raises(ValidationError):
+            validate_doc_url(
+                "https://raw.githubusercontent.com/redhat-cop/"
+                "automation-good-practices/feature/foo/README.adoc"
+            )
+
     def test_error_names_three_origins(self):
         with pytest.raises(ValidationError, match="CoP raw GitHub README.adoc"):
             validate_doc_url("https://example.com/docs/page.html")
