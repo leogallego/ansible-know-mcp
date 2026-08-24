@@ -1,0 +1,161 @@
+{
+  "version": "2.0",
+  "generated": "2026-08-24T17:50:45Z",
+  "base_url": "https://raw.githubusercontent.com/redhat-cop/automation-good-practices/main",
+  "files": [
+    {
+      "path": "README.adoc",
+      "url": "https://raw.githubusercontent.com/redhat-cop/automation-good-practices/main/README.adoc",
+      "topic": "introduction",
+      "title": "Good Practices for Ansible - GPA",
+      "audience": "author",
+      "core": false,
+      "summary": "Introduction to Red Hat CoP Automation Good Practices (GPA; people often search best practices). Guidelines: Introduction; Where to get and maintain this document. Published at redhat-cop.github.io/automation-good-practices.",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "structures/README.adoc",
+      "url": "https://raw.githubusercontent.com/redhat-cop/automation-good-practices/main/structures/README.adoc",
+      "topic": "structures",
+      "title": "Automation structures",
+      "audience": "author",
+      "core": false,
+      "summary": "CoP automation structures best practices: choose the right layout for playbooks, roles, and collections. Guidelines: Guiding principles for Automation Good Practices; Define which structure to use for which purpose. Includes the Zen of Ansible.",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "naming_conventions/README.adoc",
+      "url": "https://raw.githubusercontent.com/redhat-cop/automation-good-practices/main/naming_conventions/README.adoc",
+      "topic": "naming_conventions",
+      "title": "Naming conventions",
+      "audience": "author",
+      "core": false,
+      "summary": "CoP naming best practices for repositories, playbooks, Git, and AAP resources. Guidelines: Be descriptive, consistent, and concise in all names; Use standard naming patterns for repositories; Name playbook files with verb-noun pattern; Follow standard Git branch and commit naming conventions; Name AAP resources using lowercase with underscores and organization prefixes.",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "roles/README.adoc",
+      "url": "https://raw.githubusercontent.com/redhat-cop/automation-good-practices/main/roles/README.adoc",
+      "topic": "roles",
+      "title": "Roles Good Practices for Ansible",
+      "audience": "author",
+      "core": false,
+      "summary": "CoP roles best practices for design, parameters, providers, and documentation. Guidelines: Basic design; Role Structure; Role Distribution; Naming parameters; Providers; Distributions and Versions; Package roles in an Ansible collection to simplify distribution and consumption; Check Mode; Idempotency; Supporting multiple distributions and versions; Platform specific variables; Platform specific tasks; Supporting multiple providers; Generating files from templates; Vars vs Defaults; Documentation conventions; Create a meaningful README file for every role; Don't use host group names or at least make them a parameter; Prefix task names in sub-tasks files of roles; Argument Validation.",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "collections/README.adoc",
+      "url": "https://raw.githubusercontent.com/redhat-cop/automation-good-practices/main/collections/README.adoc",
+      "topic": "collections",
+      "title": "Collections good practices",
+      "audience": "author",
+      "core": false,
+      "summary": "CoP collections best practices for structure, variables, README, and licensing. Guidelines: Collection Structure should be at the type or landscape level; Create implicit collection variables and reference them in your roles' defaults variables; Include a README file in each collection; Include a license file in a collection root directory.",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "playbooks/README.adoc",
+      "url": "https://raw.githubusercontent.com/redhat-cop/automation-good-practices/main/playbooks/README.adoc",
+      "topic": "playbooks",
+      "title": "Playbooks good practices",
+      "audience": "author",
+      "core": false,
+      "summary": "CoP playbooks best practices for simplicity, tags, and debug verbosity. Guidelines: Keep your playbooks as simple as possible; Use either the tasks or roles section in playbooks, not both; Use tags cautiously either for roles or for complete purposes; Use the verbosity parameter with debug statements.",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "inventories/README.adoc",
+      "url": "https://raw.githubusercontent.com/redhat-cop/automation-good-practices/main/inventories/README.adoc",
+      "topic": "inventories",
+      "title": "Inventories and Variables Good Practices for Ansible",
+      "audience": "author",
+      "core": false,
+      "summary": "CoP inventories and variables best practices for sources of truth and desired state. Guidelines: Identify your Single Source(s) of Truth and use it/them in your inventory; Differentiate clearly between \"As-Is\" and \"To-Be\" information; Define your inventory as structured directory instead of single file; Rely on your inventory to loop over hosts, don't create lists of hosts; Restrict your usage of variable types; Prefer inventory variables over extra vars to describe the desired state.",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "plugins/README.adoc",
+      "url": "https://raw.githubusercontent.com/redhat-cop/automation-good-practices/main/plugins/README.adoc",
+      "topic": "plugins",
+      "title": "Plugins good practices",
+      "audience": "author",
+      "core": false,
+      "summary": "CoP plugins best practices for Python, docs, pytest, and argspec. Guidelines: Python Guidelines; Write documentation for all plugin types; Use sphinx (reST) formatted docstrings in Python code; Use Python type hints to document variable types; The use of unittest is discouraged, use pytest instead; Formatting of manually maintained plugin argspecs; Keep plugin entry files to a minimal size; Plugins should be initially developed using the ansible plugin builder; Use clear error/info messages.",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "coding_style/README.adoc",
+      "url": "https://raw.githubusercontent.com/redhat-cop/automation-good-practices/main/coding_style/README.adoc",
+      "topic": "coding_style",
+      "title": "Coding Style Good Practices for Ansible",
+      "audience": "author",
+      "core": false,
+      "summary": "CoP coding style best practices for YAML, Jinja2, and wrapping long lines. Guidelines: Naming things; YAML and Jinja2 Syntax; Ansible Guidelines; Wrap longer lines of code.",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "aap_configuration/README.adoc",
+      "url": "https://raw.githubusercontent.com/redhat-cop/automation-good-practices/main/aap_configuration/README.adoc",
+      "topic": "aap_configuration",
+      "title": "AAP Configuration as Code",
+      "audience": "author",
+      "core": false,
+      "summary": "CoP AAP Configuration as Code best practices using infra.aap_configuration. Guidelines: Manage all AAP configuration declaratively using Git and the infra.aap_configuration collection; Use the dispatch role for simplified and ordered configuration application; Structure CaC repositories with environment-specific group_vars; Organize AAP variable files by coupling: shared resources in type files, tightly coupled resources in JT bundles; Handle secrets in CaC using vault or environment variable lookups; Always pin the infra.aap_configuration collection to an exact version; Test CaC playbooks for idempotency and use check mode before applying to production; Apply CaC through CI/CD pipelines, not manually.",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "git_workflow/README.adoc",
+      "url": "https://raw.githubusercontent.com/redhat-cop/automation-good-practices/main/git_workflow/README.adoc",
+      "topic": "git_workflow",
+      "title": "Git workflow and versioning",
+      "audience": "author",
+      "core": false,
+      "summary": "CoP Git workflow best practices including trunk-based development. Guidelines: Use trunk-based development with a single main branch; Keep feature branches short-lived; Choose a versioning strategy that fits your release cadence; Use immutable Git tags for releases; Promote the same tag across all environments; Never use \"latest\" or branch names in production references; Synchronize versions across all components; Protect the main branch with required reviews and CI checks; Document breaking changes prominently.",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "testing/README.adoc",
+      "url": "https://raw.githubusercontent.com/redhat-cop/automation-good-practices/main/testing/README.adoc",
+      "topic": "testing",
+      "title": "Testing",
+      "audience": "author",
+      "core": false,
+      "summary": "CoP testing best practices for shift-left, ansible-lint, Molecule, and idempotency. Guidelines: Test as early as possible in the development cycle (shift-left); Use ansible-lint with the production profile; Use Molecule to test roles in isolated container environments; Test on multiple platforms when roles support them; Write unit tests for custom modules, plugins, and filters; Always verify idempotency during testing; Use descriptive test names that explain the expected behavior.",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "cicd_and_promotion/README.adoc",
+      "url": "https://raw.githubusercontent.com/redhat-cop/automation-good-practices/main/cicd_and_promotion/README.adoc",
+      "topic": "cicd_and_promotion",
+      "title": "CI/CD and promotion",
+      "audience": "author",
+      "core": false,
+      "summary": "CoP CI/CD and promotion best practices for pre-commit, quality gates, and rollback. Guidelines: Use pre-commit hooks to enforce quality before code enters the repository; Run the same checks in CI that run in pre-commit; Design CI pipelines for fast feedback; Separate testing (CI) from building and releasing (CD); Implement quality gates at each promotion stage; Validate PR quality with automated checks; Use release manifests to track what is deployed where; Always have a documented rollback plan.",
+      "lines": 0,
+      "tokens": 0
+    },
+    {
+      "path": "security/README.adoc",
+      "url": "https://raw.githubusercontent.com/redhat-cop/automation-good-practices/main/security/README.adoc",
+      "topic": "security",
+      "title": "Security",
+      "audience": "author",
+      "core": false,
+      "summary": "CoP security best practices for secrets, least privilege, and SBOMs. Guidelines: Never store secrets in Git repositories; Enforce secret detection with pre-commit hooks and CI scanning; Enable push protection on your Git hosting platform; Apply least-privilege access control; Use AAP credential objects instead of embedding credentials in playbooks; Implement regular secret rotation; Scan container images and generate SBOMs for every release; Use Git as the audit trail for all configuration changes; Implement network segmentation between environments; Conduct regular security reviews and access audits.",
+      "lines": 0,
+      "tokens": 0
+    }
+  ]
+}

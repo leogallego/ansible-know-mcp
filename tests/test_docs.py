@@ -10,7 +10,14 @@ import httpx
 import pytest
 
 import ansible_know.docs as docs_mod
-from ansible_know.docs import _search_rtd_api, clear_cache, fetch_doc_content, search_docs
+from ansible_know.docs import (
+    _search_rtd_api,
+    clear_cache,
+    fetch_cop_content,
+    fetch_doc_content,
+    search_docs,
+)
+from ansible_know.errors import AnsibleKnowError
 from ansible_know.text_utils import clean_rtd_markdown, html_to_markdown
 
 MOCK_MANIFEST = {
@@ -1202,3 +1209,238 @@ class TestFetchDocRedhat:
                 await fetch_doc_content(url)
             except Exception:
                 pass
+
+
+COP_NAMING_URL = (
+    "https://raw.githubusercontent.com/redhat-cop/automation-good-practices"
+    "/main/naming_conventions/README.adoc"
+)
+COP_INTRO_URL = (
+    "https://raw.githubusercontent.com/redhat-cop/automation-good-practices"
+    "/main/README.adoc"
+)
+_COP_ADOC = """= Naming conventions
+
+Be descriptive in all names.
+
+NOTE: A note.
+
+[%collapsible]
+====
+hidden
+====
+
+Explanations:: Why naming matters.
+
+[source,yaml]
+----
+key: value
+----
+
+See <<_anchor,Be descriptive>>.
+"""
+
+
+class _FakeUrl:
+    def __init__(self, url: str) -> None:
+        self._url = url
+        self.host = url.split("/")[2]
+
+    def __str__(self) -> str:
+        return self._url
+
+
+def _cop_response(
+    url: str,
+    text: str = _COP_ADOC,
+    status: int = 200,
+    content_type: str = "text/plain",
+) -> MagicMock:
+    resp = MagicMock()
+    resp.status_code = status
+    resp.headers = {"content-type": content_type}
+    resp.text = text
+    resp.content = text.encode()
+    resp.url = _FakeUrl(url)
+    return resp
+
+
+class TestFetchCopContent:
+    @pytest.mark.asyncio
+    async def test_happy_path_returns_fetch_doc_result(self):
+        clear_cache()
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=_cop_response(COP_NAMING_URL))
+        result = await fetch_cop_content(COP_NAMING_URL, http_client=mock_client)
+        assert result["title"] == "Naming conventions"
+        assert "Be descriptive" in result["content"]
+        assert "[%collapsible]" not in result["content"]
+        assert result["source_url"] == COP_NAMING_URL
+        assert result["tokens"] > 0
+        mock_client.get.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_skips_get(self):
+        clear_cache()
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=_cop_response(COP_NAMING_URL))
+        await fetch_cop_content(COP_NAMING_URL, http_client=mock_client)
+        await fetch_cop_content(COP_NAMING_URL, http_client=mock_client)
+        assert mock_client.get.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_http_404_raises_ansible_know_error(self):
+        clear_cache()
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(
+            return_value=_cop_response(COP_NAMING_URL, status=404),
+        )
+        with pytest.raises(AnsibleKnowError, match="HTTP 404"):
+            await fetch_cop_content(COP_NAMING_URL, http_client=mock_client)
+
+    @pytest.mark.asyncio
+    async def test_html_content_type_raises(self):
+        clear_cache()
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(
+            return_value=_cop_response(
+                COP_NAMING_URL, content_type="text/html; charset=utf-8",
+            ),
+        )
+        with pytest.raises(AnsibleKnowError, match="content type"):
+            await fetch_cop_content(COP_NAMING_URL, http_client=mock_client)
+
+    @pytest.mark.asyncio
+    async def test_redirect_off_prefix_raises(self):
+        clear_cache()
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(
+            return_value=_cop_response("https://evil.example/README.adoc"),
+        )
+        with pytest.raises(AnsibleKnowError, match="Redirect"):
+            await fetch_cop_content(COP_NAMING_URL, http_client=mock_client)
+
+    @pytest.mark.asyncio
+    async def test_max_tokens_exceeded(self):
+        clear_cache()
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=_cop_response(COP_NAMING_URL))
+        with pytest.raises(AnsibleKnowError, match="tokens"):
+            await fetch_cop_content(
+                COP_NAMING_URL, max_tokens=1, http_client=mock_client,
+            )
+
+
+class TestCopSearchDocs:
+    @pytest.mark.asyncio
+    async def test_naming_conventions_returns_raw_url(self):
+        results = await search_docs(
+            "naming conventions", source="cop-good-practices",
+        )
+        assert results
+        assert any(
+            r["url"] == COP_NAMING_URL and r["source"] == "cop-good-practices"
+            for r in results
+        )
+
+    @pytest.mark.asyncio
+    async def test_heading_in_summary_hits_roles_page(self):
+        results = await search_docs(
+            "Don't use host group names", source="cop-good-practices",
+        )
+        assert results
+        assert any("/roles/README.adoc" in r["url"] for r in results)
+
+    @pytest.mark.asyncio
+    async def test_zen_of_ansible_hits_structures(self):
+        results = await search_docs("zen of ansible", source="cop-good-practices")
+        assert results
+        assert any("/structures/README.adoc" in r["url"] for r in results)
+
+    @pytest.mark.asyncio
+    async def test_best_practices_alias_returns_hits(self):
+        results = await search_docs("best practices", source="cop-good-practices")
+        assert results
+        assert all(r["source"] == "cop-good-practices" for r in results)
+        assert all("best practices" in r["summary"] for r in results)
+
+    @pytest.mark.asyncio
+    async def test_intro_readme_is_indexed(self):
+        results = await search_docs(
+            "redhat-cop.github.io/automation-good-practices",
+            source="cop-good-practices",
+        )
+        assert results
+        assert any(r["url"] == COP_INTRO_URL for r in results)
+
+    @pytest.mark.asyncio
+    async def test_cop_miss_does_not_call_rtd(self):
+        with patch(
+            "ansible_know.docs._search_rtd_api", new_callable=AsyncMock,
+        ) as rtd:
+            results = await search_docs(
+                "no-such-guideline-xyz", source="cop-good-practices",
+            )
+        assert results == []
+        rtd.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_aap_miss_does_not_call_rtd(self):
+        with patch(
+            "ansible_know.docs._search_rtd_api", new_callable=AsyncMock,
+        ) as rtd:
+            results = await search_docs(
+                "no-such-guideline-xyz", source="aap-2.7",
+            )
+        assert results == []
+        rtd.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_ansible_core_miss_may_call_rtd(self, tmp_path):
+        manifest = {
+            "version": "2.0",
+            "generated": "2026-01-01T00:00:00Z",
+            "base_url": "https://docs.ansible.com",
+            "files": [
+                {
+                    "path": "only.html",
+                    "url": "https://docs.ansible.com/only.html",
+                    "topic": "guide",
+                    "title": "UniqueTitleXYZ",
+                    "audience": "author",
+                    "core": True,
+                    "summary": "unique summary xyz",
+                    "lines": 0,
+                    "tokens": 0,
+                },
+            ],
+        }
+        path = tmp_path / "core.json"
+        path.write_text(json.dumps(manifest))
+        sources = {
+            "ansible-core": {"file": str(path), "description": "core"},
+            "cop-good-practices": {"file": str(path), "description": "cop"},
+        }
+        with (
+            patch("ansible_know.docs.get_doc_sources", return_value=sources),
+            patch(
+                "ansible_know.docs._search_rtd_api",
+                new_callable=AsyncMock,
+                return_value=[],
+            ) as rtd,
+        ):
+            results = await search_docs(
+                "no-such-guideline-xyz", source="ansible-core",
+            )
+        assert results == []
+        rtd.assert_awaited()
+        assert rtd.await_args.kwargs.get("source") == "ansible-core"
+
+    @pytest.mark.asyncio
+    async def test_unknown_source_errors_without_rtd(self):
+        with patch(
+            "ansible_know.docs._search_rtd_api", new_callable=AsyncMock,
+        ) as rtd:
+            with pytest.raises(AnsibleKnowError, match="cop-good-practices"):
+                await search_docs("anything", source="not-a-real-source")
+        rtd.assert_not_called()

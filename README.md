@@ -248,8 +248,20 @@ claude mcp add ansible-know --transport http https://know.ansible.ar/mcp
 | `get_standalone_role_doc(role_name)` | Structured docs for a 2-part `namespace.role` from Galaxy README HTML |
 | `get_collection_docs(collection_namespace, version?)` | Get all module docs for a collection from Galaxy in a single call |
 | `get_collection_manifest(collection_namespace)` | Collection-level manifest with per-module and per-role summaries |
-| `search_docs(query, source?, topic?, audience?, core_only?)` | Search documentation manifests for conceptual guides (up to 20 matches) |
-| `fetch_doc(url, max_tokens?)` | Fetch a docs.ansible.com page as clean Markdown |
+| `search_docs(query, source?, topic?, audience?, core_only?)` | Search documentation manifests for conceptual guides (up to 20 matches). Use `source="cop-good-practices"` for CoP good practices / "best practices" questions. |
+| `fetch_doc(url, max_tokens?)` | Fetch a docs.ansible.com, docs.redhat.com, or CoP raw GitHub README.adoc URL (from search_docs) as clean Markdown |
+
+`search_docs` `source=` routing:
+
+| Need | `source=` |
+|------|-----------|
+| Official HOWTO (playbooks, vault, inventory syntax) | `ansible-core` (or omit) |
+| ansible-lint rules / profiles | `ansible-lint` |
+| Navigator / builder / creator / molecule | matching source name |
+| AAP product manuals | `aap-2.5` / `aap-2.6` / `aap-2.7` |
+| CoP opinionated practices (role design, naming, CaC, Git; users often say **best practices**) | **`cop-good-practices`** (not `cop-best-practices`) |
+
+Published CoP site (citation only, not a fetch_doc URL): https://redhat-cop.github.io/automation-good-practices/
 
 ### Collection management
 

@@ -150,6 +150,26 @@ class TestAapDocSources:
             assert DEFAULT_DOC_SOURCES[ver]["file"].endswith(".json")
 
 
+class TestCopDocSource:
+    def test_cop_source_registered(self):
+        assert "cop-good-practices" in DEFAULT_DOC_SOURCES
+
+    def test_cop_source_after_aap_27(self):
+        keys = list(DEFAULT_DOC_SOURCES)
+        assert keys.index("cop-good-practices") == keys.index("aap-2.7") + 1
+
+    def test_cop_source_file_exists(self):
+        path = Path(DEFAULT_DOC_SOURCES["cop-good-practices"]["file"])
+        assert path.is_file()
+        assert path.name == "cop_good_practices_manifest.json"
+
+    def test_cop_description_cites_github_pages_only(self):
+        desc = DEFAULT_DOC_SOURCES["cop-good-practices"]["description"]
+        assert "redhat-cop.github.io/automation-good-practices" in desc
+        assert "best practices" in desc
+        assert "file" in DEFAULT_DOC_SOURCES["cop-good-practices"]
+
+
 class TestGetProjectRoot:
     def test_ansible_know_project_dir_wins(self, monkeypatch, tmp_path):
         from ansible_know.config import get_project_root

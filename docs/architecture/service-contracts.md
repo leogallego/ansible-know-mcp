@@ -149,7 +149,7 @@ business logic. Domain modules are imported lazily to avoid loading
 | `parser` | `search_modules()`, `get_module_doc()`, `get_module_docs()`, `load_module_metadata_batch()`, `get_plugin_doc()`, `get_plugin_docs()`, `load_plugin_metadata_batch()`, `get_role_doc()`, `list_roles()`, `extract_module_metadata()`, `extract_role_metadata()` | `parser.py` |
 | `skills` | `render_skill()`, `write_skill_package()`, `render_role_skill()`, `write_role_skill_package()`, `package_as_agent_plugin()`, `package_collection_for_lola()` (deprecated), `list_skills_sync()`, `get_skill_sync()`, `collection_skill_name()` / `fqcn_to_skill_name()` / related naming helpers | `skills.py` |
 | `collection_manifest` | `generate_manifest()`, `load_cached_manifest()` | `collection_manifest.py` |
-| `docs` | `search_docs()`, `fetch_doc_content()` | `docs.py` |
+| `docs` | `search_docs()`, `fetch_doc_content()`, `fetch_cop_content()` | `docs.py` |
 | `collections` | `ensure_collection()`, `list_installed()` | `collections.py` |
 | `resolution` | `resolve_module_doc()`, `resolve_role_doc()`, `search_galaxy_collections()`, `search_standalone_roles()`, `resolve_standalone_role_doc()`, `clear_missing_namespace()` | `resolution.py` |
 
@@ -274,8 +274,8 @@ dependencies on upper layers.
 | `galaxy_config.py` | Galaxy server config from `ansible.cfg` | `galaxy_config.py` |
 | `state.py` | Session state management (collection install tracking) | `state.py` |
 | `tagging.py` | Tag derivation from module FQCN segments | `tagging.py` |
-| `text_utils.py` | RTD/RH markdown cleaning, HTML→markdown, token estimate | `text_utils.py` |
-| `validation.py` | Input validation, error sanitization, response truncation | `validation.py` |
+| `text_utils.py` | RTD/RH markdown cleaning, AsciiDoc→markdown (`clean_asciidoc`), HTML→markdown, token estimate | `text_utils.py` |
+| `validation.py` | Input validation, error sanitization, response truncation; `fetch_doc` hosts (`docs.ansible.com`, `docs.redhat.com`, CoP raw GitHub `README.adoc`) | `validation.py` |
 | `errors.py` | Exception hierarchy and error helpers | `errors.py` |
 | `types.py` | `TypedDict` definitions, `GalaxyDocClient` Protocol | `types.py` |
 

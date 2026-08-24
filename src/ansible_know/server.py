@@ -177,7 +177,10 @@ mcp = FastMCP(
         "(4) get_module_doc, get_role_doc, or get_plugin_doc for structured docs, "
         "(5) for standalone/legacy Galaxy roles, use search_standalone_roles then "
         "get_standalone_role_doc with a 2-part namespace.role identifier, "
-        "(6) search_docs for conceptual guides, then fetch_doc to retrieve full content, "
+        "(6) search_docs for conceptual guides with the matching source "
+        "(ansible-core HOWTO, ansible-lint rules, aap-2.x product, "
+        "cop-good-practices for CoP good practices / 'best practices' questions), "
+        "then fetch_doc to retrieve full content, "
         "(7) generate_skill, generate_role_skill, or generate_plugin_skill for skill packages. "
         "Resources: server://version for version and upgrade status, "
         "galaxy://installed for session collections, "
@@ -583,7 +586,11 @@ async def get_plugin_doc(
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def search_docs(
     query: Annotated[str, "Search term to match against documentation titles, summaries, and topics"],
-    source: Annotated[str | None, "Filter to a single source (e.g. 'ansible-core')"] = None,
+    source: Annotated[
+        str | None,
+        "Filter to a single source (e.g. 'cop-good-practices', 'ansible-core', 'aap-2.6'). "
+        "Good-practices / 'best practices' / GPA questions use source='cop-good-practices'.",
+    ] = None,
     topic: Annotated[str | None, "Filter by topic tag"] = None,
     audience: Annotated[str | None, "Filter by audience tag"] = None,
     core_only: Annotated[bool, "If true, only return entries marked as core"] = False,
@@ -593,6 +600,16 @@ async def search_docs(
 
     Returns up to 20 matching entries with title, summary, topic, audience, lines, source, and raw URL.
     On failure returns {"error": str}.
+
+    Choose ``source`` by corpus:
+    - ansible-core (or omit): official HOWTO — playbooks, vault, inventory syntax
+    - ansible-lint: rules and profiles
+    - ansible-navigator / ansible-builder / ansible-creator / molecule: matching source
+    - aap-2.5 / aap-2.6 / aap-2.7: AAP product manuals
+    - cop-good-practices: CoP opinionated practices (role design, naming, CaC, Git,
+      testing process). Users often say "best practices"; do not invent cop-best-practices.
+    Unfiltered search fills the 20-hit window with official + AAP first; CoP may be
+    absent — retry with source='cop-good-practices' for CoP-shaped questions.
     """
     logger.info("search_docs query=%r", query)
     try:
@@ -614,7 +631,11 @@ async def search_docs(
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def fetch_doc(
-    url: Annotated[str, "A docs.ansible.com or docs.redhat.com URL to fetch as markdown"],
+    url: Annotated[
+        str,
+        "A docs.ansible.com, docs.redhat.com, or CoP raw GitHub README.adoc URL "
+        "from search_docs hits, to fetch as markdown",
+    ],
     max_tokens: Annotated[
         int | None,
         "If set, return error instead of content when the page exceeds this token count. "
@@ -622,12 +643,12 @@ async def fetch_doc(
     ] = None,
     ctx: Context | None = None,
 ) -> FetchDocResult | ErrorResponse:
-    """Fetch a page from docs.ansible.com or docs.redhat.com as clean Markdown.
+    """Fetch a docs page as clean Markdown.
 
     Returns documentation content ready for LLM consumption.
-    Use search_docs to discover relevant page URLs, or pass a known
-    docs.ansible.com or docs.redhat.com URL directly. The url parameter must
-    start with https://docs.ansible.com/ or https://docs.redhat.com/.
+    Use search_docs to discover relevant page URLs. Accepts docs.ansible.com,
+    docs.redhat.com, or CoP good-practices raw GitHub README.adoc URLs from
+    search_docs hits (not arbitrary raw.githubusercontent.com hosts).
     """
     logger.info("fetch_doc url=%r max_tokens=%r", url, max_tokens)
     try:
@@ -646,11 +667,15 @@ async def fetch_doc(
                 client=_get_shared(ctx).redhat_client,
                 http_client=_get_http_client(ctx),
             )
-        else:
+        if parsed.netloc == "raw.githubusercontent.com":
             from ansible_know import docs
-            return await docs.fetch_doc_content(
+            return await docs.fetch_cop_content(
                 url=url, max_tokens=max_tokens, http_client=_get_http_client(ctx),
             )
+        from ansible_know import docs
+        return await docs.fetch_doc_content(
+            url=url, max_tokens=max_tokens, http_client=_get_http_client(ctx),
+        )
     except (AnsibleKnowError, ValidationError) as exc:
         return {"error": str(exc)}
     except Exception as exc:
@@ -1924,7 +1949,9 @@ def review_playbook(playbook_yaml: str) -> str:
         "and potential issues. Check that modules are used with correct parameters, "
         "FQCNs are used, and the playbook follows idempotency principles.\n\n"
         "Use the search_modules, search_plugins, get_module_doc, and get_plugin_doc "
-        "tools to verify module and plugin usage.\n\n"
+        "tools to verify module and plugin usage. For CoP good practices, call "
+        "search_docs with source='cop-good-practices' then fetch_doc; this prompt "
+        "is not a full CoP audit.\n\n"
         f"```yaml\n{playbook_yaml}\n```"
     )
 

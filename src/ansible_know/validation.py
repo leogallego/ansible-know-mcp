@@ -12,12 +12,14 @@ from ansible_know.errors import ValidationError
 
 __all__ = [
     "ALLOWED_DOC_HOSTS",
+    "COP_DOC_FILES",
     "VALID_MCP_TRANSPORTS",
     "extract_collection_fqcn",
     "extract_namespace",
     "split_collection_fqcn",
     "sanitize_error",
     "truncate_response",
+    "is_allowed_cop_raw_url",
     "validate_doc_url",
     "validate_fqcn",
     "validate_install_path",
@@ -284,8 +286,57 @@ def validate_plugin_type(plugin_type: str) -> None:
         )
 
 
-ALLOWED_DOC_HOSTS = frozenset({"docs.ansible.com", "docs.redhat.com"})
+ALLOWED_DOC_HOSTS = frozenset({
+    "docs.ansible.com",
+    "docs.redhat.com",
+    "raw.githubusercontent.com",
+})
 VALID_MCP_TRANSPORTS = frozenset({"stdio", "streamable-http"})
+
+COP_DOC_FILES = frozenset({
+    "README.adoc",
+    "aap_configuration/README.adoc",
+    "cicd_and_promotion/README.adoc",
+    "coding_style/README.adoc",
+    "collections/README.adoc",
+    "git_workflow/README.adoc",
+    "inventories/README.adoc",
+    "naming_conventions/README.adoc",
+    "playbooks/README.adoc",
+    "plugins/README.adoc",
+    "roles/README.adoc",
+    "security/README.adoc",
+    "structures/README.adoc",
+    "testing/README.adoc",
+})
+
+_COP_RAW_PATH_RE = re.compile(
+    r"^/redhat-cop/automation-good-practices/"
+    r"(?P<ref>[A-Za-z0-9._-]+)/(?P<file>.+)$"
+)
+
+_DOC_URL_ORIGIN_MSG = (
+    "URL must start with https://docs.ansible.com/, https://docs.redhat.com/, "
+    "or a CoP raw GitHub README.adoc URL."
+)
+
+
+def is_allowed_cop_raw_url(url: str) -> bool:
+    """Return True if *url* is an allowlisted CoP raw GitHub AsciiDoc page."""
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    if parsed.scheme != "https" or parsed.netloc != "raw.githubusercontent.com":
+        return False
+    if parsed.username is not None or parsed.password is not None or parsed.fragment:
+        return False
+    if ".." in parsed.path:
+        return False
+    match = _COP_RAW_PATH_RE.fullmatch(parsed.path)
+    if match is None:
+        return False
+    return match.group("file") in COP_DOC_FILES
 
 
 def validate_mcp_transport(transport: str) -> None:
@@ -360,10 +411,10 @@ def validate_doc_url(url: str) -> None:
     except ValueError as exc:
         raise ValidationError(f"Invalid URL format: {exc}") from exc
     if parsed.scheme != "https" or parsed.netloc not in ALLOWED_DOC_HOSTS:
-        raise ValidationError(
-            "URL must start with https://docs.ansible.com/ or https://docs.redhat.com/"
-        )
+        raise ValidationError(_DOC_URL_ORIGIN_MSG)
     if not parsed.path or parsed.path == "/":
         raise ValidationError(
             "URL must include a document path after the domain."
         )
+    if parsed.netloc == "raw.githubusercontent.com" and not is_allowed_cop_raw_url(url):
+        raise ValidationError(_DOC_URL_ORIGIN_MSG)

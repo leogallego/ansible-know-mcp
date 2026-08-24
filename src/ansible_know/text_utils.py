@@ -9,6 +9,7 @@ from html.parser import HTMLParser
 from urllib.parse import urlparse
 
 __all__ = [
+    "clean_asciidoc",
     "clean_redhat_markdown",
     "clean_rtd_markdown",
     "estimate_tokens",
@@ -20,6 +21,22 @@ logger = logging.getLogger("ansible_know")
 _DOCTYPE_RE = re.compile(r"<!DOCTYPE\s+html>", re.IGNORECASE)
 _H1_RE = re.compile(r"^# (.+?)(?:\s*\{#[\w-]+\})?\s*$", re.MULTILINE)
 _EXCESS_BLANKS_RE = re.compile(r"\n{3,}")
+_ASCIIDOC_HEADING_RE = re.compile(r"^(=+)\s+(.+)$")
+_ASCIIDOC_SOURCE_RE = re.compile(r"^\[source(?:,(\w+))?\]\s*$")
+_ASCIIDOC_ADMONITION_RE = re.compile(
+    r"^(NOTE|TIP|CAUTION|WARNING|IMPORTANT):\s?(.*)$"
+)
+_ASCIIDOC_DEFN_RE = re.compile(r"^(Explanations|Rationale|Examples)::(.*)$")
+_ASCIIDOC_LINK_RE = re.compile(r"link:([^\[]+)\[([^\]]*)\]")
+_ASCIIDOC_XREF_LABEL_RE = re.compile(r"<<[^,>]+,([^>]+)>>")
+_ASCIIDOC_XREF_BARE_RE = re.compile(r"<<[^>]+>>")
+_ASCIIDOC_ADMONITION_LABELS = {
+    "NOTE": "Note",
+    "TIP": "Tip",
+    "CAUTION": "Caution",
+    "WARNING": "Warning",
+    "IMPORTANT": "Important",
+}
 _PERMALINK_RE = re.compile(r"\s*\[[¶]\]\(#[^)]*(?:\s*\"[^\"]*\")?\)")
 
 
@@ -348,6 +365,101 @@ class _HtmlToMarkdownParser(HTMLParser):
 
     def get_markdown(self) -> str:
         return "".join(self._parts)
+
+
+def clean_asciidoc(raw: str) -> tuple[str, str]:
+    """Convert the CoP AsciiDoc subset to markdown.
+
+    Returns (cleaned_markdown, title). Title is empty if no document
+    title (``= ...``) is found.
+    """
+    if not raw:
+        return "", ""
+
+    lines = raw.split("\n")
+    out: list[str] = []
+    title = ""
+    in_source = False
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
+        if in_source:
+            if stripped == "----":
+                out.append("```")
+                in_source = False
+            else:
+                out.append(line)
+            i += 1
+            continue
+
+        if stripped == "[%collapsible]":
+            i += 1
+            continue
+        if (
+            stripped.startswith("include::")
+            or stripped.startswith("image::")
+            or stripped.startswith("ifdef::")
+            or stripped.startswith("ifndef::")
+            or stripped.startswith("endif::")
+        ):
+            i += 1
+            continue
+        if stripped == "+":
+            i += 1
+            continue
+        if stripped == "====":
+            i += 1
+            continue
+
+        source_match = _ASCIIDOC_SOURCE_RE.match(stripped)
+        if (
+            source_match is not None
+            and i + 1 < len(lines)
+            and lines[i + 1].strip() == "----"
+        ):
+            lang = source_match.group(1) or ""
+            out.append(f"```{lang}" if lang else "```")
+            in_source = True
+            i += 2
+            continue
+
+        heading_match = _ASCIIDOC_HEADING_RE.match(stripped)
+        if heading_match is not None:
+            level = min(len(heading_match.group(1)), 6)
+            heading_text = heading_match.group(2).strip()
+            if level == 1 and not title:
+                title = heading_text
+            out.append(f"{'#' * level} {heading_text}")
+            i += 1
+            continue
+
+        defn_match = _ASCIIDOC_DEFN_RE.match(stripped)
+        if defn_match is not None:
+            out.append(f"**{defn_match.group(1)}**{defn_match.group(2)}")
+            i += 1
+            continue
+
+        admonition_match = _ASCIIDOC_ADMONITION_RE.match(stripped)
+        if admonition_match is not None:
+            label = _ASCIIDOC_ADMONITION_LABELS[admonition_match.group(1)]
+            rest = admonition_match.group(2)
+            if rest:
+                out.append(f"> **{label}:** {rest}")
+            else:
+                out.append(f"> **{label}:**")
+            i += 1
+            continue
+
+        converted = _ASCIIDOC_XREF_LABEL_RE.sub(r"\1", line)
+        converted = _ASCIIDOC_XREF_BARE_RE.sub("", converted)
+        converted = _ASCIIDOC_LINK_RE.sub(r"[\2](\1)", converted)
+        out.append(converted)
+        i += 1
+
+    text = _EXCESS_BLANKS_RE.sub("\n\n", "\n".join(out))
+    return text.strip(), title
 
 
 def estimate_tokens(text: str) -> int:

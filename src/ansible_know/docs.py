@@ -30,14 +30,24 @@ from ansible_know.config import (
     get_rtd_api_token,
 )
 from ansible_know.errors import AnsibleKnowError
-from ansible_know.text_utils import clean_rtd_markdown, estimate_tokens, html_to_markdown
+from ansible_know.text_utils import (
+    clean_asciidoc,
+    clean_rtd_markdown,
+    estimate_tokens,
+    html_to_markdown,
+)
 from ansible_know.types import FetchDocResult, SearchDocsEntry
-from ansible_know.validation import sanitize_error, truncate_response
+from ansible_know.validation import (
+    is_allowed_cop_raw_url,
+    sanitize_error,
+    truncate_response,
+)
 
 logger = logging.getLogger("ansible_know")
 
 __all__ = [
     "clear_cache",
+    "fetch_cop_content",
     "fetch_doc_content",
     "fetch_rtd_markdown",
     "parse_rtd_markdown_response",
@@ -324,6 +334,11 @@ async def search_docs(
         Up to SEARCH_DOCS_LIMIT matching entries with source info.
     """
     sources = get_doc_sources()
+    if source is not None and source not in sources:
+        valid = ", ".join(sources)
+        raise AnsibleKnowError(
+            f"Unknown documentation source {source!r}. Valid sources: {valid}"
+        )
     query_lower = query.lower()
     query_words = query_lower.split()
     results: list[SearchDocsEntry] = []
@@ -380,14 +395,18 @@ async def search_docs(
             if len(results) >= SEARCH_DOCS_LIMIT:
                 break
 
-    if not results and not (has_filters and manifest_had_entries):
-        try:
-            rtd_results = await _search_rtd_api(
-                query, source=source, http_client=http_client,
-            )
-            results.extend(rtd_results)
-        except (httpx.HTTPError, ValueError, OSError) as exc:
-            logger.debug("RTD fallback search failed: %s", exc)
+    if not results:
+        skip_rtd = bool(has_filters and manifest_had_entries)
+        if source is not None and source not in RTD_PROJECT_SLUGS:
+            skip_rtd = True
+        if not skip_rtd:
+            try:
+                rtd_results = await _search_rtd_api(
+                    query, source=source, http_client=http_client,
+                )
+                results.extend(rtd_results)
+            except (httpx.HTTPError, ValueError, OSError) as exc:
+                logger.debug("RTD fallback search failed: %s", exc)
 
     return results[:SEARCH_DOCS_LIMIT]
 
@@ -405,6 +424,72 @@ def clear_cache() -> None:
 
 
 MAX_DOC_FETCH_SIZE = 2_000_000  # 2MB
+
+
+async def fetch_cop_content(
+    url: str,
+    max_tokens: int | None = None,
+    http_client: httpx.AsyncClient | None = None,
+) -> FetchDocResult:
+    """Fetch an allowlisted CoP raw GitHub AsciiDoc page as markdown.
+
+    Plain GET of ``text/plain``. Does not use RTD throttling, Cloudflare
+    retries, or the Embed fallback.
+    """
+    cached = _page_cache.get(url)
+    if cached is not None:
+        if max_tokens is not None and cached.get("tokens", 0) > max_tokens:
+            raise AnsibleKnowError(
+                f"Page has {cached['tokens']} tokens (max_tokens={max_tokens}). "
+                f"Fetch without max_tokens or increase the limit."
+            )
+        return cached
+
+    async with optional_http_client(
+        http_client, timeout=httpx.Timeout(30.0),
+    ) as client:
+        resp = await client.get(
+            url,
+            headers={"Accept": "text/plain", "User-Agent": USER_AGENT},
+            follow_redirects=True,
+        )
+
+    if not is_allowed_cop_raw_url(str(resp.url)):
+        raise AnsibleKnowError(f"Redirect to unexpected domain: {resp.url.host}")
+
+    if resp.status_code < 200 or resp.status_code >= 300:
+        raise AnsibleKnowError(
+            sanitize_error(f"CoP document fetch failed: HTTP {resp.status_code}")
+        )
+
+    if len(resp.content) > MAX_DOC_FETCH_SIZE:
+        raise AnsibleKnowError(
+            f"Response too large: {len(resp.content)} bytes "
+            f"(max {MAX_DOC_FETCH_SIZE})"
+        )
+
+    media_type = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+    if media_type and (media_type == "text/html" or not media_type.startswith("text/")):
+        raise AnsibleKnowError(
+            f"Unexpected content type for CoP fetch: {media_type}"
+        )
+
+    content, title = clean_asciidoc(resp.text)
+    tokens = estimate_tokens(content)
+    if max_tokens is not None and tokens > max_tokens:
+        raise AnsibleKnowError(
+            f"Page has {tokens} tokens (max_tokens={max_tokens}). "
+            f"Fetch without max_tokens or increase the limit."
+        )
+
+    result: FetchDocResult = {
+        "content": content,
+        "title": title,
+        "tokens": tokens,
+        "source_url": url,
+    }
+    _page_cache.put(url, result)
+    return result
 
 
 def _map_docs_url_to_rtd(url: str) -> str:
