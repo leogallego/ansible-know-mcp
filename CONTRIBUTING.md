@@ -8,6 +8,31 @@ improvements, new features, and test coverage.
 
 Please read and follow our [Code of Conduct](CODE_OF_CONDUCT.md).
 
+## AI-Assisted Contributions
+
+This project follows the
+[Ansible Community AI-Assisted Contributions Policy](https://docs.ansible.com/projects/ansible/latest/community/ai_policy.html).
+AI tools (LLMs, coding agents, etc.) are welcome for contributions and
+maintenance, provided contributors take full responsibility for what they
+submit and disclose significant AI-generated content per the policy (e.g. an
+`Assisted-by:` commit trailer).
+
+**Maintainer workflow.** PRs to this repo are drafted and reviewed with an
+AI-assisted pipeline built on
+[ai-skills-git](https://github.com/leogallego/ai-skills-git): ticket (bug or
+RFE) → spec → spec review → implementation in an isolated worktree → PR → PR
+review → report and fix, iterating until no issues remain → final review and
+merge.
+
+**Human in the loop.** AI assistance never replaces review. Every change —
+human-authored, AI-assisted, or both — is read and approved by a human
+maintainer before merge. Nothing is auto-merged.
+
+**Acceptance criteria.** Regardless of how a PR was produced, it must at
+minimum run and pass the full unit test suite and lint cleanly (see
+[Making Changes](#making-changes)) and pass CI. PRs that fail these checks
+will not be merged as-is — fix and re-push, or the PR will be closed.
+
 ## Reporting Issues
 
 Open an issue at
