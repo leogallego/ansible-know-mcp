@@ -6,6 +6,8 @@ __pycache__/
 # Claude Code local state (machine-specific paths, worktrees, session memory).
 # Project agent skill lives in skills/pr-architecture-review/ (tracked).
 .claude/
+.cursor/
+.vscode/
 .playwright-mcp/
 .superpowers/
 .coverage
@@ -15,4 +17,5 @@ build/
 skills/*
 !skills/pr-architecture-review/
 docs/research/
+docs/posts/
 demo/
