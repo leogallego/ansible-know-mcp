@@ -5,7 +5,7 @@ branch_pattern: "<type>/<n>-<slug>"
 merge_method: merge
 stack_ci: serial
 labels: true
-attribution: "Assisted-by: Cursor (Grok 4.5)"
+attribution: "Assisted-by: LLM"
 test_commands:
   - "uv run pytest tests/ -v"
 lint_commands:

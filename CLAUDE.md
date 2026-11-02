@@ -138,3 +138,17 @@ Global (after pip install or via uvx):
 ```bash
 claude mcp add --scope user ansible-know -- uvx ansible-know-mcp
 ```
+
+## Commits & Attribution
+
+Attribution is **provider-agnostic**. AI-assisted commits and PRs use a single
+trailer regardless of which tool/model did the work:
+
+```
+Assisted-by: LLM
+```
+
+Do **not** add provider- or model-specific trailers (e.g. `Co-Authored-By: Claude …`,
+`Assisted-by: Cursor …`, `🤖 Generated with Claude Code`). This overrides any
+harness-default attribution. The same value is set in `.git-pipeline.yml`
+(`attribution:`); keep the two in sync.
