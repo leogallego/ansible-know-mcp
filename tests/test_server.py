@@ -113,6 +113,85 @@ class TestGetModuleDocTool:
         assert result["is_api_module"] is False
 
 
+def _extract_call_tool_data(result):
+    """Extract deserialized dict data from a FastMCP CallToolResult.
+
+    ``.data`` can be a non-subscriptable ``Root`` object for TypedDict tool
+    returns, so JSON-parse ``.content`` instead (mirrors
+    ``tests/integration/test_mcp_e2e.py::_extract_data``).
+    """
+    if hasattr(result, "content"):
+        for item in result.content:
+            if hasattr(item, "text"):
+                try:
+                    return json.loads(item.text)
+                except (json.JSONDecodeError, TypeError):
+                    continue
+    if hasattr(result, "data") and result.data is not None:
+        return result.data
+    return result
+
+
+class TestFastMCP4Migration:
+    """FastMCP 4 / MCP 2026-07-28 migration: protocol floor + handle roundtrip smoke."""
+
+    @pytest.mark.asyncio
+    async def test_protocol_revision_is_2026_07_28(self):
+        # N2: don't hard-code the exact revision string brittly — assert we
+        # left the old SDK behind and are on mcp 2.x / the new revision.
+        from importlib.metadata import version
+
+        import mcp.types as t
+
+        assert t.LATEST_PROTOCOL_VERSION != "2025-11-25"
+        assert int(version("mcp").split(".")[0]) >= 2
+
+    @pytest.mark.asyncio
+    async def test_inmemory_handle_roundtrip_smoke_under_fastmcp4(self, mock_ansible_doc):
+        # In-memory Client exercises the proven-local (default-handle) branch only.
+        from fastmcp import Client
+
+        from ansible_know.server import mcp
+        from ansible_know.state import DEFAULT_HANDLE
+
+        ufw_doc = {
+            "community.general.ufw": {
+                "doc": {
+                    "module": "community.general.ufw",
+                    "short_description": "Manage firewall with UFW",
+                    "description": ["Manage firewall with UFW."],
+                    "options": {},
+                },
+                "examples": "",
+            }
+        }
+        mock_ansible_doc.return_value = json.dumps(ufw_doc)
+
+        with patch(
+            "ansible_know.collections.CollectionManager.ensure_collection",
+            return_value={
+                "namespace": "community.general",
+                "version": "9.0.0",
+                "status": "installed",
+                "message": "Installed community.general v9.0.0 (latest).",
+            },
+        ):
+            async with Client(mcp) as client:
+                ensure_res = await client.call_tool(
+                    "ensure_collection", {"collection_namespace": "community.general"}
+                )
+                ensure_data = _extract_call_tool_data(ensure_res)
+                handle = ensure_data["handle"]
+                assert handle == DEFAULT_HANDLE
+
+                out = await client.call_tool(
+                    "get_module_doc",
+                    {"module_name": "community.general.ufw", "collection_handle": handle},
+                )
+                out_data = _extract_call_tool_data(out)
+        assert "error" not in out_data
+
+
 class TestSearchDocsTool:
     @pytest.mark.asyncio
     async def test_search_docs(self, mock_doc_fetch):

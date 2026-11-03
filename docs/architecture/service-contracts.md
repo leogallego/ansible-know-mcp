@@ -89,7 +89,7 @@ review unless they change contracts/ADRs.
 The Transport layer (FastMCP) calls into Orchestration (`server.py`) via
 decorated tool, resource, and prompt handler functions. FastMCP manages:
 
-- MCP protocol framing (stdio currently; HTTP/SSE in the future)
+- MCP protocol framing (stdio and streamable-HTTP)
 - Tool/resource/prompt registration via decorators
 - `Context` object injection for progress reporting and warnings
 - Lifespan management (startup/shutdown via `@lifespan`)
@@ -113,7 +113,7 @@ decorated tool, resource, and prompt handler functions. FastMCP manages:
 | Out (to Transport) | Tool results | `dict[str, Any]`, `str`, `list[dict]` |
 | Shared (lifespan) | `httpx.AsyncClient` | Via `LifespanContext["http_client"]` |
 | Shared (lifespan) | `SharedState` | Via `LifespanContext["shared"]` — process-wide galaxy servers + version info |
-| Shared (lifespan) | `SessionManager` | Via `LifespanContext["sessions"]` — per-session state factory |
+| Shared (lifespan) | `SessionManager` | Via `LifespanContext["sessions"]` — handle-keyed per-session state registry |
 
 ### Concurrency Contract
 
@@ -122,7 +122,15 @@ decorated tool, resource, and prompt handler functions. FastMCP manages:
   `_run_in_executor()` to avoid blocking the event loop.
 - The lifespan context is a `LifespanContext` TypedDict shared across all
   concurrent tool calls. Per-session state is obtained via
-  `await sessions.get_or_create(ctx.session_id)`.
+  `_get_state(ctx, collection_handle)`, which resolves a server-minted
+  `collection_handle` — not `ctx.session_id`, removed in the FastMCP 4
+  migration because the MCP 2026-07-28 stateless protocol yields a fresh
+  session id per call. Transport is detected per request and fail-closed: a
+  proven-local (stdio / in-memory) call with no handle uses `DEFAULT_HANDLE`;
+  any remote or unknown-transport call requires an explicit handle. An
+  explicit handle resolves via `sessions.get_existing()` and errors if it was
+  never minted (no create-on-miss); only the mint/default path calls
+  `sessions.get_or_create()`.
 
 ### Violations
 
@@ -348,10 +356,16 @@ State is split into process-wide and per-session layers (PR #87):
   when injected, manages MCP session lifecycle, and is closed at lifespan
   shutdown (without closing the shared httpx client), not by `clear_cache`.
 - **`ServerState`** (per-session): `collection_manager`, `missing_collections`,
-  `upgrade_warned`. Created lazily by `SessionManager.get_or_create()`.
-- **`SessionManager`**: manages session lifecycle with `asyncio.Lock`.
-  Accepts a `collection_factory` callable to avoid Foundation→External Access
-  imports. Provides `remove_session()` for cleanup.
+  `upgrade_warned`. Keyed by a server-minted `collection_handle`. Created by
+  `SessionManager.get_or_create()` on the mint/default path; an explicit
+  handle is resolved via `SessionManager.get_existing()` (no create-on-miss —
+  the authenticity split that closes the CWE-400 LRU-thrash vector).
+- **`SessionManager`**: handle-keyed registry; manages session lifecycle with
+  `asyncio.Lock`. Accepts a `collection_factory` callable to avoid
+  Foundation→External Access imports. Provides `get_existing()` and
+  `remove_session()`. Session cleanup relies on TTL/LRU eviction plus the
+  periodic sweep; the old per-connection `_exit_stack` hook was removed in the
+  FastMCP 4 migration.
 
 Module-level references `_shared_state` and `_session_manager` in `server.py`
 are write-once at lifespan startup for resource handlers (which don't receive
