@@ -355,29 +355,31 @@ async def _maybe_warn_upgrade(ctx: Context | None, collection_handle: str | None
 
     If the handle can't be resolved (missing/unknown/malformed), this
     silently skips the warning rather than surfacing a handle error to a
-    caller that only wanted a courtesy notice. Any other unexpected error
-    from state resolution (e.g. temp-dir creation failing on the
-    proven-local path) is also swallowed — the upgrade notice must never be
-    the thing that fails a tool.
+    caller that only wanted a courtesy notice. Any other unexpected error —
+    whether from state resolution (e.g. temp-dir creation failing on the
+    proven-local path) or from emission (a missing ``shared`` key, a
+    malformed ``version_info``) — is also swallowed: the entire body runs
+    best-effort, because the upgrade notice must never be the thing that
+    fails a tool.
     """
     if ctx is None:
         return
     try:
         state = await _get_state(ctx, collection_handle)
+        shared = _get_shared(ctx)
+        version_info = shared.version_info
+        if state.upgrade_warned or not version_info or not version_info.get("outdated"):
+            return
+        logger.warning(
+            "ansible-know-mcp %s is outdated; latest is %s. Upgrade: %s",
+            version_info["installed"], version_info["latest"], version_info["upgrade_command"],
+        )
+        state.upgrade_warned = True
     except (MissingHandleError, UnknownHandleError, InvalidHandleError):
         return
     except Exception:
-        logger.debug("Upgrade-notice state resolution failed; skipping notice", exc_info=True)
+        logger.debug("Upgrade-notice emission failed; skipping notice", exc_info=True)
         return
-    shared = _get_shared(ctx)
-    version_info = shared.version_info
-    if state.upgrade_warned or not version_info or not version_info.get("outdated"):
-        return
-    logger.warning(
-        "ansible-know-mcp %s is outdated; latest is %s. Upgrade: %s",
-        version_info["installed"], version_info["latest"], version_info["upgrade_command"],
-    )
-    state.upgrade_warned = True
 
 
 async def _periodic_session_cleanup(sessions: SessionManager) -> None:

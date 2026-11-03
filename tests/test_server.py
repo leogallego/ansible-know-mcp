@@ -2684,6 +2684,55 @@ async def test_maybe_warn_upgrade_swallows_unexpected_error(monkeypatch):
     ctx.warning.assert_not_called()
 
 
+async def test_maybe_warn_upgrade_total_best_effort_on_malformed_version_info(monkeypatch):
+    # B (finding #3): best-effort must cover the WHOLE body, not just handle
+    # resolution. A truthy version_info with outdated=True but missing
+    # installed/latest/upgrade_command keys must NOT raise out of this helper,
+    # which runs before each tool's own try block.
+    from ansible_know.collections import CollectionManager
+    from ansible_know.server import _maybe_warn_upgrade
+    from ansible_know.state import SessionManager, SharedState
+
+    _patch_local(monkeypatch, True)  # proven local -> resolves default state fine
+    shared = SharedState(version_info={"outdated": True})  # missing the message keys
+    sessions = SessionManager(shared, collection_factory=CollectionManager)
+    ctx = _make_mock_ctx(None, shared)
+    ctx.lifespan_context["sessions"] = sessions
+
+    await _maybe_warn_upgrade(ctx)  # malformed version_info -> swallowed, no raise
+
+
+def test_is_local_request_local_when_no_http_request(monkeypatch):
+    # C (finding #1): the real detector, not _patch_local. The documented
+    # "no active HTTP request" RuntimeError is the ONLY proven-local signal.
+    from ansible_know.server import _is_local_request
+
+    def _raise_runtime():
+        raise RuntimeError("No active HTTP request found.")
+
+    monkeypatch.setattr("fastmcp.server.dependencies.get_http_request", _raise_runtime)
+    assert _is_local_request(None) is True
+
+
+def test_is_local_request_fail_closed_on_unexpected_error(monkeypatch):
+    # C (finding #1): any non-RuntimeError must fail closed to remote.
+    from ansible_know.server import _is_local_request
+
+    def _raise_value():
+        raise ValueError("unexpected")
+
+    monkeypatch.setattr("fastmcp.server.dependencies.get_http_request", _raise_value)
+    assert _is_local_request(None) is False
+
+
+def test_is_local_request_remote_when_request_in_scope(monkeypatch):
+    # C (finding #1): a request in scope (no raise) => remote/HTTP.
+    from ansible_know.server import _is_local_request
+
+    monkeypatch.setattr("fastmcp.server.dependencies.get_http_request", lambda: object())
+    assert _is_local_request(None) is False
+
+
 class TestGetStateSessionIsolation:
     @pytest.mark.asyncio
     async def test_different_sessions_get_different_state(self, monkeypatch):

@@ -7,7 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- Nothing yet.
+### Changed
+
+- Upgrade to FastMCP 4 (MCP 2026-07-28); per-session state is now keyed on a server-minted `collection_handle` (returned by `ensure_collection` and threaded by the stateful tools) instead of `ctx.session_id`. Remote connections must pass a handle; local stdio omits it (#189)
+
+### Security
+
+- Bump `mcp>=2.2` to close CVE-2026-59951; explicit handles resolve via `get_existing` (no create-on-miss), closing a CWE-400 LRU-thrash vector (#189)
 
 ## [0.10.0] - 2026-08-24
 
