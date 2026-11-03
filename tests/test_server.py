@@ -891,6 +891,123 @@ class TestEnsureCollectionTool:
         assert result["version"] == "3.9.0"
 
 
+class TestCollectionHandleThreading:
+    """Task 3: collection_handle threading through stateful tools; ensure_collection mints/returns it."""
+
+    @staticmethod
+    def _remote_ctx(shared=None):
+        from ansible_know.collections import CollectionManager
+        from ansible_know.state import SessionManager, SharedState
+
+        shared = shared if shared is not None else SharedState()
+        sessions = SessionManager(shared, collection_factory=CollectionManager)
+        ctx = _make_mock_ctx(None, shared)
+        ctx.lifespan_context["sessions"] = sessions
+        return ctx
+
+    @staticmethod
+    def _local_ctx():
+        from ansible_know.collections import CollectionManager
+        from ansible_know.state import SessionManager, SharedState
+
+        shared = SharedState()
+        sessions = SessionManager(shared, collection_factory=CollectionManager)
+        ctx = _make_mock_ctx(None, shared)
+        ctx.lifespan_context["sessions"] = sessions
+        return ctx
+
+    @staticmethod
+    def _mock_galaxy_install_result():
+        galaxy_stdout = (
+            "Installing 'netbox.netbox:4.1.0' to '<path>'\n"
+            "netbox.netbox:4.1.0 was installed successfully"
+        )
+        mock_result = MagicMock()
+        mock_result.stdout = galaxy_stdout
+        mock_result.stderr = ""
+        mock_result.returncode = 0
+        return mock_result
+
+    @pytest.mark.asyncio
+    async def test_ensure_collection_returns_default_handle_local(self, monkeypatch):
+        from ansible_know.state import DEFAULT_HANDLE
+
+        _patch_local(monkeypatch, True)
+        ctx = self._local_ctx()
+        with patch("ansible_know.collections._find_ansible_galaxy", return_value="/usr/bin/ansible-galaxy"):
+            with patch("subprocess.run", return_value=self._mock_galaxy_install_result()):
+                from ansible_know.server import ensure_collection
+                result = await ensure_collection("netbox.netbox", ctx=ctx)
+        assert result["handle"] == DEFAULT_HANDLE
+
+    @pytest.mark.asyncio
+    async def test_ensure_collection_http_mints_handle(self, monkeypatch):
+        from ansible_know.state import DEFAULT_HANDLE, is_valid_handle
+
+        _patch_local(monkeypatch, False)
+        ctx = self._remote_ctx()
+        with patch("ansible_know.collections._find_ansible_galaxy", return_value="/usr/bin/ansible-galaxy"):
+            with patch("subprocess.run", return_value=self._mock_galaxy_install_result()):
+                from ansible_know.server import ensure_collection
+                result = await ensure_collection("netbox.netbox", ctx=ctx)
+        assert result["handle"] != DEFAULT_HANDLE
+        assert is_valid_handle(result["handle"])
+
+    @pytest.mark.asyncio
+    async def test_ensure_collection_http_does_not_crash_in_warn(self, monkeypatch):
+        _patch_local(monkeypatch, False)
+        ctx = self._remote_ctx()
+        ctx.lifespan_context["shared"].version_info = {
+            "installed": "0.1.0", "latest": "0.2.0", "outdated": True, "upgrade_command": "x",
+        }
+        with patch("ansible_know.collections._find_ansible_galaxy", return_value="/usr/bin/ansible-galaxy"):
+            with patch("subprocess.run", return_value=self._mock_galaxy_install_result()):
+                from ansible_know.server import ensure_collection
+                result = await ensure_collection("netbox.netbox", ctx=ctx)
+        assert "handle" in result
+        assert result["status"] in {"installed", "already_installed"}
+
+    @pytest.mark.asyncio
+    async def test_warning_tool_roundtrips_handle_on_http(self, monkeypatch, mock_ansible_doc):
+        mock_ansible_doc.return_value = json.dumps(SAMPLE_MODULE_DOC)
+        _patch_local(monkeypatch, False)
+        ctx = self._remote_ctx()
+        with patch("ansible_know.collections._find_ansible_galaxy", return_value="/usr/bin/ansible-galaxy"):
+            with patch("subprocess.run", return_value=self._mock_galaxy_install_result()):
+                from ansible_know.server import ensure_collection
+                handle = (await ensure_collection("netbox.netbox", ctx=ctx))["handle"]
+
+        from ansible_know.server import get_module_doc
+        out = await get_module_doc("netbox.netbox.netbox_device", collection_handle=handle, ctx=ctx)
+        assert "error" not in out
+
+    @pytest.mark.asyncio
+    async def test_warning_tool_http_without_handle_errors(self, monkeypatch, mock_ansible_doc):
+        mock_ansible_doc.return_value = json.dumps(SAMPLE_MODULE_DOC)
+        _patch_local(monkeypatch, False)
+        ctx = self._remote_ctx()
+
+        from ansible_know.server import get_module_doc
+        out = await get_module_doc("netbox.netbox.netbox_device", ctx=ctx)
+        assert "error" in out
+        assert "ensure_collection" in out["error"]
+
+    @pytest.mark.asyncio
+    async def test_consumer_tool_unknown_handle_errors(self, monkeypatch, mock_ansible_doc):
+        from ansible_know.state import mint_handle
+
+        mock_ansible_doc.return_value = json.dumps(SAMPLE_MODULE_DOC)
+        _patch_local(monkeypatch, False)
+        ctx = self._remote_ctx()
+
+        from ansible_know.server import get_module_doc
+        out = await get_module_doc(
+            "netbox.netbox.netbox_device", collection_handle=mint_handle(), ctx=ctx,
+        )
+        assert "error" in out
+        assert "ensure_collection" in out["error"]
+
+
 class TestMissingCollectionHints:
     @pytest.mark.asyncio
     async def test_get_module_doc_hint_suppressed_on_double_failure(self, mock_ansible_doc):

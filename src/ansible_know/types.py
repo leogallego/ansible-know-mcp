@@ -6,9 +6,9 @@ import sys
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 if sys.version_info >= (3, 12):
-    from typing import TypedDict
+    from typing import NotRequired, TypedDict
 else:
-    from typing_extensions import TypedDict
+    from typing_extensions import NotRequired, TypedDict
 
 if TYPE_CHECKING:
     import httpx
@@ -151,6 +151,7 @@ class EnsureCollectionResult(TypedDict):
     version: str
     status: str
     message: str
+    handle: NotRequired[str]
 
 
 class SkillEntry(TypedDict):
