@@ -367,10 +367,9 @@ async def _maybe_warn_upgrade(ctx: Context | None, collection_handle: str | None
     version_info = shared.version_info
     if state.upgrade_warned or not version_info or not version_info.get("outdated"):
         return
-    await ctx.warning(
-        f"ansible-know-mcp {version_info['installed']} is outdated; "
-        f"latest is {version_info['latest']}. "
-        f"Upgrade: {version_info['upgrade_command']}"
+    logger.warning(
+        "ansible-know-mcp %s is outdated; latest is %s. Upgrade: %s",
+        version_info["installed"], version_info["latest"], version_info["upgrade_command"],
     )
     state.upgrade_warned = True
 

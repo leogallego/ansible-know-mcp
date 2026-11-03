@@ -1675,7 +1675,7 @@ class TestCheckPypiVersion:
 
 class TestMaybeWarnUpgrade:
     @pytest.mark.asyncio
-    async def test_warns_when_outdated(self):
+    async def test_warns_when_outdated(self, caplog):
         from ansible_know.collections import CollectionManager
         from ansible_know.server import _maybe_warn_upgrade
         from ansible_know.state import ServerState, SharedState
@@ -1688,13 +1688,14 @@ class TestMaybeWarnUpgrade:
         shared = SharedState(version_info=version_info)
         mock_ctx = _make_mock_ctx(state, shared)
 
-        await _maybe_warn_upgrade(mock_ctx)
-        mock_ctx.warning.assert_called_once()
-        assert "outdated" in mock_ctx.warning.call_args[0][0]
+        with caplog.at_level("WARNING", logger="ansible_know"):
+            await _maybe_warn_upgrade(mock_ctx)
+        mock_ctx.warning.assert_not_called()
+        assert any("outdated" in r.message for r in caplog.records)
         assert state.upgrade_warned is True
 
     @pytest.mark.asyncio
-    async def test_warns_only_once(self):
+    async def test_warns_only_once(self, caplog):
         from ansible_know.collections import CollectionManager
         from ansible_know.server import _maybe_warn_upgrade
         from ansible_know.state import ServerState, SharedState
@@ -1707,9 +1708,11 @@ class TestMaybeWarnUpgrade:
         shared = SharedState(version_info=version_info)
         mock_ctx = _make_mock_ctx(state, shared)
 
-        await _maybe_warn_upgrade(mock_ctx)
-        await _maybe_warn_upgrade(mock_ctx)
-        mock_ctx.warning.assert_called_once()
+        with caplog.at_level("WARNING", logger="ansible_know"):
+            await _maybe_warn_upgrade(mock_ctx)
+            caplog.clear()
+            await _maybe_warn_upgrade(mock_ctx)
+        assert not caplog.records
 
     @pytest.mark.asyncio
     async def test_no_warn_when_current(self):
@@ -1745,6 +1748,32 @@ class TestMaybeWarnUpgrade:
     async def test_no_warn_when_no_ctx(self):
         from ansible_know.server import _maybe_warn_upgrade
         await _maybe_warn_upgrade(None)
+
+    @pytest.mark.asyncio
+    async def test_upgrade_notice_uses_stderr_not_ctx_warning(self, caplog, monkeypatch):
+        from ansible_know.collections import CollectionManager
+        from ansible_know.server import _maybe_warn_upgrade
+        from ansible_know.state import SessionManager, SharedState
+
+        _patch_local(monkeypatch, True)
+        shared = SharedState(
+            version_info={
+                "installed": "0.1.0", "latest": "0.2.0",
+                "outdated": True, "upgrade_command": "pip install -U ansible-know-mcp",
+            }
+        )
+        ctx = _make_mock_ctx(None, shared)
+        ctx.lifespan_context["sessions"] = SessionManager(shared, collection_factory=CollectionManager)
+
+        with caplog.at_level("WARNING", logger="ansible_know"):
+            await _maybe_warn_upgrade(ctx)
+        assert any("outdated" in r.message for r in caplog.records)
+        ctx.warning.assert_not_called()
+
+        caplog.clear()
+        with caplog.at_level("WARNING", logger="ansible_know"):
+            await _maybe_warn_upgrade(ctx)
+        assert not caplog.records
 
 
 class TestServerVersionResource:
