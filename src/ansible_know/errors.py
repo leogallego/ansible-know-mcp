@@ -27,6 +27,38 @@ class ValidationError(AnsibleKnowError):
     """Raised when tool input fails validation."""
 
 
+class MissingHandleError(AnsibleKnowError):
+    """Raised when a remote connection has no collection_handle to resolve."""
+
+    def __init__(
+        self,
+        message: str = (
+            "collection_handle is required on remote connections. "
+            "Call ensure_collection first and pass the returned handle."
+        ),
+    ) -> None:
+        super().__init__(message)
+
+
+class UnknownHandleError(AnsibleKnowError):
+    """Raised when a well-formed collection_handle has no registered session."""
+
+    def __init__(
+        self,
+        message: str = (
+            "Unknown or expired collection_handle. Call ensure_collection to obtain a fresh handle."
+        ),
+    ) -> None:
+        super().__init__(message)
+
+
+class InvalidHandleError(AnsibleKnowError):
+    """Raised when a collection_handle fails the format check."""
+
+    def __init__(self, message: str = "Malformed collection_handle.") -> None:
+        super().__init__(message)
+
+
 _MISSING_COLLECTION_PATTERNS = ("has no attribute", "was not found", "could not be found")
 
 

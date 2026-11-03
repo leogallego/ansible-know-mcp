@@ -22,8 +22,25 @@ from fastmcp.server.lifespan import lifespan
 from mcp.types import ToolAnnotations
 
 from ansible_know.async_utils import run_in_executor
-from ansible_know.errors import AnsibleDocError, AnsibleKnowError, ValidationError, collection_hint, maybe_add_hint
-from ansible_know.state import LifespanContext, ServerState, SessionManager, SharedState
+from ansible_know.errors import (
+    AnsibleDocError,
+    AnsibleKnowError,
+    InvalidHandleError,
+    MissingHandleError,
+    UnknownHandleError,
+    ValidationError,
+    collection_hint,
+    maybe_add_hint,
+)
+from ansible_know.state import (
+    DEFAULT_HANDLE,
+    LifespanContext,
+    ServerState,
+    SessionManager,
+    SharedState,
+    is_valid_handle,
+    mint_handle,
+)
 from ansible_know.types import (
     ClearCacheResult,
     CollectionDocsResult,
@@ -218,26 +235,103 @@ def _galaxy_v1_factory(ctx: Context | None = None):
     return _factory
 
 
-async def _get_state(ctx: Context | None) -> ServerState:
-    """Return per-session ServerState from ctx, or create ephemeral."""
-    if ctx is not None:
-        sessions: SessionManager = ctx.lifespan_context["sessions"]
-        state = await sessions.get_or_create(ctx.session_id)
-        if (
-            hasattr(ctx.session, "_exit_stack")
-            and ctx.session._exit_stack is not None
-            and not getattr(ctx.session, "_ansible_know_cleanup_registered", False)
-        ):
-            session_id = ctx.session_id
+def _is_local_request(ctx: Context | None = None) -> bool:
+    """Return ``True`` only when this call is proven to be local (stdio / in-memory).
 
-            async def _cleanup_session() -> None:
-                await sessions.remove_session(session_id)
+    Per-request, fail-closed transport detection. FastMCP's per-request
+    accessor (``get_http_request``, identical signal in FM3 and FM4) raises
+    ``RuntimeError("No active HTTP request found.")`` when there is no HTTP
+    request in scope — that documented signal is the ONLY way this returns
+    ``True``. Any HTTP request in scope, or any unexpected error, is treated
+    as remote/untrusted (fail closed), because a false "local" positive
+    would let a remote caller claim the shared default-workspace handle.
+    """
+    from fastmcp.server.dependencies import get_http_request
 
-            ctx.session._exit_stack.push_async_callback(_cleanup_session)
-            ctx.session._ansible_know_cleanup_registered = True
-        return state
-    from ansible_know.collections import CollectionManager
-    return ServerState(collection_manager=CollectionManager())
+    try:
+        get_http_request()
+    except RuntimeError:
+        return True  # documented "no active HTTP request" signal => proven local
+    except Exception:
+        return False  # ambiguous/unexpected => treat as remote (fail closed)
+    return False  # a request is in scope => remote/HTTP
+
+
+def _resolve_handle(
+    ctx: Context | None, collection_handle: str | None, *, mint_if_missing: bool
+) -> tuple[str, bool]:
+    """Resolve a ``collection_handle`` to ``(handle, allow_create)``.
+
+    Raises:
+        InvalidHandleError: ``collection_handle`` is given but fails the
+            format check (``is_valid_handle``).
+        MissingHandleError: no ``collection_handle`` is given, the request
+            cannot be proven local, and ``mint_if_missing`` is ``False``.
+
+    Guarantee: an explicit ``collection_handle`` ALWAYS resolves via
+    get-existing (``allow_create=False``), regardless of ``mint_if_missing``
+    — including when the caller is ``ensure_collection`` re-presenting its
+    own previously-minted handle. An unknown/expired explicit handle errors
+    rather than being silently re-created; it must already exist, and it
+    creates NO session. ``mint_if_missing`` only ever applies to the
+    no-handle (``collection_handle is None``) branches below — it governs
+    whether a *new* handle may be minted, never whether an *explicit* one
+    may be materialized.
+    """
+    if collection_handle is not None:
+        if not is_valid_handle(collection_handle):
+            raise InvalidHandleError
+        return collection_handle, False
+    if _is_local_request(ctx):
+        return DEFAULT_HANDLE, True
+    if mint_if_missing:
+        return mint_handle(), True
+    raise MissingHandleError
+
+
+async def _get_state_and_handle(
+    ctx: Context | None, collection_handle: str | None = None, *, mint_if_missing: bool = False
+) -> tuple[ServerState, str]:
+    """Resolve ``(ServerState, handle)`` for this call.
+
+    Single resolution path shared by ``_get_state`` and callers that also
+    need the resolved handle string (``ensure_collection``) — resolve/mint
+    happens exactly once, avoiding a double-mint across two calls.
+
+    Raises:
+        InvalidHandleError: see ``_resolve_handle``.
+        MissingHandleError: see ``_resolve_handle``.
+        UnknownHandleError: an explicit, well-formed ``collection_handle``
+            has no registered session (not allowed to be created). No
+            session is created as a side effect.
+    """
+    if ctx is None:
+        from ansible_know.collections import CollectionManager
+
+        return ServerState(collection_manager=CollectionManager()), DEFAULT_HANDLE
+    sessions: SessionManager = ctx.lifespan_context["sessions"]
+    handle, allow_create = _resolve_handle(ctx, collection_handle, mint_if_missing=mint_if_missing)
+    if allow_create:
+        state = await sessions.get_or_create(handle)
+    else:
+        state = await sessions.get_existing(handle)
+        if state is None:
+            raise UnknownHandleError
+    return state, handle
+
+
+async def _get_state(
+    ctx: Context | None, collection_handle: str | None = None, *, mint_if_missing: bool = False
+) -> ServerState:
+    """Return per-handle ``ServerState`` from ``ctx``, or an ephemeral one when ``ctx`` is ``None``.
+
+    Raises:
+        InvalidHandleError: see ``_resolve_handle``.
+        MissingHandleError: see ``_resolve_handle``.
+        UnknownHandleError: see ``_get_state_and_handle``.
+    """
+    state, _ = await _get_state_and_handle(ctx, collection_handle, mint_if_missing=mint_if_missing)
+    return state
 
 
 def _get_shared(ctx: Context | None) -> SharedState:
@@ -256,10 +350,19 @@ def _get_http_client(ctx: Context | None) -> httpx.AsyncClient | None:
     return ctx.lifespan_context["http_client"]
 
 
-async def _maybe_warn_upgrade(ctx: Context | None) -> None:
+async def _maybe_warn_upgrade(ctx: Context | None, collection_handle: str | None = None) -> None:
+    """Best-effort upgrade warning: never raises, never mints a handle.
+
+    If the handle can't be resolved (missing/unknown/malformed), this
+    silently skips the warning rather than surfacing a handle error to a
+    caller that only wanted a courtesy notice.
+    """
     if ctx is None:
         return
-    state = await _get_state(ctx)
+    try:
+        state = await _get_state(ctx, collection_handle)
+    except (MissingHandleError, UnknownHandleError, InvalidHandleError):
+        return
     shared = _get_shared(ctx)
     version_info = shared.version_info
     if state.upgrade_warned or not version_info or not version_info.get("outdated"):

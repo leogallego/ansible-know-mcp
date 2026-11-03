@@ -34,9 +34,16 @@ def _make_mock_ctx(state, shared, http_client=None):
         "sessions": sessions,
         "http_client": http_client,
     }
-    mock_ctx.session_id = "test-session"
     mock_ctx.warning = AsyncMock()
     return mock_ctx
+
+
+def _patch_local(monkeypatch, value: bool):
+    """Patch the per-request local detector so tests don't need a live transport.
+
+    _patch_local(mp, True) => proven local (stdio); _patch_local(mp, False) => remote/HTTP.
+    """
+    monkeypatch.setattr("ansible_know.server._is_local_request", lambda ctx=None: value)
 
 
 @pytest.fixture
@@ -2306,43 +2313,163 @@ class TestPeriodicVersionCheck:
         assert shared.version_info["latest"] == "0.3.0"
 
 
+async def test_get_state_local_uses_default_handle(monkeypatch):
+    from ansible_know.collections import CollectionManager
+    from ansible_know.server import _get_state
+    from ansible_know.state import SessionManager, SharedState
+
+    _patch_local(monkeypatch, True)
+    sessions = SessionManager(SharedState(), collection_factory=CollectionManager)
+    ctx = _make_mock_ctx(None, SharedState())
+    ctx.lifespan_context["sessions"] = sessions
+    s1 = await _get_state(ctx)  # no handle, proven local
+    s2 = await _get_state(ctx)
+    assert s1 is s2  # same default workspace
+
+
+async def test_get_state_distinct_handles_isolated(monkeypatch):
+    # remote: two minted handles get isolated state; each re-resolves via get-existing.
+    from ansible_know.collections import CollectionManager
+    from ansible_know.server import _get_state, _get_state_and_handle
+    from ansible_know.state import SessionManager, SharedState
+
+    _patch_local(monkeypatch, False)
+    sessions = SessionManager(SharedState(), collection_factory=CollectionManager)
+    ctx = _make_mock_ctx(None, SharedState())
+    ctx.lifespan_context["sessions"] = sessions
+    s1, h1 = await _get_state_and_handle(ctx, None, mint_if_missing=True)  # mint path creates
+    s2, h2 = await _get_state_and_handle(ctx, None, mint_if_missing=True)
+    assert h1 != h2
+    assert s1 is not s2
+    # an explicit minted handle re-resolves to the SAME state via get-existing
+    assert await _get_state(ctx, h1) is s1
+    assert await _get_state(ctx, h2) is s2
+    assert await _get_state(ctx, h1) is not await _get_state(ctx, h2)
+
+
+async def test_get_state_remote_without_handle_raises(monkeypatch):
+    from ansible_know.collections import CollectionManager
+    from ansible_know.errors import MissingHandleError
+    from ansible_know.server import _get_state
+    from ansible_know.state import SessionManager, SharedState
+
+    _patch_local(monkeypatch, False)
+    sessions = SessionManager(SharedState(), collection_factory=CollectionManager)
+    ctx = _make_mock_ctx(None, SharedState())
+    ctx.lifespan_context["sessions"] = sessions
+    with pytest.raises(MissingHandleError):
+        await _get_state(ctx)  # consumer path, no handle, remote
+
+
+async def test_get_state_unknown_transport_requires_handle(monkeypatch):
+    # fail-closed: detector cannot prove local -> treated as remote
+    from ansible_know.collections import CollectionManager
+    from ansible_know.errors import MissingHandleError
+    from ansible_know.server import _get_state
+    from ansible_know.state import SessionManager, SharedState
+
+    _patch_local(monkeypatch, False)
+    sessions = SessionManager(SharedState(), collection_factory=CollectionManager)
+    ctx = _make_mock_ctx(None, SharedState())
+    ctx.lifespan_context["sessions"] = sessions
+    with pytest.raises(MissingHandleError):
+        await _get_state(ctx)
+
+
+async def test_get_state_wellformed_unminted_handle_errors_without_creating(monkeypatch):
+    # authenticity (S1): explicit valid handle we never minted -> error, no session
+    from ansible_know.collections import CollectionManager
+    from ansible_know.errors import UnknownHandleError
+    from ansible_know.server import _get_state
+    from ansible_know.state import SessionManager, SharedState, mint_handle
+
+    _patch_local(monkeypatch, False)
+    sessions = SessionManager(SharedState(), collection_factory=CollectionManager)
+    ctx = _make_mock_ctx(None, SharedState())
+    ctx.lifespan_context["sessions"] = sessions
+    with pytest.raises(UnknownHandleError):
+        await _get_state(ctx, mint_handle())  # well-formed, never created
+    assert sessions.session_count == 0
+
+
+async def test_get_state_rejects_malformed_handle(monkeypatch):
+    from ansible_know.collections import CollectionManager
+    from ansible_know.errors import InvalidHandleError
+    from ansible_know.server import _get_state
+    from ansible_know.state import SessionManager, SharedState
+
+    _patch_local(monkeypatch, False)
+    sessions = SessionManager(SharedState(), collection_factory=CollectionManager)
+    ctx = _make_mock_ctx(None, SharedState())
+    ctx.lifespan_context["sessions"] = sessions
+    with pytest.raises(InvalidHandleError):
+        await _get_state(ctx, "../etc/passwd")
+
+
+async def test_get_state_mint_if_missing_returns_state(monkeypatch):
+    from ansible_know.collections import CollectionManager
+    from ansible_know.server import _get_state
+    from ansible_know.state import SessionManager, SharedState
+
+    _patch_local(monkeypatch, False)  # remote
+    sessions = SessionManager(SharedState(), collection_factory=CollectionManager)
+    ctx = _make_mock_ctx(None, SharedState())
+    ctx.lifespan_context["sessions"] = sessions
+    assert await _get_state(ctx, None, mint_if_missing=True) is not None  # ensure_collection path
+
+
+async def test_maybe_warn_upgrade_best_effort_on_remote_without_handle(monkeypatch):
+    # B1: the warning helper must NOT raise when the handle can't resolve
+    from ansible_know.collections import CollectionManager
+    from ansible_know.server import _maybe_warn_upgrade
+    from ansible_know.state import SessionManager, SharedState
+
+    _patch_local(monkeypatch, False)
+    shared = SharedState(version_info={
+        "installed": "0.1.0", "latest": "0.2.0", "outdated": True, "upgrade_command": "x",
+    })
+    sessions = SessionManager(shared, collection_factory=CollectionManager)
+    ctx = _make_mock_ctx(None, shared)
+    ctx.lifespan_context["sessions"] = sessions
+    await _maybe_warn_upgrade(ctx)  # no handle, remote -> silently skips, no raise
+
+
 class TestGetStateSessionIsolation:
     @pytest.mark.asyncio
-    async def test_different_sessions_get_different_state(self):
+    async def test_different_sessions_get_different_state(self, monkeypatch):
         from ansible_know.collections import CollectionManager
-        from ansible_know.server import _get_state
+        from ansible_know.server import _get_state_and_handle
         from ansible_know.state import SessionManager, SharedState
 
-        shared = SharedState()
-        sessions = SessionManager(shared, collection_factory=CollectionManager)
-
-        ctx_a = MagicMock()
-        ctx_a.lifespan_context = {"shared": shared, "sessions": sessions, "http_client": None}
-        ctx_a.session_id = "session-a"
-
-        ctx_b = MagicMock()
-        ctx_b.lifespan_context = {"shared": shared, "sessions": sessions, "http_client": None}
-        ctx_b.session_id = "session-b"
-
-        state_a = await _get_state(ctx_a)
-        state_b = await _get_state(ctx_b)
-        assert state_a is not state_b
-
-    @pytest.mark.asyncio
-    async def test_same_session_gets_same_state(self):
-        from ansible_know.collections import CollectionManager
-        from ansible_know.server import _get_state
-        from ansible_know.state import SessionManager, SharedState
-
+        _patch_local(monkeypatch, False)
         shared = SharedState()
         sessions = SessionManager(shared, collection_factory=CollectionManager)
 
         ctx = MagicMock()
         ctx.lifespan_context = {"shared": shared, "sessions": sessions, "http_client": None}
-        ctx.session_id = "session-x"
 
-        state_1 = await _get_state(ctx)
-        state_2 = await _get_state(ctx)
+        # mint path creates two distinct handles/states; no explicit handle involved.
+        state_a, handle_a = await _get_state_and_handle(ctx, None, mint_if_missing=True)
+        state_b, handle_b = await _get_state_and_handle(ctx, None, mint_if_missing=True)
+        assert handle_a != handle_b
+        assert state_a is not state_b
+
+    @pytest.mark.asyncio
+    async def test_same_session_gets_same_state(self, monkeypatch):
+        from ansible_know.collections import CollectionManager
+        from ansible_know.server import _get_state, _get_state_and_handle
+        from ansible_know.state import SessionManager, SharedState
+
+        _patch_local(monkeypatch, False)
+        shared = SharedState()
+        sessions = SessionManager(shared, collection_factory=CollectionManager)
+
+        ctx = MagicMock()
+        ctx.lifespan_context = {"shared": shared, "sessions": sessions, "http_client": None}
+
+        state_1, handle = await _get_state_and_handle(ctx, None, mint_if_missing=True)
+        # re-presenting the same minted handle resolves via get-existing to the same state.
+        state_2 = await _get_state(ctx, handle)
         assert state_1 is state_2
 
     @pytest.mark.asyncio
@@ -2355,48 +2482,6 @@ class TestGetStateSessionIsolation:
         # Each call returns a new ephemeral instance
         state_2 = await _get_state(None)
         assert state is not state_2
-
-    @pytest.mark.asyncio
-    async def test_registers_cleanup_on_session_exit_stack(self):
-        from ansible_know.collections import CollectionManager
-        from ansible_know.server import _get_state
-        from ansible_know.state import SessionManager, SharedState
-
-        shared = SharedState()
-        sessions = SessionManager(shared, collection_factory=CollectionManager)
-
-        mock_exit_stack = MagicMock()
-        ctx = MagicMock()
-        ctx.lifespan_context = {"shared": shared, "sessions": sessions, "http_client": None}
-        ctx.session_id = "session-cleanup"
-        ctx.session._exit_stack = mock_exit_stack
-        ctx.session._ansible_know_cleanup_registered = False
-
-        await _get_state(ctx)
-
-        mock_exit_stack.push_async_callback.assert_called_once()
-        assert ctx.session._ansible_know_cleanup_registered is True
-
-    @pytest.mark.asyncio
-    async def test_cleanup_not_registered_twice(self):
-        from ansible_know.collections import CollectionManager
-        from ansible_know.server import _get_state
-        from ansible_know.state import SessionManager, SharedState
-
-        shared = SharedState()
-        sessions = SessionManager(shared, collection_factory=CollectionManager)
-
-        mock_exit_stack = MagicMock()
-        ctx = MagicMock()
-        ctx.lifespan_context = {"shared": shared, "sessions": sessions, "http_client": None}
-        ctx.session_id = "session-once"
-        ctx.session._exit_stack = mock_exit_stack
-        ctx.session._ansible_know_cleanup_registered = False
-
-        await _get_state(ctx)
-        await _get_state(ctx)
-
-        mock_exit_stack.push_async_callback.assert_called_once()
 
 
 class TestClearCache:
