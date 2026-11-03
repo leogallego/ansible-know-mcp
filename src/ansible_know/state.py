@@ -11,6 +11,7 @@ import logging
 import os
 import sys
 import time
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -29,10 +30,13 @@ if TYPE_CHECKING:
     from ansible_know.types import VersionInfo
 
 __all__ = [
+    "DEFAULT_HANDLE",
     "LifespanContext",
     "ServerState",
     "SessionManager",
     "SharedState",
+    "is_valid_handle",
+    "mint_handle",
 ]
 
 logger = logging.getLogger("ansible_know")
@@ -60,6 +64,31 @@ def _get_max_sessions() -> int:
         except ValueError:
             pass
     return DEFAULT_MAX_SESSIONS
+
+
+# Proven-local default-workspace sentinel. Deliberately not a uuid so it
+# reads clearly in logs/config and can never collide with a minted handle.
+DEFAULT_HANDLE = "default"
+
+_HEX_DIGITS = set("0123456789abcdef")
+
+
+def mint_handle() -> str:
+    """Mint a new collection-handle: 32-char lowercase hex (uuid4)."""
+    return uuid.uuid4().hex
+
+
+def is_valid_handle(handle: str) -> bool:
+    """Check handle *shape* only: ``DEFAULT_HANDLE`` or a minted hex handle.
+
+    This is a format check, not an authenticity check — it does not
+    confirm the handle was ever minted or registered. Authenticity is
+    enforced by ``SessionManager.get_existing``, which returns ``None``
+    for well-formed handles that were never created.
+    """
+    if handle == DEFAULT_HANDLE:
+        return True
+    return len(handle) == 32 and all(c in _HEX_DIGITS for c in handle)
 
 
 @dataclass
@@ -144,39 +173,57 @@ class SessionManager:
     def max_sessions(self) -> int:
         return self._max_sessions
 
-    async def get_or_create(self, session_id: str) -> ServerState:
-        """Return existing session state or create a new one.
+    async def get_or_create(self, handle: str) -> ServerState:
+        """Return existing session state for ``handle`` or create a new one.
 
         Updates last-accessed time. Evicts LRU session if count limit
-        is reached when creating a new session.
+        is reached when creating a new session. Reserved for the mint
+        path (``ensure_collection``) and the stdio default handle —
+        it always materializes a session, even on miss.
         """
         # Fast path: lockless read is safe in single-threaded asyncio —
         # no await between dict read and timestamp write.
         now = time.monotonic()
-        existing = self._sessions.get(session_id)
+        existing = self._sessions.get(handle)
         if existing is not None:
-            self._last_accessed[session_id] = now
+            self._last_accessed[handle] = now
             return existing
         evicted: ServerState | None = None
         async with self._lock:
-            if session_id in self._sessions:
-                self._last_accessed[session_id] = now
-                return self._sessions[session_id]
+            if handle in self._sessions:
+                self._last_accessed[handle] = now
+                return self._sessions[handle]
             if len(self._sessions) >= self._max_sessions:
                 evicted = await self._evict_lru_locked()
-            self._sessions[session_id] = ServerState(
+            self._sessions[handle] = ServerState(
                 collection_manager=self._collection_factory(),
                 galaxy_servers=self._shared.galaxy_servers,
             )
-            self._last_accessed[session_id] = now
-            logger.debug("Created session state for %s", session_id)
-            result = self._sessions[session_id]
+            self._last_accessed[handle] = now
+            logger.debug("Created session state for %s", handle)
+            result = self._sessions[handle]
         if evicted is not None:
             try:
                 evicted.collection_manager.cleanup()
             except OSError:
                 logger.debug("LRU session cleanup failed", exc_info=True)
         return result
+
+    async def get_existing(self, handle: str) -> ServerState | None:
+        """Return the state for an already-registered ``handle``, or ``None``.
+
+        Never creates a session — this is the authenticity-preserving
+        counterpart to ``get_or_create``: a well-formed but never-minted
+        handle must not be materialized into a session as a side effect.
+        Refreshes last-accessed time on hit. Lockless fast-path read,
+        consistent with ``get_or_create``.
+        """
+        now = time.monotonic()
+        existing = self._sessions.get(handle)
+        if existing is not None:
+            self._last_accessed[handle] = now
+            return existing
+        return None
 
     async def _evict_lru_locked(self) -> ServerState | None:
         """Evict the least-recently-accessed session. Must hold self._lock.
@@ -193,14 +240,14 @@ class SessionManager:
             logger.info("Evicted LRU session %s (max_sessions=%d)", lru_id, self._max_sessions)
         return state
 
-    async def remove_session(self, session_id: str) -> None:
-        """Remove a session and clean up its resources."""
+    async def remove_session(self, handle: str) -> None:
+        """Remove the session for ``handle`` and clean up its resources."""
         async with self._lock:
-            state = self._sessions.pop(session_id, None)
-            self._last_accessed.pop(session_id, None)
+            state = self._sessions.pop(handle, None)
+            self._last_accessed.pop(handle, None)
         if state is not None:
             state.collection_manager.cleanup()
-            logger.debug("Removed session state for %s", session_id)
+            logger.debug("Removed session state for %s", handle)
 
     async def cleanup_stale_sessions(self) -> int:
         """Evict sessions that have exceeded the TTL.
