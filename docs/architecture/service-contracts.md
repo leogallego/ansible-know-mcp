@@ -130,7 +130,11 @@ decorated tool, resource, and prompt handler functions. FastMCP manages:
   any remote or unknown-transport call requires an explicit handle. An
   explicit handle resolves via `sessions.get_existing()` and errors if it was
   never minted (no create-on-miss); only the mint/default path calls
-  `sessions.get_or_create()`.
+  `sessions.get_or_create()`. Exception: the three pure-discovery tools
+  (`search_collections`, `search_standalone_roles`, `get_standalone_role_doc`)
+  read only the shared `galaxy_servers` config, hold no per-client state, and
+  therefore take no `collection_handle` and work on remote without one — a
+  client can discover collections before installing any.
 
 ### Violations
 

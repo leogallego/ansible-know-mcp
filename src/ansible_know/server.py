@@ -625,15 +625,16 @@ async def get_role_doc(
         return {"error": maybe_add_hint(sanitize_error(str(exc)), ns)}
 
 
+# Discovery tool: reads only the shared galaxy_servers config (no per-client state),
+# so it deliberately takes NO collection_handle and works on remote without one —
+# lets clients discover collections before installing. The collection-touching tools
+# DO require a handle for per-client isolation (see _resolve_handle).
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_standalone_role_doc(
     role_name: Annotated[
         str,
         "Standalone role identifier from search_standalone_roles (namespace.role).",
     ],
-    collection_handle: Annotated[
-        str | None, "Session handle returned by ensure_collection. Omit on local stdio; required on remote."
-    ] = None,
     ctx: Context | None = None,
 ) -> GetStandaloneRoleDocResult | ErrorResponse:
     """Get standalone role documentation for a 2-part namespace.role identifier.
@@ -642,7 +643,7 @@ async def get_standalone_role_doc(
     This tool does not replace get_role_doc for collection roles.
     """
     logger.info("get_standalone_role_doc role=%r", role_name)
-    await _maybe_warn_upgrade(ctx, collection_handle)
+    await _maybe_warn_upgrade(ctx)
     try:
         validate_standalone_role_name(role_name)
     except ValidationError as exc:
@@ -651,13 +652,13 @@ async def get_standalone_role_doc(
     try:
         from ansible_know import resolution
 
-        state = await _get_state(ctx, collection_handle)
+        galaxy_servers = _get_shared(ctx).galaxy_servers
         http_client = _get_http_client(ctx)
         return await resolution.resolve_standalone_role_doc(
             role_name,
             v1_client_factory=_galaxy_v1_factory(ctx),
             http_client=http_client,
-            galaxy_servers=state.galaxy_servers,
+            galaxy_servers=galaxy_servers,
         )
     except Exception as exc:
         logger.warning("get_standalone_role_doc failed: %s", exc)
@@ -812,13 +813,12 @@ async def fetch_doc(
         return {"error": sanitize_error(str(exc))}
 
 
+# Discovery tool: no collection_handle — reads only shared galaxy_servers config,
+# works on remote without one (see get_standalone_role_doc for the full rationale).
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def search_collections(
     query: Annotated[str, "Search keyword (e.g., 'netbox', 'cisco ios', 'vmware')"],
     tags: Annotated[str | None, "Optional comma-separated Galaxy tags to filter (e.g., 'networking,cloud')"] = None,
-    collection_handle: Annotated[
-        str | None, "Session handle returned by ensure_collection. Omit on local stdio; required on remote."
-    ] = None,
     ctx: Context | None = None,
 ) -> CollectionSearchResult | ErrorResponse:
     """Search Ansible Galaxy for collections by keyword.
@@ -836,7 +836,7 @@ async def search_collections(
     On failure returns {"error": str}.
     """
     logger.info("search_collections query=%r tags=%r", query, tags)
-    await _maybe_warn_upgrade(ctx, collection_handle)
+    await _maybe_warn_upgrade(ctx)
     try:
         validate_query(query)
         if tags:
@@ -847,10 +847,10 @@ async def search_collections(
     try:
         from ansible_know import resolution
 
-        state = await _get_state(ctx, collection_handle)
+        galaxy_servers = _get_shared(ctx).galaxy_servers
         http_client = _get_http_client(ctx)
         return await resolution.search_galaxy_collections(
-            query, tags=tags, http_client=http_client, galaxy_servers=state.galaxy_servers,
+            query, tags=tags, http_client=http_client, galaxy_servers=galaxy_servers,
             client_factory=_galaxy_factory(ctx),
         )
     except Exception as exc:
@@ -858,15 +858,14 @@ async def search_collections(
         return {"error": sanitize_error(str(exc))}
 
 
+# Discovery tool: no collection_handle — reads only shared galaxy_servers config,
+# works on remote without one (see get_standalone_role_doc for the full rationale).
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def search_standalone_roles(
     query: Annotated[str, "Search keyword for Galaxy standalone/legacy roles (keywords search)"],
     tags: Annotated[
         str | None,
         "Optional Galaxy tag filter. If comma-separated, only the first tag segment is used.",
-    ] = None,
-    collection_handle: Annotated[
-        str | None, "Session handle returned by ensure_collection. Omit on local stdio; required on remote."
     ] = None,
     ctx: Context | None = None,
 ) -> StandaloneRoleSearchResult | ErrorResponse:
@@ -880,7 +879,7 @@ async def search_standalone_roles(
     endpoints, expect a v1-unsupported error.
     """
     logger.info("search_standalone_roles query=%r tags=%r", query, tags)
-    await _maybe_warn_upgrade(ctx, collection_handle)
+    await _maybe_warn_upgrade(ctx)
     try:
         validate_query(query)
         if tags:
@@ -891,7 +890,7 @@ async def search_standalone_roles(
     try:
         from ansible_know import resolution
 
-        state = await _get_state(ctx, collection_handle)
+        galaxy_servers = _get_shared(ctx).galaxy_servers
         http_client = _get_http_client(ctx)
         # Spec §7.1: tool boundary sends only first tag segment.
         # GalaxyV1Client._first_tag is defense-in-depth.
@@ -901,7 +900,7 @@ async def search_standalone_roles(
             tags=v1_tags,
             v1_client_factory=_galaxy_v1_factory(ctx),
             http_client=http_client,
-            galaxy_servers=state.galaxy_servers,
+            galaxy_servers=galaxy_servers,
         )
     except Exception as exc:
         logger.warning("search_standalone_roles failed: %s", exc)

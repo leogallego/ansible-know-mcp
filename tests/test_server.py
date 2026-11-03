@@ -1984,6 +1984,25 @@ class TestSearchCollectionsTool:
             result = await search_collections("netbox")
         assert "error" in result
 
+    @pytest.mark.asyncio
+    async def test_works_remote_without_handle(self, monkeypatch):
+        # Discovery tool reads only shared galaxy_servers; it must work on a
+        # remote connection WITHOUT a handle (no ensure_collection first).
+        from ansible_know.server import search_collections
+        from ansible_know.state import SharedState
+
+        _patch_local(monkeypatch, False)  # remote
+        ctx = _make_mock_ctx(None, SharedState())
+        mock_result = {"query": "netbox", "count": 1, "collections": []}
+        with patch(
+            "ansible_know.resolution.search_galaxy_collections",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ):
+            result = await search_collections("netbox", ctx=ctx)
+        assert "error" not in result
+        assert result["count"] == 1
+
 
 class TestSearchStandaloneRolesTool:
     @pytest.mark.asyncio
@@ -2020,6 +2039,25 @@ class TestSearchStandaloneRolesTool:
             result = await search_standalone_roles("cis")
         assert "error" in result
 
+    @pytest.mark.asyncio
+    async def test_works_remote_without_handle(self, monkeypatch):
+        # Discovery tool reads only shared galaxy_servers; works on remote
+        # without a handle.
+        from ansible_know.server import search_standalone_roles
+        from ansible_know.state import SharedState
+
+        _patch_local(monkeypatch, False)  # remote
+        ctx = _make_mock_ctx(None, SharedState())
+        mock_result = {"query": "cis", "count": 1, "roles": []}
+        with patch(
+            "ansible_know.resolution.search_standalone_roles",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ):
+            result = await search_standalone_roles("cis", ctx=ctx)
+        assert "error" not in result
+        assert result["count"] == 1
+
 
 class TestGetStandaloneRoleDocTool:
     @pytest.mark.asyncio
@@ -2037,6 +2075,30 @@ class TestGetStandaloneRoleDocTool:
         ):
             from ansible_know.server import get_standalone_role_doc
             result = await get_standalone_role_doc("ansible-lockdown.rhel9_cis")
+        assert result["content_type"] == "standalone_role"
+
+    @pytest.mark.asyncio
+    async def test_works_remote_without_handle(self, monkeypatch):
+        # Discovery tool reads only shared galaxy_servers; works on remote
+        # without a handle.
+        from ansible_know.server import get_standalone_role_doc
+        from ansible_know.state import SharedState
+
+        _patch_local(monkeypatch, False)  # remote
+        ctx = _make_mock_ctx(None, SharedState())
+        mock_result = {
+            "role_name": "ansible-lockdown.rhel9_cis",
+            "content_type": "standalone_role",
+            "doc_source": "galaxy_v1_readme",
+            "entry_points": {"main": {"description": "", "options": []}},
+        }
+        with patch(
+            "ansible_know.resolution.resolve_standalone_role_doc",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ):
+            result = await get_standalone_role_doc("ansible-lockdown.rhel9_cis", ctx=ctx)
+        assert "error" not in result
         assert result["content_type"] == "standalone_role"
 
     @pytest.mark.asyncio
@@ -2120,11 +2182,10 @@ class TestLifespanHttpClient:
             token="secret",
             validate_certs=False,
         )
-        state = ServerState(
-            collection_manager=CollectionManager(),
-            galaxy_servers=[server],
-        )
-        shared = SharedState()
+        state = ServerState(collection_manager=CollectionManager())
+        # search_collections is a discovery tool: it reads galaxy_servers from
+        # SharedState, not per-session ServerState.
+        shared = SharedState(galaxy_servers=[server])
         mock_ctx = _make_mock_ctx(state, shared, http_client=mock_client)
 
         mock_result = {"query": "test", "count": 0, "collections": []}
@@ -2154,11 +2215,10 @@ class TestLifespanHttpClient:
             url="https://galaxy.ansible.com",
             validate_certs=True,
         )
-        state = ServerState(
-            collection_manager=CollectionManager(),
-            galaxy_servers=[server],
-        )
-        shared = SharedState()
+        state = ServerState(collection_manager=CollectionManager())
+        # search_collections is a discovery tool: it reads galaxy_servers from
+        # SharedState, not per-session ServerState.
+        shared = SharedState(galaxy_servers=[server])
         mock_ctx = _make_mock_ctx(state, shared, http_client=mock_client)
 
         mock_result = {"query": "test", "count": 0, "collections": []}

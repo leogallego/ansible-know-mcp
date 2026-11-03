@@ -123,6 +123,14 @@ explicit handle. Explicit handles resolve via `get_existing` (no create-on-miss,
 closing a CWE-400 LRU-thrash vector). The private `ctx.session._exit_stack`
 cleanup hook was removed; cleanup relies on the existing TTL/LRU + periodic sweep.
 
+Exception — the three pure-discovery tools (`search_collections`,
+`search_standalone_roles`, `get_standalone_role_doc`) take **no**
+`collection_handle` and work on remote without one. They read only the shared
+`galaxy_servers` config and hold no per-client state, so requiring a handle
+would force a remote client to install a collection before it could even search
+for one. This does not reopen the cross-client hole: they expose only shared
+public-Galaxy config, never a per-client workspace.
+
 Transport note: FastMCP 4's canonical streamable-HTTP mount path is `/mcp` (no
 trailing slash); `/mcp/` now 307-redirects. Separately, the "outdated version"
 notice moved off the deprecated protocol Logging channel (`ctx.warning`) to
