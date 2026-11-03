@@ -2659,6 +2659,31 @@ async def test_maybe_warn_upgrade_best_effort_on_remote_without_handle(monkeypat
     await _maybe_warn_upgrade(ctx)  # no handle, remote -> silently skips, no raise
 
 
+async def test_maybe_warn_upgrade_swallows_unexpected_error(monkeypatch):
+    # B1 hardening: best-effort must be TOTAL. An unexpected error from state
+    # resolution (e.g. temp-dir creation failing on the proven-local path) must
+    # NOT propagate out of the courtesy-notice helper and fail the tool.
+    from ansible_know.collections import CollectionManager
+    from ansible_know.server import _maybe_warn_upgrade
+    from ansible_know.state import SessionManager, SharedState
+
+    _patch_local(monkeypatch, True)  # proven local -> would route to get_or_create(DEFAULT_HANDLE)
+    shared = SharedState(version_info={
+        "installed": "0.1.0", "latest": "0.2.0", "outdated": True, "upgrade_command": "x",
+    })
+    sessions = SessionManager(shared, collection_factory=CollectionManager)
+    ctx = _make_mock_ctx(None, shared)
+    ctx.lifespan_context["sessions"] = sessions
+
+    async def _boom(*args, **kwargs):
+        raise OSError("temp dir creation failed")
+
+    monkeypatch.setattr("ansible_know.server._get_state", _boom)
+
+    await _maybe_warn_upgrade(ctx)  # unexpected OSError -> swallowed, no raise
+    ctx.warning.assert_not_called()
+
+
 class TestGetStateSessionIsolation:
     @pytest.mark.asyncio
     async def test_different_sessions_get_different_state(self, monkeypatch):
