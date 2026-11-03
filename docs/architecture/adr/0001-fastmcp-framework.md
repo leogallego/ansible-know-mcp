@@ -120,7 +120,10 @@ fail-closed** via `fastmcp.server.dependencies.get_http_request` (a raised
 any other error ⇒ treated as remote): a proven-local call with no handle gets a
 process-wide `DEFAULT_HANDLE`; a remote or unknown-transport call requires an
 explicit handle. Explicit handles resolve via `get_existing` (no create-on-miss,
-closing a CWE-400 LRU-thrash vector). The private `ctx.session._exit_stack`
+closing a CWE-400 LRU-thrash vector). An explicit `DEFAULT_HANDLE` is further
+rejected unless the request is proven local, so a remote caller cannot claim the
+shared stdio/in-memory default workspace by passing the guessable `"default"`
+string in a mixed-transport process. The private `ctx.session._exit_stack`
 cleanup hook was removed; cleanup relies on the existing TTL/LRU + periodic sweep.
 
 Exception — the three pure-discovery tools (`search_collections`,

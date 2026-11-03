@@ -277,10 +277,19 @@ def _resolve_handle(
     no-handle (``collection_handle is None``) branches below — it governs
     whether a *new* handle may be minted, never whether an *explicit* one
     may be materialized.
+
+    The one exception to "explicit handle always resolves": ``DEFAULT_HANDLE``
+    is the proven-local shared workspace, so an explicit ``DEFAULT_HANDLE`` on
+    a request that cannot be proven local is rejected with ``MissingHandleError``
+    (not resolved). This stops a remote caller from seizing the stdio/in-memory
+    default workspace by passing the guessable ``"default"`` string in a
+    mixed-transport process.
     """
     if collection_handle is not None:
         if not is_valid_handle(collection_handle):
             raise InvalidHandleError
+        if collection_handle == DEFAULT_HANDLE and not _is_local_request(ctx):
+            raise MissingHandleError  # default workspace is proven-local only
         return collection_handle, False
     if _is_local_request(ctx):
         return DEFAULT_HANDLE, True

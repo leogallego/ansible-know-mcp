@@ -2677,6 +2677,41 @@ async def test_get_state_wellformed_unminted_handle_errors_without_creating(monk
     assert sessions.session_count == 0
 
 
+async def test_get_state_remote_rejects_explicit_default_handle(monkeypatch):
+    # Finding 1: the shared default workspace is proven-local only. A remote
+    # caller must not be able to seize it by passing collection_handle="default".
+    from ansible_know.collections import CollectionManager
+    from ansible_know.errors import MissingHandleError
+    from ansible_know.server import _get_state
+    from ansible_know.state import DEFAULT_HANDLE, SessionManager, SharedState
+
+    _patch_local(monkeypatch, False)  # remote
+    sessions = SessionManager(SharedState(), collection_factory=CollectionManager)
+    ctx = _make_mock_ctx(None, SharedState())
+    ctx.lifespan_context["sessions"] = sessions
+    # Even if a local caller has already materialized the default workspace,
+    # a remote request for it must be rejected.
+    await sessions.get_or_create(DEFAULT_HANDLE)
+    with pytest.raises(MissingHandleError):
+        await _get_state(ctx, DEFAULT_HANDLE)
+
+
+async def test_get_state_local_accepts_explicit_default_handle(monkeypatch):
+    # Finding 1: a proven-local caller may still pass the default handle
+    # explicitly and resolve the same shared workspace.
+    from ansible_know.collections import CollectionManager
+    from ansible_know.server import _get_state
+    from ansible_know.state import DEFAULT_HANDLE, SessionManager, SharedState
+
+    _patch_local(monkeypatch, True)  # proven local
+    sessions = SessionManager(SharedState(), collection_factory=CollectionManager)
+    ctx = _make_mock_ctx(None, SharedState())
+    ctx.lifespan_context["sessions"] = sessions
+    created = await _get_state(ctx)  # no handle -> creates DEFAULT_HANDLE session
+    resolved = await _get_state(ctx, DEFAULT_HANDLE)  # explicit default -> same state
+    assert resolved is created
+
+
 async def test_get_state_rejects_malformed_handle(monkeypatch):
     from ansible_know.collections import CollectionManager
     from ansible_know.errors import InvalidHandleError
