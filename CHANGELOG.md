@@ -7,13 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Nothing yet.
+
+## [0.11.0] - 2026-11-03
+
 ### Changed
 
 - Upgrade to FastMCP 4 (MCP 2026-07-28); per-session state is now keyed on a server-minted `collection_handle` (returned by `ensure_collection` and threaded by the stateful tools) instead of `ctx.session_id`. Remote connections must pass a handle; local stdio omits it (#189)
+- `search_collections`, `search_standalone_roles`, and `get_standalone_role_doc` no longer take `collection_handle` — they read only the shared `galaxy_servers` config, so remote callers can search before installing anything (#189)
 
 ### Security
 
 - Bump `mcp>=2.2` to close CVE-2026-59951; explicit handles resolve via `get_existing` (no create-on-miss), closing a CWE-400 LRU-thrash vector (#189)
+- Reject an explicit `collection_handle="default"` on non-local (remote/HTTP) requests; the shared default workspace is local-only, closing a guessable-handle isolation gap (#189)
 
 ## [0.10.0] - 2026-08-24
 
@@ -287,6 +293,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OWASP security hardening: FQCN input validation, path traversal protection, error sanitization, output size limits, audit logging
 - 77 tests covering tools, parser, skills, docs, collection manifests, and security
 
+[0.11.0]: https://github.com/leogallego/ansible-know-mcp/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/leogallego/ansible-know-mcp/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/leogallego/ansible-know-mcp/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/leogallego/ansible-know-mcp/compare/v0.8.0...v0.9.0
