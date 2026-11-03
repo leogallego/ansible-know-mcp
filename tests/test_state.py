@@ -7,7 +7,15 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from ansible_know.collections import CollectionManager
-from ansible_know.state import LifespanContext, ServerState, SessionManager, SharedState
+from ansible_know.state import (
+    DEFAULT_HANDLE,
+    LifespanContext,
+    ServerState,
+    SessionManager,
+    SharedState,
+    is_valid_handle,
+    mint_handle,
+)
 
 
 class TestServerState:
@@ -65,6 +73,24 @@ class TestSharedState:
         shared = SharedState(galaxy_servers=servers, version_info=info)
         assert shared.galaxy_servers is servers
         assert shared.version_info is info
+
+
+class TestHandlePrimitives:
+    def test_default_handle_is_stable_sentinel(self):
+        assert DEFAULT_HANDLE == "default"
+
+    def test_mint_handle_unique_hex(self):
+        a, b = mint_handle(), mint_handle()
+        assert a != b
+        assert len(a) == 32 and all(c in "0123456789abcdef" for c in a)
+        assert is_valid_handle(a)
+
+    def test_is_valid_handle_rejects_garbage(self):
+        assert is_valid_handle(DEFAULT_HANDLE)
+        assert not is_valid_handle("../etc/passwd")
+        assert not is_valid_handle("x" * 500)
+        assert not is_valid_handle("not-hex-zzzz")
+        assert not is_valid_handle("ABCDEF0123456789ABCDEF0123456789")  # uppercase not minted shape
 
 
 class TestSessionManager:
@@ -315,6 +341,27 @@ class TestSessionManager:
         )
         evicted = await mgr.cleanup_stale_sessions()
         assert evicted == 0
+
+    @pytest.mark.asyncio
+    async def test_get_existing_returns_none_for_unminted_handle(self):
+        # authenticity: a well-formed handle we never created must NOT be materialized
+        mgr = SessionManager(SharedState(), collection_factory=CollectionManager)
+        assert await mgr.get_existing(mint_handle()) is None
+        assert mgr.session_count == 0  # no session created as a side effect
+
+    @pytest.mark.asyncio
+    async def test_get_existing_returns_state_after_create(self):
+        mgr = SessionManager(SharedState(), collection_factory=CollectionManager)
+        h = mint_handle()
+        created = await mgr.get_or_create(h)
+        assert await mgr.get_existing(h) is created
+
+    @pytest.mark.asyncio
+    async def test_get_or_create_still_creates_on_miss(self):
+        # get_or_create remains the mint/default path and does create
+        mgr = SessionManager(SharedState(), collection_factory=CollectionManager)
+        state = await mgr.get_or_create(mint_handle())
+        assert state.missing_collections == set()
 
     @pytest.mark.asyncio
     async def test_env_var_minimum_clamp(self):

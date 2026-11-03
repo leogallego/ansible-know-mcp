@@ -22,8 +22,25 @@ from fastmcp.server.lifespan import lifespan
 from mcp.types import ToolAnnotations
 
 from ansible_know.async_utils import run_in_executor
-from ansible_know.errors import AnsibleDocError, AnsibleKnowError, ValidationError, collection_hint, maybe_add_hint
-from ansible_know.state import LifespanContext, ServerState, SessionManager, SharedState
+from ansible_know.errors import (
+    AnsibleDocError,
+    AnsibleKnowError,
+    InvalidHandleError,
+    MissingHandleError,
+    UnknownHandleError,
+    ValidationError,
+    collection_hint,
+    maybe_add_hint,
+)
+from ansible_know.state import (
+    DEFAULT_HANDLE,
+    LifespanContext,
+    ServerState,
+    SessionManager,
+    SharedState,
+    is_valid_handle,
+    mint_handle,
+)
 from ansible_know.types import (
     ClearCacheResult,
     CollectionDocsResult,
@@ -218,26 +235,112 @@ def _galaxy_v1_factory(ctx: Context | None = None):
     return _factory
 
 
-async def _get_state(ctx: Context | None) -> ServerState:
-    """Return per-session ServerState from ctx, or create ephemeral."""
-    if ctx is not None:
-        sessions: SessionManager = ctx.lifespan_context["sessions"]
-        state = await sessions.get_or_create(ctx.session_id)
-        if (
-            hasattr(ctx.session, "_exit_stack")
-            and ctx.session._exit_stack is not None
-            and not getattr(ctx.session, "_ansible_know_cleanup_registered", False)
-        ):
-            session_id = ctx.session_id
+def _is_local_request(ctx: Context | None = None) -> bool:
+    """Return ``True`` only when this call is proven to be local (stdio / in-memory).
 
-            async def _cleanup_session() -> None:
-                await sessions.remove_session(session_id)
+    Per-request, fail-closed transport detection. FastMCP's per-request
+    accessor (``get_http_request``, identical signal in FM3 and FM4) raises
+    ``RuntimeError("No active HTTP request found.")`` when there is no HTTP
+    request in scope — that documented signal is the ONLY way this returns
+    ``True``. Any HTTP request in scope, or any unexpected error, is treated
+    as remote/untrusted (fail closed), because a false "local" positive
+    would let a remote caller claim the shared default-workspace handle.
+    """
+    from fastmcp.server.dependencies import get_http_request
 
-            ctx.session._exit_stack.push_async_callback(_cleanup_session)
-            ctx.session._ansible_know_cleanup_registered = True
-        return state
-    from ansible_know.collections import CollectionManager
-    return ServerState(collection_manager=CollectionManager())
+    try:
+        get_http_request()
+    except RuntimeError:
+        return True  # documented "no active HTTP request" signal => proven local
+    except Exception:
+        return False  # ambiguous/unexpected => treat as remote (fail closed)
+    return False  # a request is in scope => remote/HTTP
+
+
+def _resolve_handle(
+    ctx: Context | None, collection_handle: str | None, *, mint_if_missing: bool
+) -> tuple[str, bool]:
+    """Resolve a ``collection_handle`` to ``(handle, allow_create)``.
+
+    Raises:
+        InvalidHandleError: ``collection_handle`` is given but fails the
+            format check (``is_valid_handle``).
+        MissingHandleError: no ``collection_handle`` is given, the request
+            cannot be proven local, and ``mint_if_missing`` is ``False``.
+
+    Guarantee: an explicit ``collection_handle`` ALWAYS resolves via
+    get-existing (``allow_create=False``), regardless of ``mint_if_missing``
+    — including when the caller is ``ensure_collection`` re-presenting its
+    own previously-minted handle. An unknown/expired explicit handle errors
+    rather than being silently re-created; it must already exist, and it
+    creates NO session. ``mint_if_missing`` only ever applies to the
+    no-handle (``collection_handle is None``) branches below — it governs
+    whether a *new* handle may be minted, never whether an *explicit* one
+    may be materialized.
+
+    The one exception to "explicit handle always resolves": ``DEFAULT_HANDLE``
+    is the proven-local shared workspace, so an explicit ``DEFAULT_HANDLE`` on
+    a request that cannot be proven local is rejected with ``MissingHandleError``
+    (not resolved). This stops a remote caller from seizing the stdio/in-memory
+    default workspace by passing the guessable ``"default"`` string in a
+    mixed-transport process.
+    """
+    if collection_handle is not None:
+        if not is_valid_handle(collection_handle):
+            raise InvalidHandleError
+        if collection_handle == DEFAULT_HANDLE and not _is_local_request(ctx):
+            raise MissingHandleError  # default workspace is proven-local only
+        return collection_handle, False
+    if _is_local_request(ctx):
+        return DEFAULT_HANDLE, True
+    if mint_if_missing:
+        return mint_handle(), True
+    raise MissingHandleError
+
+
+async def _get_state_and_handle(
+    ctx: Context | None, collection_handle: str | None = None, *, mint_if_missing: bool = False
+) -> tuple[ServerState, str]:
+    """Resolve ``(ServerState, handle)`` for this call.
+
+    Single resolution path shared by ``_get_state`` and callers that also
+    need the resolved handle string (``ensure_collection``) — resolve/mint
+    happens exactly once, avoiding a double-mint across two calls.
+
+    Raises:
+        InvalidHandleError: see ``_resolve_handle``.
+        MissingHandleError: see ``_resolve_handle``.
+        UnknownHandleError: an explicit, well-formed ``collection_handle``
+            has no registered session (not allowed to be created). No
+            session is created as a side effect.
+    """
+    if ctx is None:
+        from ansible_know.collections import CollectionManager
+
+        return ServerState(collection_manager=CollectionManager()), DEFAULT_HANDLE
+    sessions: SessionManager = ctx.lifespan_context["sessions"]
+    handle, allow_create = _resolve_handle(ctx, collection_handle, mint_if_missing=mint_if_missing)
+    if allow_create:
+        state = await sessions.get_or_create(handle)
+    else:
+        state = await sessions.get_existing(handle)
+        if state is None:
+            raise UnknownHandleError
+    return state, handle
+
+
+async def _get_state(
+    ctx: Context | None, collection_handle: str | None = None, *, mint_if_missing: bool = False
+) -> ServerState:
+    """Return per-handle ``ServerState`` from ``ctx``, or an ephemeral one when ``ctx`` is ``None``.
+
+    Raises:
+        InvalidHandleError: see ``_resolve_handle``.
+        MissingHandleError: see ``_resolve_handle``.
+        UnknownHandleError: see ``_get_state_and_handle``.
+    """
+    state, _ = await _get_state_and_handle(ctx, collection_handle, mint_if_missing=mint_if_missing)
+    return state
 
 
 def _get_shared(ctx: Context | None) -> SharedState:
@@ -256,20 +359,36 @@ def _get_http_client(ctx: Context | None) -> httpx.AsyncClient | None:
     return ctx.lifespan_context["http_client"]
 
 
-async def _maybe_warn_upgrade(ctx: Context | None) -> None:
+async def _maybe_warn_upgrade(ctx: Context | None, collection_handle: str | None = None) -> None:
+    """Best-effort upgrade warning: never raises, never mints a handle.
+
+    If the handle can't be resolved (missing/unknown/malformed), this
+    silently skips the warning rather than surfacing a handle error to a
+    caller that only wanted a courtesy notice. Any other unexpected error —
+    whether from state resolution (e.g. temp-dir creation failing on the
+    proven-local path) or from emission (a missing ``shared`` key, a
+    malformed ``version_info``) — is also swallowed: the entire body runs
+    best-effort, because the upgrade notice must never be the thing that
+    fails a tool.
+    """
     if ctx is None:
         return
-    state = await _get_state(ctx)
-    shared = _get_shared(ctx)
-    version_info = shared.version_info
-    if state.upgrade_warned or not version_info or not version_info.get("outdated"):
+    try:
+        state = await _get_state(ctx, collection_handle)
+        shared = _get_shared(ctx)
+        version_info = shared.version_info
+        if state.upgrade_warned or not version_info or not version_info.get("outdated"):
+            return
+        logger.warning(
+            "ansible-know-mcp %s is outdated; latest is %s. Upgrade: %s",
+            version_info["installed"], version_info["latest"], version_info["upgrade_command"],
+        )
+        state.upgrade_warned = True
+    except (MissingHandleError, UnknownHandleError, InvalidHandleError):
         return
-    await ctx.warning(
-        f"ansible-know-mcp {version_info['installed']} is outdated; "
-        f"latest is {version_info['latest']}. "
-        f"Upgrade: {version_info['upgrade_command']}"
-    )
-    state.upgrade_warned = True
+    except Exception:
+        logger.debug("Upgrade-notice emission failed; skipping notice", exc_info=True)
+        return
 
 
 async def _periodic_session_cleanup(sessions: SessionManager) -> None:
@@ -321,6 +440,9 @@ async def _periodic_version_check(
 async def search_modules(
     keyword: Annotated[str, "Search term to match against module names and descriptions"],
     namespace: Annotated[str | None, "Optional collection namespace filter (e.g. 'community.docker')"] = None,
+    collection_handle: Annotated[
+        str | None, "Session handle returned by ensure_collection. Omit on local stdio; required on remote."
+    ] = None,
     ctx: Context | None = None,
 ) -> dict[str, str] | ErrorResponse:
     """Find Ansible modules by keyword in name or description. Returns up to 50 matches as {fqcn: short_description}.
@@ -339,7 +461,7 @@ async def search_modules(
         from ansible_know import parser
         from ansible_know.config import SEARCH_MODULES_LIMIT
 
-        state = await _get_state(ctx)
+        state = await _get_state(ctx, collection_handle)
         results = await run_in_executor(
             parser.search_modules, keyword, collection_filter=namespace,
             collections_path=state.collection_manager.get_collections_path(),
@@ -360,6 +482,9 @@ async def search_plugins(
         "Plugin type filter (e.g. 'lookup', 'filter'). If omitted, searches all types.",
     ] = None,
     namespace: Annotated[str | None, "Optional collection namespace filter (e.g. 'netbox.netbox')"] = None,
+    collection_handle: Annotated[
+        str | None, "Session handle returned by ensure_collection. Omit on local stdio; required on remote."
+    ] = None,
     ctx: Context | None = None,
 ) -> dict[str, str] | ErrorResponse:
     """Find Ansible plugins by keyword. Returns up to 50 matches as {fqcn: short_description}.
@@ -382,7 +507,7 @@ async def search_plugins(
         from ansible_know import parser
         from ansible_know.config import PLUGIN_TYPES, SEARCH_MODULES_LIMIT
 
-        state = await _get_state(ctx)
+        state = await _get_state(ctx, collection_handle)
         cpath = state.collection_manager.get_collections_path()
 
         if plugin_type is not None:
@@ -426,6 +551,9 @@ async def search_plugins(
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_module_doc(
     module_name: Annotated[str, "Fully-qualified collection name (e.g. 'ansible.builtin.copy')"],
+    collection_handle: Annotated[
+        str | None, "Session handle returned by ensure_collection. Omit on local stdio; required on remote."
+    ] = None,
     ctx: Context | None = None,
 ) -> GetModuleDocResult | ErrorResponse:
     """Get full structured documentation for one module.
@@ -437,7 +565,7 @@ async def get_module_doc(
     On failure returns {"error": str}.
     """
     logger.info("get_module_doc module=%r", module_name)
-    await _maybe_warn_upgrade(ctx)
+    await _maybe_warn_upgrade(ctx, collection_handle)
     try:
         validate_fqcn(module_name)
     except ValidationError as exc:
@@ -446,7 +574,7 @@ async def get_module_doc(
     try:
         from ansible_know import resolution
 
-        state = await _get_state(ctx)
+        state = await _get_state(ctx, collection_handle)
         http_client = _get_http_client(ctx)
         result = await resolution.resolve_module_doc(
             module_name, http_client=http_client, galaxy_servers=state.galaxy_servers,
@@ -467,6 +595,9 @@ async def get_module_doc(
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_role_doc(
     role_name: Annotated[str, "Fully-qualified role name (e.g. 'fedora.linux_system_roles.timesync')"],
+    collection_handle: Annotated[
+        str | None, "Session handle returned by ensure_collection. Omit on local stdio; required on remote."
+    ] = None,
     ctx: Context | None = None,
 ) -> GetRoleDocResult | ErrorResponse:
     """Get full structured documentation for one role.
@@ -480,7 +611,7 @@ async def get_role_doc(
     On validation failure returns {"error": str}.
     """
     logger.info("get_role_doc role=%r", role_name)
-    await _maybe_warn_upgrade(ctx)
+    await _maybe_warn_upgrade(ctx, collection_handle)
     try:
         validate_fqcn(role_name)
     except ValidationError as exc:
@@ -489,7 +620,7 @@ async def get_role_doc(
     try:
         from ansible_know import resolution
 
-        state = await _get_state(ctx)
+        state = await _get_state(ctx, collection_handle)
         http_client = _get_http_client(ctx)
         return await resolution.resolve_role_doc(
             role_name, http_client=http_client, galaxy_servers=state.galaxy_servers,
@@ -503,6 +634,10 @@ async def get_role_doc(
         return {"error": maybe_add_hint(sanitize_error(str(exc)), ns)}
 
 
+# Discovery tool: reads only the shared galaxy_servers config (no per-client state),
+# so it deliberately takes NO collection_handle and works on remote without one —
+# lets clients discover collections before installing. The collection-touching tools
+# DO require a handle for per-client isolation (see _resolve_handle).
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_standalone_role_doc(
     role_name: Annotated[
@@ -526,13 +661,13 @@ async def get_standalone_role_doc(
     try:
         from ansible_know import resolution
 
-        state = await _get_state(ctx)
+        galaxy_servers = _get_shared(ctx).galaxy_servers
         http_client = _get_http_client(ctx)
         return await resolution.resolve_standalone_role_doc(
             role_name,
             v1_client_factory=_galaxy_v1_factory(ctx),
             http_client=http_client,
-            galaxy_servers=state.galaxy_servers,
+            galaxy_servers=galaxy_servers,
         )
     except Exception as exc:
         logger.warning("get_standalone_role_doc failed: %s", exc)
@@ -548,6 +683,9 @@ async def get_plugin_doc(
         "strategy, callback, inventory, cache, cliconf, httpapi, "
         "netconf, shell, or vars)",
     ],
+    collection_handle: Annotated[
+        str | None, "Session handle returned by ensure_collection. Omit on local stdio; required on remote."
+    ] = None,
     ctx: Context | None = None,
 ) -> GetPluginDocResult | ErrorResponse:
     """Get full structured documentation for one plugin.
@@ -558,7 +696,7 @@ async def get_plugin_doc(
     On failure returns {"error": str}.
     """
     logger.info("get_plugin_doc plugin=%r type=%r", plugin_name, plugin_type)
-    await _maybe_warn_upgrade(ctx)
+    await _maybe_warn_upgrade(ctx, collection_handle)
     try:
         validate_fqcn(plugin_name)
         validate_plugin_type(plugin_type)
@@ -568,7 +706,7 @@ async def get_plugin_doc(
     try:
         from ansible_know import resolution
 
-        state = await _get_state(ctx)
+        state = await _get_state(ctx, collection_handle)
         http_client = _get_http_client(ctx)
         return await resolution.resolve_plugin_doc(
             plugin_name, plugin_type,
@@ -684,6 +822,8 @@ async def fetch_doc(
         return {"error": sanitize_error(str(exc))}
 
 
+# Discovery tool: no collection_handle — reads only shared galaxy_servers config,
+# works on remote without one (see get_standalone_role_doc for the full rationale).
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def search_collections(
     query: Annotated[str, "Search keyword (e.g., 'netbox', 'cisco ios', 'vmware')"],
@@ -716,10 +856,10 @@ async def search_collections(
     try:
         from ansible_know import resolution
 
-        state = await _get_state(ctx)
+        galaxy_servers = _get_shared(ctx).galaxy_servers
         http_client = _get_http_client(ctx)
         return await resolution.search_galaxy_collections(
-            query, tags=tags, http_client=http_client, galaxy_servers=state.galaxy_servers,
+            query, tags=tags, http_client=http_client, galaxy_servers=galaxy_servers,
             client_factory=_galaxy_factory(ctx),
         )
     except Exception as exc:
@@ -727,6 +867,8 @@ async def search_collections(
         return {"error": sanitize_error(str(exc))}
 
 
+# Discovery tool: no collection_handle — reads only shared galaxy_servers config,
+# works on remote without one (see get_standalone_role_doc for the full rationale).
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def search_standalone_roles(
     query: Annotated[str, "Search keyword for Galaxy standalone/legacy roles (keywords search)"],
@@ -757,7 +899,7 @@ async def search_standalone_roles(
     try:
         from ansible_know import resolution
 
-        state = await _get_state(ctx)
+        galaxy_servers = _get_shared(ctx).galaxy_servers
         http_client = _get_http_client(ctx)
         # Spec §7.1: tool boundary sends only first tag segment.
         # GalaxyV1Client._first_tag is defense-in-depth.
@@ -767,7 +909,7 @@ async def search_standalone_roles(
             tags=v1_tags,
             v1_client_factory=_galaxy_v1_factory(ctx),
             http_client=http_client,
-            galaxy_servers=state.galaxy_servers,
+            galaxy_servers=galaxy_servers,
         )
     except Exception as exc:
         logger.warning("search_standalone_roles failed: %s", exc)
@@ -777,6 +919,9 @@ async def search_standalone_roles(
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_collection_manifest(
     collection_namespace: Annotated[str, "Collection namespace (e.g. 'netbox.netbox')"],
+    collection_handle: Annotated[
+        str | None, "Session handle returned by ensure_collection. Omit on local stdio; required on remote."
+    ] = None,
     ctx: Context | None = None,
 ) -> ManifestResult | ErrorResponse:
     """Get a lightweight collection overview: module/role/plugin names with one-line descriptions.
@@ -799,11 +944,11 @@ async def get_collection_manifest(
     except ValidationError as exc:
         return {"error": str(exc)}
 
-    await _maybe_warn_upgrade(ctx)
+    await _maybe_warn_upgrade(ctx, collection_handle)
     try:
         from ansible_know import collection_manifest, parser, resolution
 
-        state = await _get_state(ctx)
+        state = await _get_state(ctx, collection_handle)
         installed_version = state.collection_manager.list_installed().get(collection_namespace)
         cached = await run_in_executor(
             collection_manifest.load_cached_manifest,
@@ -900,6 +1045,9 @@ async def get_collection_manifest(
 async def get_collection_docs(
     collection_namespace: Annotated[str, "Collection namespace (e.g. 'netbox.netbox')"],
     version: Annotated[str | None, "Optional version (e.g. '3.23.0'). If omitted, uses latest."] = None,
+    collection_handle: Annotated[
+        str | None, "Session handle returned by ensure_collection. Omit on local stdio; required on remote."
+    ] = None,
     ctx: Context | None = None,
 ) -> CollectionDocsResult | ErrorResponse:
     """Get full parameter-level documentation for every module in a collection from Galaxy.
@@ -915,7 +1063,7 @@ async def get_collection_docs(
     On failure returns {"error": str}.
     """
     logger.info("get_collection_docs namespace=%r version=%r", collection_namespace, version)
-    await _maybe_warn_upgrade(ctx)
+    await _maybe_warn_upgrade(ctx, collection_handle)
     try:
         validate_namespace(collection_namespace)
     except ValidationError as exc:
@@ -924,7 +1072,7 @@ async def get_collection_docs(
     try:
         from ansible_know import resolution
 
-        state = await _get_state(ctx)
+        state = await _get_state(ctx, collection_handle)
         http_client = _get_http_client(ctx)
         return await resolution.resolve_collection_module_docs(
             collection_namespace,
@@ -945,6 +1093,9 @@ async def ensure_collection(
         str | None,
         "Optional version (e.g. '4.1.0'). If omitted, installs latest and pins the resolved version.",
     ] = None,
+    collection_handle: Annotated[
+        str | None, "Session handle returned by ensure_collection. Omit on local stdio; required on remote."
+    ] = None,
     ctx: Context | None = None,
 ) -> EnsureCollectionResult | ErrorResponse:
     """Install a collection to a temporary directory for this session.
@@ -960,10 +1111,17 @@ async def ensure_collection(
     - status: 'installed' (freshly installed or upgraded) or
       'already_installed' (same version already present, no action taken)
     - message: str — human-readable summary including the active version
+    - handle: str — opaque session handle; pass it as collection_handle to
+      subsequent tool calls on remote connections
     On failure returns {"error": str}.
+
+    Pass collection_handle when re-invoking ensure_collection on a remote
+    connection with a handle obtained from a prior call (e.g. to install an
+    additional collection into the same session). Omit it on local stdio, or
+    on remote when you want a brand-new session handle minted.
     """
     logger.info("ensure_collection namespace=%r version=%r", collection_namespace, version)
-    await _maybe_warn_upgrade(ctx)
+    await _maybe_warn_upgrade(ctx, collection_handle)
     try:
         validate_namespace(collection_namespace)
         if version:
@@ -972,11 +1130,12 @@ async def ensure_collection(
         return {"error": str(exc)}
 
     try:
-        state = await _get_state(ctx)
+        state, handle = await _get_state_and_handle(ctx, collection_handle, mint_if_missing=True)
         result = await run_in_executor(
             state.collection_manager.ensure_collection, collection_fqcn=collection_namespace, version=version,
         )
         state.clear_missing_namespace(collection_namespace)
+        result["handle"] = handle
         logger.info(
             "ensure_collection result: namespace=%s version=%s status=%s",
             result["namespace"], result["version"], result["status"],
@@ -1075,6 +1234,9 @@ async def generate_skill(
         "skills/ directory (via ANSIBLE_KNOW_SKILLS_DIR, or "
         "ANSIBLE_KNOW_PROJECT_DIR/CLAUDE_PROJECT_DIR/cwd + /skills).",
     ] = None,
+    collection_handle: Annotated[
+        str | None, "Session handle returned by ensure_collection. Omit on local stdio; required on remote."
+    ] = None,
     ctx: Context | None = None,
 ) -> str | ErrorResponse:
     """Generate a skill package for one module.
@@ -1083,7 +1245,7 @@ async def generate_skill(
     Returns the SKILL.md content as str, or {"error": str} on failure.
     """
     logger.info("generate_skill module=%r install_to=%r", module_name, install_to)
-    await _maybe_warn_upgrade(ctx)
+    await _maybe_warn_upgrade(ctx, collection_handle)
     try:
         validate_fqcn(module_name)
         if install_to:
@@ -1098,7 +1260,7 @@ async def generate_skill(
         if ctx:
             await ctx.report_progress(progress=0, total=100)
 
-        state = await _get_state(ctx)
+        state = await _get_state(ctx, collection_handle)
         http_client = _get_http_client(ctx)
         metadata = await resolution.resolve_module_doc(
             module_name, http_client=http_client, galaxy_servers=state.galaxy_servers,
@@ -1142,6 +1304,9 @@ async def generate_role_skill(
         "skills/ directory (via ANSIBLE_KNOW_SKILLS_DIR, or "
         "ANSIBLE_KNOW_PROJECT_DIR/CLAUDE_PROJECT_DIR/cwd + /skills).",
     ] = None,
+    collection_handle: Annotated[
+        str | None, "Session handle returned by ensure_collection. Omit on local stdio; required on remote."
+    ] = None,
     ctx: Context | None = None,
 ) -> str | ErrorResponse:
     """Generate a skill package for one role.
@@ -1150,7 +1315,7 @@ async def generate_role_skill(
     Returns the SKILL.md content as str, or {"error": str} on failure.
     """
     logger.info("generate_role_skill role=%r install_to=%r", role_name, install_to)
-    await _maybe_warn_upgrade(ctx)
+    await _maybe_warn_upgrade(ctx, collection_handle)
     try:
         validate_fqcn(role_name)
         if install_to:
@@ -1165,7 +1330,7 @@ async def generate_role_skill(
         if ctx:
             await ctx.report_progress(progress=0, total=100)
 
-        state = await _get_state(ctx)
+        state = await _get_state(ctx, collection_handle)
         http_client = _get_http_client(ctx)
         metadata = await resolution.resolve_role_doc(
             role_name, http_client=http_client, galaxy_servers=state.galaxy_servers,
@@ -1214,6 +1379,9 @@ async def generate_plugin_skill(
         "skills/ directory (via ANSIBLE_KNOW_SKILLS_DIR, or "
         "ANSIBLE_KNOW_PROJECT_DIR/CLAUDE_PROJECT_DIR/cwd + /skills).",
     ] = None,
+    collection_handle: Annotated[
+        str | None, "Session handle returned by ensure_collection. Omit on local stdio; required on remote."
+    ] = None,
     ctx: Context | None = None,
 ) -> str | ErrorResponse:
     """Generate a skill package for one plugin.
@@ -1222,7 +1390,7 @@ async def generate_plugin_skill(
     Returns the SKILL.md content as str, or {"error": str} on failure.
     """
     logger.info("generate_plugin_skill plugin=%r type=%r install_to=%r", plugin_name, plugin_type, install_to)
-    await _maybe_warn_upgrade(ctx)
+    await _maybe_warn_upgrade(ctx, collection_handle)
     try:
         validate_fqcn(plugin_name)
         validate_plugin_type(plugin_type)
@@ -1238,7 +1406,7 @@ async def generate_plugin_skill(
         if ctx:
             await ctx.report_progress(progress=0, total=100)
 
-        state = await _get_state(ctx)
+        state = await _get_state(ctx, collection_handle)
         http_client = _get_http_client(ctx)
         metadata = await resolution.resolve_plugin_doc(
             plugin_name, plugin_type,
@@ -1282,6 +1450,9 @@ async def generate_collection_skills(
         "skills/ directory (via ANSIBLE_KNOW_SKILLS_DIR, or "
         "ANSIBLE_KNOW_PROJECT_DIR/CLAUDE_PROJECT_DIR/cwd + /skills).",
     ] = None,
+    collection_handle: Annotated[
+        str | None, "Session handle returned by ensure_collection. Omit on local stdio; required on remote."
+    ] = None,
     ctx: Context | None = None,
 ) -> GenerateCollectionSkillsResult | ErrorResponse:
     """Batch generate skills for an entire collection.
@@ -1297,7 +1468,7 @@ async def generate_collection_skills(
     success still writes skills for resolved names.
     """
     logger.info("generate_collection_skills namespace=%r install_to=%r", collection_namespace, install_to)
-    await _maybe_warn_upgrade(ctx)
+    await _maybe_warn_upgrade(ctx, collection_handle)
     try:
         validate_namespace(collection_namespace)
         if install_to:
@@ -1309,7 +1480,7 @@ async def generate_collection_skills(
         from ansible_know import collection_manifest, parser, resolution, skills
         from ansible_know.config import SKILLS_DIR
 
-        state = await _get_state(ctx)
+        state = await _get_state(ctx, collection_handle)
         cpath = state.collection_manager.get_collections_path()
 
         # Discover modules

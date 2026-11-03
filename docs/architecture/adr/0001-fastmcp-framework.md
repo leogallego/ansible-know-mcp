@@ -104,3 +104,37 @@ FastMCP was chosen because:
 |------|--------|--------|
 | 2026-06-19 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Initial decision |
 | 2026-06-26 | Leonardo Gallego (Assisted-by: Claude Opus 4.6) | Added Implementation Notes, Related Decisions, Revision History |
+
+## Update (2026-11-03): FastMCP 4 / MCP 2026-07-28 migration
+
+Bumped to `fastmcp>=4.1.4,<4.2` with an explicit `mcp>=2.2` floor (guard for
+CVE-2026-59951; the transitive resolve is mcp >= 2.3). This is our adoption of
+the MCP **2026-07-28** stateless protocol revision.
+
+Consequence for application state: 2026-07-28 returns a fresh `ctx.session_id`
+per call, so it is no longer a stable cross-call key. Per-session state is now
+keyed on a **server-minted `collection_handle`** that `ensure_collection`
+returns and stateful tools thread back. Transport is detected **per request and
+fail-closed** via `fastmcp.server.dependencies.get_http_request` (a raised
+`RuntimeError` / no HTTP request in scope ⇒ proven-local; a returned request or
+any other error ⇒ treated as remote): a proven-local call with no handle gets a
+process-wide `DEFAULT_HANDLE`; a remote or unknown-transport call requires an
+explicit handle. Explicit handles resolve via `get_existing` (no create-on-miss,
+closing a CWE-400 LRU-thrash vector). An explicit `DEFAULT_HANDLE` is further
+rejected unless the request is proven local, so a remote caller cannot claim the
+shared stdio/in-memory default workspace by passing the guessable `"default"`
+string in a mixed-transport process. The private `ctx.session._exit_stack`
+cleanup hook was removed; cleanup relies on the existing TTL/LRU + periodic sweep.
+
+Exception — the three pure-discovery tools (`search_collections`,
+`search_standalone_roles`, `get_standalone_role_doc`) take **no**
+`collection_handle` and work on remote without one. They read only the shared
+`galaxy_servers` config and hold no per-client state, so requiring a handle
+would force a remote client to install a collection before it could even search
+for one. This does not reopen the cross-client hole: they expose only shared
+public-Galaxy config, never a per-client workspace.
+
+Transport note: FastMCP 4's canonical streamable-HTTP mount path is `/mcp` (no
+trailing slash); `/mcp/` now 307-redirects. Separately, the "outdated version"
+notice moved off the deprecated protocol Logging channel (`ctx.warning`) to
+stderr via `logger.warning`.

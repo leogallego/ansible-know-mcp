@@ -34,9 +34,16 @@ def _make_mock_ctx(state, shared, http_client=None):
         "sessions": sessions,
         "http_client": http_client,
     }
-    mock_ctx.session_id = "test-session"
     mock_ctx.warning = AsyncMock()
     return mock_ctx
+
+
+def _patch_local(monkeypatch, value: bool):
+    """Patch the per-request local detector so tests don't need a live transport.
+
+    _patch_local(mp, True) => proven local (stdio); _patch_local(mp, False) => remote/HTTP.
+    """
+    monkeypatch.setattr("ansible_know.server._is_local_request", lambda ctx=None: value)
 
 
 @pytest.fixture
@@ -104,6 +111,85 @@ class TestGetModuleDocTool:
         assert result["short_description"] == "Generic OS package manager"
         assert len(result["params"]) == 3
         assert result["is_api_module"] is False
+
+
+def _extract_call_tool_data(result):
+    """Extract deserialized dict data from a FastMCP CallToolResult.
+
+    ``.data`` can be a non-subscriptable ``Root`` object for TypedDict tool
+    returns, so JSON-parse ``.content`` instead (mirrors
+    ``tests/integration/test_mcp_e2e.py::_extract_data``).
+    """
+    if hasattr(result, "content"):
+        for item in result.content:
+            if hasattr(item, "text"):
+                try:
+                    return json.loads(item.text)
+                except (json.JSONDecodeError, TypeError):
+                    continue
+    if hasattr(result, "data") and result.data is not None:
+        return result.data
+    return result
+
+
+class TestFastMCP4Migration:
+    """FastMCP 4 / MCP 2026-07-28 migration: protocol floor + handle roundtrip smoke."""
+
+    @pytest.mark.asyncio
+    async def test_protocol_revision_is_2026_07_28(self):
+        # N2: don't hard-code the exact revision string brittly — assert we
+        # left the old SDK behind and are on mcp 2.x / the new revision.
+        from importlib.metadata import version
+
+        import mcp.types as t
+
+        assert t.LATEST_PROTOCOL_VERSION != "2025-11-25"
+        assert int(version("mcp").split(".")[0]) >= 2
+
+    @pytest.mark.asyncio
+    async def test_inmemory_handle_roundtrip_smoke_under_fastmcp4(self, mock_ansible_doc):
+        # In-memory Client exercises the proven-local (default-handle) branch only.
+        from fastmcp import Client
+
+        from ansible_know.server import mcp
+        from ansible_know.state import DEFAULT_HANDLE
+
+        ufw_doc = {
+            "community.general.ufw": {
+                "doc": {
+                    "module": "community.general.ufw",
+                    "short_description": "Manage firewall with UFW",
+                    "description": ["Manage firewall with UFW."],
+                    "options": {},
+                },
+                "examples": "",
+            }
+        }
+        mock_ansible_doc.return_value = json.dumps(ufw_doc)
+
+        with patch(
+            "ansible_know.collections.CollectionManager.ensure_collection",
+            return_value={
+                "namespace": "community.general",
+                "version": "9.0.0",
+                "status": "installed",
+                "message": "Installed community.general v9.0.0 (latest).",
+            },
+        ):
+            async with Client(mcp) as client:
+                ensure_res = await client.call_tool(
+                    "ensure_collection", {"collection_namespace": "community.general"}
+                )
+                ensure_data = _extract_call_tool_data(ensure_res)
+                handle = ensure_data["handle"]
+                assert handle == DEFAULT_HANDLE
+
+                out = await client.call_tool(
+                    "get_module_doc",
+                    {"module_name": "community.general.ufw", "collection_handle": handle},
+                )
+                out_data = _extract_call_tool_data(out)
+        assert "error" not in out_data
 
 
 class TestSearchDocsTool:
@@ -884,6 +970,123 @@ class TestEnsureCollectionTool:
         assert result["version"] == "3.9.0"
 
 
+class TestCollectionHandleThreading:
+    """Task 3: collection_handle threading through stateful tools; ensure_collection mints/returns it."""
+
+    @staticmethod
+    def _remote_ctx(shared=None):
+        from ansible_know.collections import CollectionManager
+        from ansible_know.state import SessionManager, SharedState
+
+        shared = shared if shared is not None else SharedState()
+        sessions = SessionManager(shared, collection_factory=CollectionManager)
+        ctx = _make_mock_ctx(None, shared)
+        ctx.lifespan_context["sessions"] = sessions
+        return ctx
+
+    @staticmethod
+    def _local_ctx():
+        from ansible_know.collections import CollectionManager
+        from ansible_know.state import SessionManager, SharedState
+
+        shared = SharedState()
+        sessions = SessionManager(shared, collection_factory=CollectionManager)
+        ctx = _make_mock_ctx(None, shared)
+        ctx.lifespan_context["sessions"] = sessions
+        return ctx
+
+    @staticmethod
+    def _mock_galaxy_install_result():
+        galaxy_stdout = (
+            "Installing 'netbox.netbox:4.1.0' to '<path>'\n"
+            "netbox.netbox:4.1.0 was installed successfully"
+        )
+        mock_result = MagicMock()
+        mock_result.stdout = galaxy_stdout
+        mock_result.stderr = ""
+        mock_result.returncode = 0
+        return mock_result
+
+    @pytest.mark.asyncio
+    async def test_ensure_collection_returns_default_handle_local(self, monkeypatch):
+        from ansible_know.state import DEFAULT_HANDLE
+
+        _patch_local(monkeypatch, True)
+        ctx = self._local_ctx()
+        with patch("ansible_know.collections._find_ansible_galaxy", return_value="/usr/bin/ansible-galaxy"):
+            with patch("subprocess.run", return_value=self._mock_galaxy_install_result()):
+                from ansible_know.server import ensure_collection
+                result = await ensure_collection("netbox.netbox", ctx=ctx)
+        assert result["handle"] == DEFAULT_HANDLE
+
+    @pytest.mark.asyncio
+    async def test_ensure_collection_http_mints_handle(self, monkeypatch):
+        from ansible_know.state import DEFAULT_HANDLE, is_valid_handle
+
+        _patch_local(monkeypatch, False)
+        ctx = self._remote_ctx()
+        with patch("ansible_know.collections._find_ansible_galaxy", return_value="/usr/bin/ansible-galaxy"):
+            with patch("subprocess.run", return_value=self._mock_galaxy_install_result()):
+                from ansible_know.server import ensure_collection
+                result = await ensure_collection("netbox.netbox", ctx=ctx)
+        assert result["handle"] != DEFAULT_HANDLE
+        assert is_valid_handle(result["handle"])
+
+    @pytest.mark.asyncio
+    async def test_ensure_collection_http_does_not_crash_in_warn(self, monkeypatch):
+        _patch_local(monkeypatch, False)
+        ctx = self._remote_ctx()
+        ctx.lifespan_context["shared"].version_info = {
+            "installed": "0.1.0", "latest": "0.2.0", "outdated": True, "upgrade_command": "x",
+        }
+        with patch("ansible_know.collections._find_ansible_galaxy", return_value="/usr/bin/ansible-galaxy"):
+            with patch("subprocess.run", return_value=self._mock_galaxy_install_result()):
+                from ansible_know.server import ensure_collection
+                result = await ensure_collection("netbox.netbox", ctx=ctx)
+        assert "handle" in result
+        assert result["status"] in {"installed", "already_installed"}
+
+    @pytest.mark.asyncio
+    async def test_warning_tool_roundtrips_handle_on_http(self, monkeypatch, mock_ansible_doc):
+        mock_ansible_doc.return_value = json.dumps(SAMPLE_MODULE_DOC)
+        _patch_local(monkeypatch, False)
+        ctx = self._remote_ctx()
+        with patch("ansible_know.collections._find_ansible_galaxy", return_value="/usr/bin/ansible-galaxy"):
+            with patch("subprocess.run", return_value=self._mock_galaxy_install_result()):
+                from ansible_know.server import ensure_collection
+                handle = (await ensure_collection("netbox.netbox", ctx=ctx))["handle"]
+
+        from ansible_know.server import get_module_doc
+        out = await get_module_doc("netbox.netbox.netbox_device", collection_handle=handle, ctx=ctx)
+        assert "error" not in out
+
+    @pytest.mark.asyncio
+    async def test_warning_tool_http_without_handle_errors(self, monkeypatch, mock_ansible_doc):
+        mock_ansible_doc.return_value = json.dumps(SAMPLE_MODULE_DOC)
+        _patch_local(monkeypatch, False)
+        ctx = self._remote_ctx()
+
+        from ansible_know.server import get_module_doc
+        out = await get_module_doc("netbox.netbox.netbox_device", ctx=ctx)
+        assert "error" in out
+        assert "ensure_collection" in out["error"]
+
+    @pytest.mark.asyncio
+    async def test_consumer_tool_unknown_handle_errors(self, monkeypatch, mock_ansible_doc):
+        from ansible_know.state import mint_handle
+
+        mock_ansible_doc.return_value = json.dumps(SAMPLE_MODULE_DOC)
+        _patch_local(monkeypatch, False)
+        ctx = self._remote_ctx()
+
+        from ansible_know.server import get_module_doc
+        out = await get_module_doc(
+            "netbox.netbox.netbox_device", collection_handle=mint_handle(), ctx=ctx,
+        )
+        assert "error" in out
+        assert "ensure_collection" in out["error"]
+
+
 class TestMissingCollectionHints:
     @pytest.mark.asyncio
     async def test_get_module_doc_hint_suppressed_on_double_failure(self, mock_ansible_doc):
@@ -1551,7 +1754,7 @@ class TestCheckPypiVersion:
 
 class TestMaybeWarnUpgrade:
     @pytest.mark.asyncio
-    async def test_warns_when_outdated(self):
+    async def test_warns_when_outdated(self, caplog):
         from ansible_know.collections import CollectionManager
         from ansible_know.server import _maybe_warn_upgrade
         from ansible_know.state import ServerState, SharedState
@@ -1564,13 +1767,14 @@ class TestMaybeWarnUpgrade:
         shared = SharedState(version_info=version_info)
         mock_ctx = _make_mock_ctx(state, shared)
 
-        await _maybe_warn_upgrade(mock_ctx)
-        mock_ctx.warning.assert_called_once()
-        assert "outdated" in mock_ctx.warning.call_args[0][0]
+        with caplog.at_level("WARNING", logger="ansible_know"):
+            await _maybe_warn_upgrade(mock_ctx)
+        mock_ctx.warning.assert_not_called()
+        assert any("outdated" in r.message for r in caplog.records)
         assert state.upgrade_warned is True
 
     @pytest.mark.asyncio
-    async def test_warns_only_once(self):
+    async def test_warns_only_once(self, caplog):
         from ansible_know.collections import CollectionManager
         from ansible_know.server import _maybe_warn_upgrade
         from ansible_know.state import ServerState, SharedState
@@ -1583,9 +1787,11 @@ class TestMaybeWarnUpgrade:
         shared = SharedState(version_info=version_info)
         mock_ctx = _make_mock_ctx(state, shared)
 
-        await _maybe_warn_upgrade(mock_ctx)
-        await _maybe_warn_upgrade(mock_ctx)
-        mock_ctx.warning.assert_called_once()
+        with caplog.at_level("WARNING", logger="ansible_know"):
+            await _maybe_warn_upgrade(mock_ctx)
+            caplog.clear()
+            await _maybe_warn_upgrade(mock_ctx)
+        assert not caplog.records
 
     @pytest.mark.asyncio
     async def test_no_warn_when_current(self):
@@ -1621,6 +1827,32 @@ class TestMaybeWarnUpgrade:
     async def test_no_warn_when_no_ctx(self):
         from ansible_know.server import _maybe_warn_upgrade
         await _maybe_warn_upgrade(None)
+
+    @pytest.mark.asyncio
+    async def test_upgrade_notice_uses_stderr_not_ctx_warning(self, caplog, monkeypatch):
+        from ansible_know.collections import CollectionManager
+        from ansible_know.server import _maybe_warn_upgrade
+        from ansible_know.state import SessionManager, SharedState
+
+        _patch_local(monkeypatch, True)
+        shared = SharedState(
+            version_info={
+                "installed": "0.1.0", "latest": "0.2.0",
+                "outdated": True, "upgrade_command": "pip install -U ansible-know-mcp",
+            }
+        )
+        ctx = _make_mock_ctx(None, shared)
+        ctx.lifespan_context["sessions"] = SessionManager(shared, collection_factory=CollectionManager)
+
+        with caplog.at_level("WARNING", logger="ansible_know"):
+            await _maybe_warn_upgrade(ctx)
+        assert any("outdated" in r.message for r in caplog.records)
+        ctx.warning.assert_not_called()
+
+        caplog.clear()
+        with caplog.at_level("WARNING", logger="ansible_know"):
+            await _maybe_warn_upgrade(ctx)
+        assert not caplog.records
 
 
 class TestServerVersionResource:
@@ -1752,6 +1984,25 @@ class TestSearchCollectionsTool:
             result = await search_collections("netbox")
         assert "error" in result
 
+    @pytest.mark.asyncio
+    async def test_works_remote_without_handle(self, monkeypatch):
+        # Discovery tool reads only shared galaxy_servers; it must work on a
+        # remote connection WITHOUT a handle (no ensure_collection first).
+        from ansible_know.server import search_collections
+        from ansible_know.state import SharedState
+
+        _patch_local(monkeypatch, False)  # remote
+        ctx = _make_mock_ctx(None, SharedState())
+        mock_result = {"query": "netbox", "count": 1, "collections": []}
+        with patch(
+            "ansible_know.resolution.search_galaxy_collections",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ):
+            result = await search_collections("netbox", ctx=ctx)
+        assert "error" not in result
+        assert result["count"] == 1
+
 
 class TestSearchStandaloneRolesTool:
     @pytest.mark.asyncio
@@ -1788,6 +2039,25 @@ class TestSearchStandaloneRolesTool:
             result = await search_standalone_roles("cis")
         assert "error" in result
 
+    @pytest.mark.asyncio
+    async def test_works_remote_without_handle(self, monkeypatch):
+        # Discovery tool reads only shared galaxy_servers; works on remote
+        # without a handle.
+        from ansible_know.server import search_standalone_roles
+        from ansible_know.state import SharedState
+
+        _patch_local(monkeypatch, False)  # remote
+        ctx = _make_mock_ctx(None, SharedState())
+        mock_result = {"query": "cis", "count": 1, "roles": []}
+        with patch(
+            "ansible_know.resolution.search_standalone_roles",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ):
+            result = await search_standalone_roles("cis", ctx=ctx)
+        assert "error" not in result
+        assert result["count"] == 1
+
 
 class TestGetStandaloneRoleDocTool:
     @pytest.mark.asyncio
@@ -1805,6 +2075,30 @@ class TestGetStandaloneRoleDocTool:
         ):
             from ansible_know.server import get_standalone_role_doc
             result = await get_standalone_role_doc("ansible-lockdown.rhel9_cis")
+        assert result["content_type"] == "standalone_role"
+
+    @pytest.mark.asyncio
+    async def test_works_remote_without_handle(self, monkeypatch):
+        # Discovery tool reads only shared galaxy_servers; works on remote
+        # without a handle.
+        from ansible_know.server import get_standalone_role_doc
+        from ansible_know.state import SharedState
+
+        _patch_local(monkeypatch, False)  # remote
+        ctx = _make_mock_ctx(None, SharedState())
+        mock_result = {
+            "role_name": "ansible-lockdown.rhel9_cis",
+            "content_type": "standalone_role",
+            "doc_source": "galaxy_v1_readme",
+            "entry_points": {"main": {"description": "", "options": []}},
+        }
+        with patch(
+            "ansible_know.resolution.resolve_standalone_role_doc",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ):
+            result = await get_standalone_role_doc("ansible-lockdown.rhel9_cis", ctx=ctx)
+        assert "error" not in result
         assert result["content_type"] == "standalone_role"
 
     @pytest.mark.asyncio
@@ -1888,11 +2182,10 @@ class TestLifespanHttpClient:
             token="secret",
             validate_certs=False,
         )
-        state = ServerState(
-            collection_manager=CollectionManager(),
-            galaxy_servers=[server],
-        )
-        shared = SharedState()
+        state = ServerState(collection_manager=CollectionManager())
+        # search_collections is a discovery tool: it reads galaxy_servers from
+        # SharedState, not per-session ServerState.
+        shared = SharedState(galaxy_servers=[server])
         mock_ctx = _make_mock_ctx(state, shared, http_client=mock_client)
 
         mock_result = {"query": "test", "count": 0, "collections": []}
@@ -1922,11 +2215,10 @@ class TestLifespanHttpClient:
             url="https://galaxy.ansible.com",
             validate_certs=True,
         )
-        state = ServerState(
-            collection_manager=CollectionManager(),
-            galaxy_servers=[server],
-        )
-        shared = SharedState()
+        state = ServerState(collection_manager=CollectionManager())
+        # search_collections is a discovery tool: it reads galaxy_servers from
+        # SharedState, not per-session ServerState.
+        shared = SharedState(galaxy_servers=[server])
         mock_ctx = _make_mock_ctx(state, shared, http_client=mock_client)
 
         mock_result = {"query": "test", "count": 0, "collections": []}
@@ -2306,43 +2598,272 @@ class TestPeriodicVersionCheck:
         assert shared.version_info["latest"] == "0.3.0"
 
 
+async def test_get_state_local_uses_default_handle(monkeypatch):
+    from ansible_know.collections import CollectionManager
+    from ansible_know.server import _get_state
+    from ansible_know.state import SessionManager, SharedState
+
+    _patch_local(monkeypatch, True)
+    sessions = SessionManager(SharedState(), collection_factory=CollectionManager)
+    ctx = _make_mock_ctx(None, SharedState())
+    ctx.lifespan_context["sessions"] = sessions
+    s1 = await _get_state(ctx)  # no handle, proven local
+    s2 = await _get_state(ctx)
+    assert s1 is s2  # same default workspace
+
+
+async def test_get_state_distinct_handles_isolated(monkeypatch):
+    # remote: two minted handles get isolated state; each re-resolves via get-existing.
+    from ansible_know.collections import CollectionManager
+    from ansible_know.server import _get_state, _get_state_and_handle
+    from ansible_know.state import SessionManager, SharedState
+
+    _patch_local(monkeypatch, False)
+    sessions = SessionManager(SharedState(), collection_factory=CollectionManager)
+    ctx = _make_mock_ctx(None, SharedState())
+    ctx.lifespan_context["sessions"] = sessions
+    s1, h1 = await _get_state_and_handle(ctx, None, mint_if_missing=True)  # mint path creates
+    s2, h2 = await _get_state_and_handle(ctx, None, mint_if_missing=True)
+    assert h1 != h2
+    assert s1 is not s2
+    # an explicit minted handle re-resolves to the SAME state via get-existing
+    assert await _get_state(ctx, h1) is s1
+    assert await _get_state(ctx, h2) is s2
+    assert await _get_state(ctx, h1) is not await _get_state(ctx, h2)
+
+
+async def test_get_state_remote_without_handle_raises(monkeypatch):
+    from ansible_know.collections import CollectionManager
+    from ansible_know.errors import MissingHandleError
+    from ansible_know.server import _get_state
+    from ansible_know.state import SessionManager, SharedState
+
+    _patch_local(monkeypatch, False)
+    sessions = SessionManager(SharedState(), collection_factory=CollectionManager)
+    ctx = _make_mock_ctx(None, SharedState())
+    ctx.lifespan_context["sessions"] = sessions
+    with pytest.raises(MissingHandleError):
+        await _get_state(ctx)  # consumer path, no handle, remote
+
+
+async def test_get_state_unknown_transport_requires_handle(monkeypatch):
+    # fail-closed: detector cannot prove local -> treated as remote
+    from ansible_know.collections import CollectionManager
+    from ansible_know.errors import MissingHandleError
+    from ansible_know.server import _get_state
+    from ansible_know.state import SessionManager, SharedState
+
+    _patch_local(monkeypatch, False)
+    sessions = SessionManager(SharedState(), collection_factory=CollectionManager)
+    ctx = _make_mock_ctx(None, SharedState())
+    ctx.lifespan_context["sessions"] = sessions
+    with pytest.raises(MissingHandleError):
+        await _get_state(ctx)
+
+
+async def test_get_state_wellformed_unminted_handle_errors_without_creating(monkeypatch):
+    # authenticity (S1): explicit valid handle we never minted -> error, no session
+    from ansible_know.collections import CollectionManager
+    from ansible_know.errors import UnknownHandleError
+    from ansible_know.server import _get_state
+    from ansible_know.state import SessionManager, SharedState, mint_handle
+
+    _patch_local(monkeypatch, False)
+    sessions = SessionManager(SharedState(), collection_factory=CollectionManager)
+    ctx = _make_mock_ctx(None, SharedState())
+    ctx.lifespan_context["sessions"] = sessions
+    with pytest.raises(UnknownHandleError):
+        await _get_state(ctx, mint_handle())  # well-formed, never created
+    assert sessions.session_count == 0
+
+
+async def test_get_state_remote_rejects_explicit_default_handle(monkeypatch):
+    # Finding 1: the shared default workspace is proven-local only. A remote
+    # caller must not be able to seize it by passing collection_handle="default".
+    from ansible_know.collections import CollectionManager
+    from ansible_know.errors import MissingHandleError
+    from ansible_know.server import _get_state
+    from ansible_know.state import DEFAULT_HANDLE, SessionManager, SharedState
+
+    _patch_local(monkeypatch, False)  # remote
+    sessions = SessionManager(SharedState(), collection_factory=CollectionManager)
+    ctx = _make_mock_ctx(None, SharedState())
+    ctx.lifespan_context["sessions"] = sessions
+    # Even if a local caller has already materialized the default workspace,
+    # a remote request for it must be rejected.
+    await sessions.get_or_create(DEFAULT_HANDLE)
+    with pytest.raises(MissingHandleError):
+        await _get_state(ctx, DEFAULT_HANDLE)
+
+
+async def test_get_state_local_accepts_explicit_default_handle(monkeypatch):
+    # Finding 1: a proven-local caller may still pass the default handle
+    # explicitly and resolve the same shared workspace.
+    from ansible_know.collections import CollectionManager
+    from ansible_know.server import _get_state
+    from ansible_know.state import DEFAULT_HANDLE, SessionManager, SharedState
+
+    _patch_local(monkeypatch, True)  # proven local
+    sessions = SessionManager(SharedState(), collection_factory=CollectionManager)
+    ctx = _make_mock_ctx(None, SharedState())
+    ctx.lifespan_context["sessions"] = sessions
+    created = await _get_state(ctx)  # no handle -> creates DEFAULT_HANDLE session
+    resolved = await _get_state(ctx, DEFAULT_HANDLE)  # explicit default -> same state
+    assert resolved is created
+
+
+async def test_get_state_rejects_malformed_handle(monkeypatch):
+    from ansible_know.collections import CollectionManager
+    from ansible_know.errors import InvalidHandleError
+    from ansible_know.server import _get_state
+    from ansible_know.state import SessionManager, SharedState
+
+    _patch_local(monkeypatch, False)
+    sessions = SessionManager(SharedState(), collection_factory=CollectionManager)
+    ctx = _make_mock_ctx(None, SharedState())
+    ctx.lifespan_context["sessions"] = sessions
+    with pytest.raises(InvalidHandleError):
+        await _get_state(ctx, "../etc/passwd")
+
+
+async def test_get_state_mint_if_missing_returns_state(monkeypatch):
+    from ansible_know.collections import CollectionManager
+    from ansible_know.server import _get_state
+    from ansible_know.state import SessionManager, SharedState
+
+    _patch_local(monkeypatch, False)  # remote
+    sessions = SessionManager(SharedState(), collection_factory=CollectionManager)
+    ctx = _make_mock_ctx(None, SharedState())
+    ctx.lifespan_context["sessions"] = sessions
+    assert await _get_state(ctx, None, mint_if_missing=True) is not None  # ensure_collection path
+
+
+async def test_maybe_warn_upgrade_best_effort_on_remote_without_handle(monkeypatch):
+    # B1: the warning helper must NOT raise when the handle can't resolve
+    from ansible_know.collections import CollectionManager
+    from ansible_know.server import _maybe_warn_upgrade
+    from ansible_know.state import SessionManager, SharedState
+
+    _patch_local(monkeypatch, False)
+    shared = SharedState(version_info={
+        "installed": "0.1.0", "latest": "0.2.0", "outdated": True, "upgrade_command": "x",
+    })
+    sessions = SessionManager(shared, collection_factory=CollectionManager)
+    ctx = _make_mock_ctx(None, shared)
+    ctx.lifespan_context["sessions"] = sessions
+    await _maybe_warn_upgrade(ctx)  # no handle, remote -> silently skips, no raise
+
+
+async def test_maybe_warn_upgrade_swallows_unexpected_error(monkeypatch):
+    # B1 hardening: best-effort must be TOTAL. An unexpected error from state
+    # resolution (e.g. temp-dir creation failing on the proven-local path) must
+    # NOT propagate out of the courtesy-notice helper and fail the tool.
+    from ansible_know.collections import CollectionManager
+    from ansible_know.server import _maybe_warn_upgrade
+    from ansible_know.state import SessionManager, SharedState
+
+    _patch_local(monkeypatch, True)  # proven local -> would route to get_or_create(DEFAULT_HANDLE)
+    shared = SharedState(version_info={
+        "installed": "0.1.0", "latest": "0.2.0", "outdated": True, "upgrade_command": "x",
+    })
+    sessions = SessionManager(shared, collection_factory=CollectionManager)
+    ctx = _make_mock_ctx(None, shared)
+    ctx.lifespan_context["sessions"] = sessions
+
+    async def _boom(*args, **kwargs):
+        raise OSError("temp dir creation failed")
+
+    monkeypatch.setattr("ansible_know.server._get_state", _boom)
+
+    await _maybe_warn_upgrade(ctx)  # unexpected OSError -> swallowed, no raise
+    ctx.warning.assert_not_called()
+
+
+async def test_maybe_warn_upgrade_total_best_effort_on_malformed_version_info(monkeypatch):
+    # B (finding #3): best-effort must cover the WHOLE body, not just handle
+    # resolution. A truthy version_info with outdated=True but missing
+    # installed/latest/upgrade_command keys must NOT raise out of this helper,
+    # which runs before each tool's own try block.
+    from ansible_know.collections import CollectionManager
+    from ansible_know.server import _maybe_warn_upgrade
+    from ansible_know.state import SessionManager, SharedState
+
+    _patch_local(monkeypatch, True)  # proven local -> resolves default state fine
+    shared = SharedState(version_info={"outdated": True})  # missing the message keys
+    sessions = SessionManager(shared, collection_factory=CollectionManager)
+    ctx = _make_mock_ctx(None, shared)
+    ctx.lifespan_context["sessions"] = sessions
+
+    await _maybe_warn_upgrade(ctx)  # malformed version_info -> swallowed, no raise
+
+
+def test_is_local_request_local_when_no_http_request(monkeypatch):
+    # C (finding #1): the real detector, not _patch_local. The documented
+    # "no active HTTP request" RuntimeError is the ONLY proven-local signal.
+    from ansible_know.server import _is_local_request
+
+    def _raise_runtime():
+        raise RuntimeError("No active HTTP request found.")
+
+    monkeypatch.setattr("fastmcp.server.dependencies.get_http_request", _raise_runtime)
+    assert _is_local_request(None) is True
+
+
+def test_is_local_request_fail_closed_on_unexpected_error(monkeypatch):
+    # C (finding #1): any non-RuntimeError must fail closed to remote.
+    from ansible_know.server import _is_local_request
+
+    def _raise_value():
+        raise ValueError("unexpected")
+
+    monkeypatch.setattr("fastmcp.server.dependencies.get_http_request", _raise_value)
+    assert _is_local_request(None) is False
+
+
+def test_is_local_request_remote_when_request_in_scope(monkeypatch):
+    # C (finding #1): a request in scope (no raise) => remote/HTTP.
+    from ansible_know.server import _is_local_request
+
+    monkeypatch.setattr("fastmcp.server.dependencies.get_http_request", lambda: object())
+    assert _is_local_request(None) is False
+
+
 class TestGetStateSessionIsolation:
     @pytest.mark.asyncio
-    async def test_different_sessions_get_different_state(self):
+    async def test_different_sessions_get_different_state(self, monkeypatch):
         from ansible_know.collections import CollectionManager
-        from ansible_know.server import _get_state
+        from ansible_know.server import _get_state_and_handle
         from ansible_know.state import SessionManager, SharedState
 
-        shared = SharedState()
-        sessions = SessionManager(shared, collection_factory=CollectionManager)
-
-        ctx_a = MagicMock()
-        ctx_a.lifespan_context = {"shared": shared, "sessions": sessions, "http_client": None}
-        ctx_a.session_id = "session-a"
-
-        ctx_b = MagicMock()
-        ctx_b.lifespan_context = {"shared": shared, "sessions": sessions, "http_client": None}
-        ctx_b.session_id = "session-b"
-
-        state_a = await _get_state(ctx_a)
-        state_b = await _get_state(ctx_b)
-        assert state_a is not state_b
-
-    @pytest.mark.asyncio
-    async def test_same_session_gets_same_state(self):
-        from ansible_know.collections import CollectionManager
-        from ansible_know.server import _get_state
-        from ansible_know.state import SessionManager, SharedState
-
+        _patch_local(monkeypatch, False)
         shared = SharedState()
         sessions = SessionManager(shared, collection_factory=CollectionManager)
 
         ctx = MagicMock()
         ctx.lifespan_context = {"shared": shared, "sessions": sessions, "http_client": None}
-        ctx.session_id = "session-x"
 
-        state_1 = await _get_state(ctx)
-        state_2 = await _get_state(ctx)
+        # mint path creates two distinct handles/states; no explicit handle involved.
+        state_a, handle_a = await _get_state_and_handle(ctx, None, mint_if_missing=True)
+        state_b, handle_b = await _get_state_and_handle(ctx, None, mint_if_missing=True)
+        assert handle_a != handle_b
+        assert state_a is not state_b
+
+    @pytest.mark.asyncio
+    async def test_same_session_gets_same_state(self, monkeypatch):
+        from ansible_know.collections import CollectionManager
+        from ansible_know.server import _get_state, _get_state_and_handle
+        from ansible_know.state import SessionManager, SharedState
+
+        _patch_local(monkeypatch, False)
+        shared = SharedState()
+        sessions = SessionManager(shared, collection_factory=CollectionManager)
+
+        ctx = MagicMock()
+        ctx.lifespan_context = {"shared": shared, "sessions": sessions, "http_client": None}
+
+        state_1, handle = await _get_state_and_handle(ctx, None, mint_if_missing=True)
+        # re-presenting the same minted handle resolves via get-existing to the same state.
+        state_2 = await _get_state(ctx, handle)
         assert state_1 is state_2
 
     @pytest.mark.asyncio
@@ -2355,48 +2876,6 @@ class TestGetStateSessionIsolation:
         # Each call returns a new ephemeral instance
         state_2 = await _get_state(None)
         assert state is not state_2
-
-    @pytest.mark.asyncio
-    async def test_registers_cleanup_on_session_exit_stack(self):
-        from ansible_know.collections import CollectionManager
-        from ansible_know.server import _get_state
-        from ansible_know.state import SessionManager, SharedState
-
-        shared = SharedState()
-        sessions = SessionManager(shared, collection_factory=CollectionManager)
-
-        mock_exit_stack = MagicMock()
-        ctx = MagicMock()
-        ctx.lifespan_context = {"shared": shared, "sessions": sessions, "http_client": None}
-        ctx.session_id = "session-cleanup"
-        ctx.session._exit_stack = mock_exit_stack
-        ctx.session._ansible_know_cleanup_registered = False
-
-        await _get_state(ctx)
-
-        mock_exit_stack.push_async_callback.assert_called_once()
-        assert ctx.session._ansible_know_cleanup_registered is True
-
-    @pytest.mark.asyncio
-    async def test_cleanup_not_registered_twice(self):
-        from ansible_know.collections import CollectionManager
-        from ansible_know.server import _get_state
-        from ansible_know.state import SessionManager, SharedState
-
-        shared = SharedState()
-        sessions = SessionManager(shared, collection_factory=CollectionManager)
-
-        mock_exit_stack = MagicMock()
-        ctx = MagicMock()
-        ctx.lifespan_context = {"shared": shared, "sessions": sessions, "http_client": None}
-        ctx.session_id = "session-once"
-        ctx.session._exit_stack = mock_exit_stack
-        ctx.session._ansible_know_cleanup_registered = False
-
-        await _get_state(ctx)
-        await _get_state(ctx)
-
-        mock_exit_stack.push_async_callback.assert_called_once()
 
 
 class TestClearCache:

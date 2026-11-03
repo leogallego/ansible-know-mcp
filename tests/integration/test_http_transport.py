@@ -39,7 +39,10 @@ async def test_http_transport_starts_and_responds():
     server_thread.start()
     await asyncio.sleep(2)
 
-    async with httpx.AsyncClient() as client:
+    # FastMCP 4's canonical mount path is /mcp (no trailing slash); POSTing to
+    # /mcp/ now gets a 307 redirect. httpx does not follow redirects by
+    # default (unlike fastmcp.Client, which does transparently), so opt in.
+    async with httpx.AsyncClient(follow_redirects=True) as client:
         resp = await client.post(
             f"http://127.0.0.1:{port}/mcp/",
             json={
